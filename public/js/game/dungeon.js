@@ -37,7 +37,7 @@ import { createCharmPedestals } from '../world/charmPedestals.js';
 import { RITUAL } from '../world/islands/ritual.js';
 import { getHeight } from '../world/terrain.js';
 import { addInteractable } from '../world/interactables.js';
-import { createDungeonVisuals, makePortal, dungeonLabel } from '../world/dungeonVisuals.js';
+import { createDungeonVisuals, makePortal } from '../world/dungeonVisuals.js';
 import { RECIPES, getItem } from './catalog.js';
 import { toonMat } from '../render/toon.js';
 import { actorKey } from '../net/worldSync.js';
@@ -367,7 +367,6 @@ export function createDungeon({ scene, ritual, players, avatars, table, items, i
     },
   });
   ritual.stones.forEach((stone, i) => {
-    const label = dungeonLabel(`${i + 1}`, 0.65); label.position.y = RITUAL.stones[i].height + 0.45; stone.add(label);
     stone.userData.interactable.prompt = `Strike stone ${i + 1}`;
     stone.userData.onStrike = () => {
       if (!sync.isHost || state.active) return;
