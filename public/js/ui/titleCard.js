@@ -1,11 +1,10 @@
-// Non-blocking title card shown on load: bouncy pastel "Infinite Island" logo + a controls hint (inline SVG icons)
+// Non-blocking title card shown on load: bouncy pastel "Infinite Island" logo
 // + the game version (config.VERSION).
 // Fades out after `duration` seconds of game time, or as soon as dismiss() is called (first input).
 //
 //   const title = new TitleCard(hudRoot, { duration: 2.6 });
 //   title.update(dt)        // every tick
 //   title.dismiss()         // e.g. on first input
-import { GAMEPAD_SVG, PHONE_SVG } from './icons.js';
 import { VERSION } from '../config.js';
 
 const LETTER_COLORS = ['#ff8fbe', '#ffd54a', '#7fe3b0', '#7cc8ff', '#c7a6ff', '#ffb27a'];
@@ -40,14 +39,6 @@ export class TitleCard {
       if (wi < words.length - 1) logo.appendChild(document.createTextNode(' '));
     });
     el.appendChild(logo);
-
-    const hint = document.createElement('div');
-    hint.className = 'title-hint';
-    hint.innerHTML = `
-      <span class="th-group"><b class="th-key">WASD</b><i>/</i>${GAMEPAD_SVG}<i>/</i>${PHONE_SVG}<span>to move</span></span>
-      <span class="th-dot">&bull;</span>
-      <span class="th-group"><b class="th-key">E</b><i>/</i><b class="th-pad">A</b><span>to interact</span></span>`;
-    el.appendChild(hint);
 
     const ver = document.createElement('div');
     ver.className = 'title-version';

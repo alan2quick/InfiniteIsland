@@ -62,7 +62,7 @@ test('walk across the rectangular fade band eases monotonically and teleport sna
   for (const id of ['home', 'ember', 'frost', 'home']) {
     const i = ISLANDS.find((a) => a.id === id); Object.assign(view, { x: i.x, z: i.z }); atmosphere.snap(); tick(0);
     near(atmosphere.duskWeight, 0); near(scene.fog.near, 140); near(scene.fog.far, 330);
-    near(sky.sun.shadow.intensity, 1); near(sky.sun.shadow.radius, 1);
+    near(sky.sun.shadow.intensity, 0.82); near(sky.sun.shadow.radius, 1.5);
     near(sky.sun.intensity, clock.lightIntensity);
     near(sky.stars.material.uniforms.uNight.value, clock.nightness);
     if (id === 'home') assert.deepEqual(scene.fog.color, clock.look.fog);
@@ -103,7 +103,8 @@ test('spores and breathing glow are day independent; ambient fireflies preserve 
   tick(0, 1, Math.PI / 2 / DUSK_LIGHT.breatheRate); near(duskUniforms.uGlow.value, 1);
   const spore = atmosphere.duskFx.spores;
   assert.equal(spore.geometry.getAttribute('aSeed').count, 240); assert.equal(spore.material.depthWrite, false);
-  clock.set(12); ambient.duskWeight = 1; ambient.update(4, 0, view, camera, 720);
+  ambient.setFireflyAnchors([view]);
+  clock.set(12); ambient.duskWeight = 1; ambient.update(30, 0, view, camera, 720);
   assert.equal(ambient.fireflies.points.visible, true);
   ambient.duskWeight = 0; ambient.update(4, 0, view, camera, 720); assert.equal(ambient.fireflies.points.visible, false);
   clock.set(0); ambient.update(4, 0, view, camera, 720); assert.equal(ambient.fireflies.points.visible, true);

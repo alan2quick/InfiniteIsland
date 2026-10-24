@@ -36,6 +36,11 @@ export function setWaterLook(clock, duskWeight = 0) {
   waterUniforms.uNight.value = THREE.MathUtils.lerp(clock.nightness, 1, k);
 }
 
+// A local inlet opening, derived from the existing stream rather than a new terrain cut.
+const mouthStart = STREAM_PATH.find((p) => getTerrainHeight(p.x, p.z) < 0.45) || STREAM_PATH[STREAM_PATH.length - 4];
+const mouthEnd = STREAM_PATH[STREAM_PATH.length - 1];
+export const HOME_STREAM_MOUTH = Object.freeze({ ax: mouthStart.x, az: mouthStart.z, bx: mouthEnd.x, bz: mouthEnd.z, halfWidth: STREAM_HALF_WIDTH * 1.2 });
+
 const HEIGHT_TEX_SIZE = 384;      // home's patch: 150 u -> 0.39 u per texel (unchanged)
 const ISLAND_TEX_SIZE = 320;      // big islands: 244 u -> 0.76 u per texel
 const OCEAN_PAD = 450;           // outer plane reaches this far past the outermost island square (fog hides the edge by 330 u)
@@ -166,6 +171,8 @@ function oceanFrag(n) {
   uniform vec3 uDeepTint;
   uniform vec3 uFoamTint;
   uniform float uNight;
+  uniform vec4 uHomeMouthSegment;
+  uniform float uHomeMouthWidth;
   varying vec3 vWorld;
   ${decl}
 
@@ -190,9 +197,8 @@ function oceanFrag(n) {
               + 0.04 * sin((vWorld.x - vWorld.z) * 1.7 + uTime * 1.6);
     float d = depth + wob;
 
-    // Banded (toon) shallow -> deep colour
+    // Preserve the turquoise palette with a soft depth transition instead of contour stripes.
     float deepT = smoothstep(0.0, 3.0, depth);
-    deepT = floor(deepT * 5.0 + 0.5) / 5.0;
     vec3 col = mix(uShallow * uShallowTint, uDeep * uDeepTint, deepT);
 
     // Soft lighter wave streaks on open water
@@ -203,14 +209,22 @@ function oceanFrag(n) {
     // shore gradient (hx, hz above), so lines look equally wide on gentle beaches and steep pond banks.
     float shoreSlope = length(vec2(hx, hz)) / (2.0 * epsW);
     float g = clamp(shoreSlope, 0.06, 0.7) * inside + (1.0 - inside) * 0.2;
-    float rim = 1.0 - step(0.34 * g, d);
+    float edgeAA = max(fwidth(d), 0.008);
+    float rim = 1.0 - smoothstep(0.3 * g - edgeAA, 0.3 * g + edgeAA, d);
     float p1 = g * (1.4 + 1.1 * sin(uTime * 1.15));
     float p2 = g * (3.6 + 1.3 * sin(uTime * 1.15 - 1.7));
-    float line1 = 1.0 - step(0.2 * g, abs(d - p1));
-    float line2 = 1.0 - step(0.14 * g, abs(d - p2));
+    float line1 = 1.0 - smoothstep(0.16 * g, 0.3 * g + edgeAA, abs(d - p1));
+    float line2 = 1.0 - smoothstep(0.1 * g, 0.22 * g + edgeAA, abs(d - p2));
     // Traveling foam belongs at sloping banks, not on broad flat, ankle-deep sandbars.
     float bank = smoothstep(0.035, 0.12, shoreSlope);
-    float foam = max(rim, max(line1, line2 * 0.85) * bank);
+    float foam = max(rim, max(line1 * 0.32, line2 * 0.16) * bank);
+    // The shore is open where the stream enters: no white foam bar across the inlet.
+    vec2 inletA = uHomeMouthSegment.xy, inletB = uHomeMouthSegment.zw;
+    vec2 inletD = inletB - inletA;
+    float inletT = clamp(dot(p - inletA, inletD) / max(dot(inletD, inletD), 0.001), 0.0, 1.0);
+    float inletDistance = length(p - (inletA + inletD * inletT));
+    float inletOpen = 1.0 - smoothstep(uHomeMouthWidth * 0.82, uHomeMouthWidth * 1.1, inletDistance);
+    foam *= 1.0 - inletOpen;
     col = mix(col, uFoam * uFoamTint, foam);
 
     float alpha = mix(0.5, 0.97, smoothstep(0.0, 1.5, depth));
@@ -274,8 +288,8 @@ const STREAM_FRAG = /* glsl */`
     float e = abs(vUv.x - 0.5) * 2.0;             // 0 centre .. 1 bank
     vec3 col = mix(uShallow * uShallowTint, uDeep * uDeepTint, 0.25 * (1.0 - e) + 0.05);
     float flow = sin(vUv.y * 1.6 - uTime * 2.6 + sin(vUv.x * 6.2832 + vUv.y * 0.7) * 1.3);
-    col = mix(col, uFoam * uFoamTint, 0.55 * (1.0 - uNight * 0.15) * step(0.82, flow) * (1.0 - e * 0.5));
-    col = mix(col, uFoam * uFoamTint, step(0.82, e));          // foamy banks
+    col = mix(col, uFoam * uFoamTint, 0.22 * (1.0 - uNight * 0.15) * smoothstep(0.76, 0.98, flow) * (1.0 - e * 0.5));
+    col = mix(col, uFoam * uFoamTint, 0.45 * smoothstep(0.78, 1.0, e));          // soft foamy banks
     gl_FragColor = vec4(col, 0.94);
     #include <tonemapping_fragment>
     #include <colorspace_fragment>
@@ -290,12 +304,14 @@ const STREAM_FRAG = /* glsl */`
  *   width  half width in u, a number or (i, p) => number
  *   opts.y(p, i) -> y | null   the water level at a point; null ENDS the ribbon there (it flows into a pond). Default: p.y
  *   opts.fall(p, i) -> 0..1    (optional) a per-vertex "falling / splashing" amount for the ember variant's shader (attribute aFall)
+ *   opts.mouth(p, i) -> 0..1   (optional) home pond-depth fade: shares the lake wave phase and dissolves into its surface (attribute aMouth)
  * Returns a THREE.BufferGeometry (or null when fewer than two points survive); makeRibbonMaterial() builds the matching material.
  */
 export function buildRibbonGeometry(path, width, opts = {}) {
   const positions = [];
   const uvs = [];
   const falls = [];
+  const mouths = [];
   const indices = [];
   let dist = 0;
   let prev = null;
@@ -316,6 +332,7 @@ export function buildRibbonGeometry(path, width, opts = {}) {
     positions.push(p.x + nx * hw, y, p.z + nz * hw, p.x - nx * hw, y, p.z - nz * hw);
     uvs.push(0, dist, 1, dist);
     if (opts.fall) { const f = opts.fall(p, i); falls.push(f, f); }
+    if (opts.mouth) { const amount = opts.mouth(p, i); mouths.push(amount, amount); }
     if (count > 0) {
       const k = count * 2;
       indices.push(k - 2, k - 1, k, k - 1, k + 1, k);
@@ -327,6 +344,7 @@ export function buildRibbonGeometry(path, width, opts = {}) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   if (opts.fall) geo.setAttribute('aFall', new THREE.Float32BufferAttribute(falls, 1));
+  if (opts.mouth) geo.setAttribute('aMouth', new THREE.Float32BufferAttribute(mouths, 1));
   geo.setIndex(indices);
   return geo;
 }
@@ -340,6 +358,21 @@ export function makeRibbonMaterial(uniformsShared = waterUniforms, opts = {}) {
       .replace('float flow = sin(vUv.y * 1.6 - uTime * 2.6', 'float flow = sin(vUv.y * (1.6 + 1.6 * vFall) - uTime * (2.6 + 3.0 * vFall)')
       .replace('gl_FragColor = vec4(col, 0.94);', 'float churn = step(0.55, 0.5 + 0.5 * sin(vUv.y * 5.3 - uTime * 7.0 + vUv.x * 9.0)); col = mix(col, uFoam * uFoamTint, vFall * (0.35 + 0.5 * churn)); gl_FragColor = vec4(col, 0.94);');
   }
+  if (opts.mouth) {
+    vertexShader = vertexShader.replace('varying vec2 vUv;', 'varying vec2 vUv; attribute float aMouth; varying float vMouth; uniform float uTime;')
+      .replace('vUv = uv;', 'vUv = uv; vMouth = aMouth;')
+      .replace('vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);', `
+        vec3 p = position;
+        vec3 wp = (modelMatrix * vec4(p, 1.0)).xyz;
+        float pondWave = sin(wp.x * 0.30 + uTime * 0.8) + sin(wp.z * 0.26 - uTime * 0.6) + sin((wp.x + wp.z) * 0.17 + uTime * 0.5);
+        p.y += pondWave * 0.05 * smoothstep(0.0, 0.12, aMouth);
+        vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);`);
+    fragmentShader = fragmentShader.replace('varying vec2 vUv;', 'varying vec2 vUv; varying float vMouth;')
+      .replace('0.45 * smoothstep(0.78, 1.0, e)', '0.45 * smoothstep(0.78, 1.0, e) * (1.0 - smoothstep(0.08, 0.45, vMouth))')
+      .replace('gl_FragColor = vec4(col, 0.94);', `float mouthFade = 1.0 - smoothstep(0.1, 1.0, vMouth);
+        float sideFade = 1.0 - smoothstep(mix(0.98, 0.65, vMouth), 1.0, e);
+        gl_FragColor = vec4(col, 0.94 * mouthFade * sideFade);`);
+  }
   const mat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       uTime: uniformsShared.uTime,
@@ -350,6 +383,7 @@ export function makeRibbonMaterial(uniformsShared = waterUniforms, opts = {}) {
     vertexShader,
     fragmentShader,
     transparent: true,
+    depthWrite: !opts.mouth,
     side: THREE.DoubleSide,
     fog: true,
     polygonOffset: true,
@@ -375,15 +409,33 @@ export function buildRibbon(path, width, opts = {}) {
   return mesh;
 }
 
-/** Home's stream: the plateau-foot spring down to the pond (unchanged look). */
+/** Home's stream: a soft inlet overlaps the lake, follows its waves and fades before the ribbon ends. */
 function buildStream() {
   return buildRibbon(STREAM_PATH, (i) => STREAM_HALF_WIDTH * 1.12 * (0.35 + 0.65 * Math.min(1, i / 4)), {   // tapers into a little spring
-    y(p, i) {
+    mouth(p) { return Math.max(0, Math.min(1, (WATER_LEVEL - getTerrainHeight(p.x, p.z)) / 1.05)); },
+    y(p) {
       const h = getHeight(p.x, p.z);
-      if (i > 8 && h < WATER_LEVEL - 0.12) return null;    // flows into the pond
-      return Math.max(h + 0.2, WATER_LEVEL + 0.03);
+      return Math.max(h + 0.2, WATER_LEVEL + 0.012);
     },
   });
+}
+
+/** A small source cascade follows the existing plateau face into the first stream point. Purely visual: no terrain edits or registrations. */
+export function buildHomeSpring() {
+  const first = STREAM_PATH[0], next = STREAM_PATH[1];
+  const length = Math.hypot(next.x - first.x, next.z - first.z) || 1;
+  const dx = (next.x - first.x) / length, dz = (next.z - first.z) / length;
+  const path = [];
+  for (let i = 9; i >= 0; i--) {
+    const d = i * 0.3;
+    const x = first.x - dx * d, z = first.z - dz * d;
+    path.push({ x, z, y: getHeight(x, z) + 0.16 });
+  }
+  // The final lip meets the original stream at exactly the same surface height.
+  path[path.length - 1].y = getHeight(first.x, first.z) + 0.2;
+  const mesh = buildRibbon(path, 0.46, { name: 'home-spring-cascade' });
+  mesh.renderOrder = 2;
+  return mesh;
 }
 
 /**
@@ -416,6 +468,8 @@ export function createWater() {
       uMarshDeep: { value: new THREE.Color(DUSK_WATER.deep) },
       uMarshGlint: { value: new THREE.Color(DUSK_WATER.glint) },
       uWaveAmp: { value: waveAmp },
+      uHomeMouthSegment: { value: new THREE.Vector4(HOME_STREAM_MOUTH.ax, HOME_STREAM_MOUTH.az, HOME_STREAM_MOUTH.bx, HOME_STREAM_MOUTH.bz) },
+      uHomeMouthWidth: { value: HOME_STREAM_MOUTH.halfWidth },
       uShallow: { value: new THREE.Color(PALETTE.waterShallow) },
       uDeep: { value: new THREE.Color(PALETTE.waterDeep) },
     }]);
@@ -474,7 +528,9 @@ export function createWater() {
   const stream = buildStream();
   stream.renderOrder = 2;
   group.add(stream);
+  group.add(buildHomeSpring());
 
+  let motion = 1, lastTime = null, visualTime = 0;
   const heightTextures = {};
   ISLANDS.forEach((island, i) => { heightTextures[island.id] = heightTexs[i]; });
   return {
@@ -482,8 +538,19 @@ export function createWater() {
     heightTexture: heightTexs[0],
     heightTextures,
     setTimeOfDay: setWaterLook,
+    /** Visual-only calm-to-lively water. Preserve phase when adjusted, and keep the day clock untouched. */
+    setMotion(value) {
+      const n = Number(value);
+      if (Number.isFinite(n)) motion = THREE.MathUtils.clamp(n, 0, 1);
+      return motion;
+    },
+    get motion() { return motion; },
     update(t) {
-      shared.uTime.value = t;
+      if (!Number.isFinite(t)) return;
+      if (lastTime === null || t < lastTime) visualTime = t;
+      else visualTime += (t - lastTime) * (0.2 + 0.8 * motion);
+      lastTime = t;
+      shared.uTime.value = visualTime;
     },
   };
 }

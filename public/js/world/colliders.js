@@ -108,7 +108,7 @@ export function resolveCircle(pos, radius) {
           const d2 = dx * dx + dz * dz;
           if (d2 >= min * min) continue;
           const d = Math.sqrt(d2);
-          if (d < 1e-6) { pos.x = c.x + min; continue; }   // dead centre: push along +x
+          if (d < 1e-6) { pos.x = c.x + min; moved = true; continue; }   // dead centre: push along +x
           const push = (min - d) / d;
           pos.x += dx * push;
           pos.z += dz * push;

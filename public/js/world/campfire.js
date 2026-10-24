@@ -1,3 +1,4 @@
+import { campBenchSpot } from './campSeating.js';
 // Campfire (PLAN Step 14): stone firepit + charred log pile + four log benches east of the spawn, with fuel, three fire levels and cooking.
 //
 //   const campfires = createCampfires({ scene, players, particles, hud, sfx, inventory, dialog, floatText, camera: followCam, sync });   // one per config FIRES entry
@@ -87,7 +88,7 @@ const TOSS_TOTAL = 0.62;
 const COOK_TIME = 2.0;
 const TOSS_KEYS = [[0.5, -0.05, -0.3, -0.12], [-1.75, -0.2, 0.35, 0.16]];
 const COOK_POSE = [-1.45, -0.12, 0.3, 0.07];        // arm pitch, sway, body twist, lean while holding the stick out
-const H_AT = [0, 0.85, 1.3, 1.9];                  // flame height factor per (smoothed) level 0..3
+const H_AT = [0, 1.05, 1.5, 2.0];                  // flame height factor per (smoothed) level 0..3
 const W_AT = [0, 0.75, 1.0, 1.3];
 const LEVEL_WORDS = ['cold', 'small', 'cosy', 'roaring'];
 
@@ -107,7 +108,7 @@ function partFromQuat(geo, color, pos, quat, scale) {
 
 function buildModel(root, fire) {
   const cx = fire.x, cz = fire.z;
-  const { ring: BENCH_RING, len: BENCH_LEN, angles: BENCH_ANGLES } = fire.bench;   // (home: angles diagonal, so the four gaps face the compass points)
+  const { len: BENCH_LEN, angles: BENCH_ANGLES } = fire.bench;   // (home: angles diagonal, so the four gaps face the compass points)
   const H = (lx, lz) => getHeight(cx + lx, cz + lz);
   const hC = H(0, 0);
   const meshes = [];
@@ -159,7 +160,7 @@ function buildModel(root, fire) {
       const benchParts = [], stumps = [];
       const done = () => sets.push(combine(benchParts.concat(stumps)));
     if (style === 'capstool') {                       // Step 72a (the Duskcrown marsh hearth): a short cut mushroom stem per seat (pale lavender, glowing foot band, growth rings on the cut top) with a few little caps sprouting at its base
-      const bx = Math.cos(a) * BENCH_RING, bz = Math.sin(a) * BENCH_RING;
+      const { x: bx, z: bz } = campBenchSpot(fire, bi);
       const g0 = H(bx, bz), R = 0.4, top = g0 + 0.5;                                  // same seat height as the log / stump / basalt seats, so the feast needs no change
       const stem = bi % 2 ? '#b9b9e6' : '#a4a6dc';
       stumps.push(part(G.cyl8, stem, { p: [bx, g0 + 0.24, bz], r: [0, a, 0], s: [R, 0.5, R] }));
@@ -175,12 +176,12 @@ function buildModel(root, fire) {
         stumps.push(part(G.sphere, '#ffb347', { p: [cx2, cg + s * 2.45, cz2], s: [s * 0.55, s * 0.3, s * 0.55] }));        // a warm glow dot
       }
       addC({ x: cx + bx, z: cz + bz, r: R + 0.08 });
-      seatList.push({ x: cx + bx, y: top, z: cz + bz, facing: Math.atan2(-bx, -bz), bench: bi });
+      seatList.push({ x: cx + bx, y: top, z: cz + bz, facing: Math.atan2(-bx, -bz), tangentX: -Math.sin(a), tangentZ: Math.cos(a), bench: bi });
       done();
       return;
     }
     if (style === 'basalt') {                         // Step 37a: a squat basalt column per seat: a pale worn top, a lichen patch, a pebble or two beside it
-      const bx = Math.cos(a) * BENCH_RING, bz = Math.sin(a) * BENCH_RING;
+      const { x: bx, z: bz } = campBenchSpot(fire, bi);
       const g0 = H(bx, bz), R = 0.46, top = g0 + 0.5;
       const rock = bi % 2 ? '#4d4559' : '#585066';
       stumps.push(part(G.cyl6, rock, { p: [bx, g0 + 0.22, bz], r: [0, a, 0], s: [R, 0.5, R] }));
@@ -193,12 +194,12 @@ function buildModel(root, fire) {
         stumps.push(part(G.ico1, '#514a5e', { p: [px, H(px, pz) + 0.08, pz], r: [0.3, pa, 0.2], s: [0.17, 0.1, 0.14] }));
       }
       addC({ x: cx + bx, z: cz + bz, r: R + 0.08 });
-      seatList.push({ x: cx + bx, y: top, z: cz + bz, facing: Math.atan2(-bx, -bz), bench: bi });
+      seatList.push({ x: cx + bx, y: top, z: cz + bz, facing: Math.atan2(-bx, -bz), tangentX: -Math.sin(a), tangentZ: Math.cos(a), bench: bi });
       done();
       return;
     }
     if (style === 'stump') {                          // Step 33b: one tree stump per seat (the Frostpine camp): pale rings on top, bark ridges, roots, a pinch of snow
-      const bx = Math.cos(a) * BENCH_RING, bz = Math.sin(a) * BENCH_RING;
+      const { x: bx, z: bz } = campBenchSpot(fire, bi);
       const g0 = H(bx, bz), R = 0.42, top = g0 + 0.52;
       const bark = bi % 2 ? '#9b6a40' : '#a8703f';
       stumps.push(part(G.cyl8, bark, { p: [bx, g0 + 0.24, bz], r: [0, a, 0], s: [R, 0.5, R] }));
@@ -212,13 +213,13 @@ function buildModel(root, fire) {
       }
       if (fire.snowy) stumps.push(part(G.ico1, '#f6f9ff', { p: [bx + Math.cos(a + 2.2) * R * 0.5, top + 0.035, bz + Math.sin(a + 2.2) * R * 0.5], s: [0.17, 0.06, 0.15] }));
       addC({ x: cx + bx, z: cz + bz, r: R + 0.08 });
-      seatList.push({ x: cx + bx, y: top, z: cz + bz, facing: Math.atan2(-bx, -bz), bench: bi });
+      seatList.push({ x: cx + bx, y: top, z: cz + bz, facing: Math.atan2(-bx, -bz), tangentX: -Math.sin(a), tangentZ: Math.cos(a), bench: bi });
       done();
       return;
     }
     const LEN = BENCH_LEN || fire.bench.logLen || 1.7;
     const tx = -Math.sin(a), tz = Math.cos(a);
-    const bx = Math.cos(a) * BENCH_RING, bz = Math.sin(a) * BENCH_RING;
+    const { x: bx, z: bz } = campBenchSpot(fire, bi);
     const ax = bx - tx * LEN / 2, az = bz - tz * LEN / 2;
     const ex = bx + tx * LEN / 2, ez = bz + tz * LEN / 2;
     const hA = H(ax, az), hB = H(ex, ez);
@@ -237,7 +238,7 @@ function buildModel(root, fire) {
     }
     for (const o of [-0.6, 0, 0.6]) addC({ x: cx + bx + tx * o, z: cz + bz + tz * o, r: 0.33 });
     const top = cy + R;
-    seatList.push({ x: cx + bx, y: top, z: cz + bz, facing: Math.atan2(-bx, -bz), bench: bi });
+    seatList.push({ x: cx + bx, y: top, z: cz + bz, facing: Math.atan2(-bx, -bz), tangentX: -Math.sin(a), tangentZ: Math.cos(a), bench: bi });
     done();
     });
     return { geos: sets, seats: seatList, colliders: cols, style };
@@ -311,11 +312,11 @@ varying float vV;
 void main() {
   vV = aInfo.w;
   vec3 p = position;
-  float t = uTime * 6.5 + aInfo.z * 1.9;
+  float t = uTime * 1.8 + aInfo.z * 1.9;
   float w = aInfo.w * aInfo.w;
   p.x += sin(t + p.y * 4.0) * 0.07 * w * uFlick;
   p.z += cos(t * 0.87 + p.y * 3.4) * 0.07 * w * uFlick;
-  p.y *= 1.0 + 0.13 * sin(uTime * 9.0 + aInfo.z * 2.3) * uFlick + 0.05 * sin(uTime * 23.0 + aInfo.z * 4.1);
+  p.y *= 1.0 + 0.07 * sin(uTime * 2.4 + aInfo.z * 2.3) * uFlick + 0.025 * sin(uTime * 4.0 + aInfo.z * 4.1);
   gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
 }
 `;
@@ -347,6 +348,9 @@ function buildFlames(uTime) {
     const mat = new THREE.ShaderMaterial({
       uniforms: { uTime, uFlick: { value: 1 }, uLow: { value: new THREE.Color(L.low) }, uHigh: { value: new THREE.Color(L.high) } },
       vertexShader: FLAME_VERT, fragmentShader: FLAME_FRAG, side: THREE.DoubleSide,
+      // Nested opaque tongues must not hide the shorter orange/yellow cores behind the outer red shell.
+      // Depth testing stays on so scenery and logs still occlude the fire correctly.
+      depthWrite: false,
     });
     const mesh = new THREE.Mesh(tongueGeometry(L.tongues), mat);
     mesh.name = `flame-layer-${i}`;
@@ -519,7 +523,7 @@ export function createCampfire({ fire = FIRES[0], scene, players, particles, hud
   let vis = 0;                  // smoothed visual level 0..3
   let flare = 0;                // 1 right after a log lands, decays
   let saveT = 0, syncT = 0;
-  let wispT = rnd(0, 1.5), smokeT = 0, emberT = 0;
+  let smokeT = 0, emberT = 0;
   const pending = [];           // logs in flight: { t, from, to, mesh }
   const logPool = [];
   const busyMap = new Map();    // Player -> { type: 'toss' | 'cook', t, ... }
@@ -931,7 +935,7 @@ export function createCampfire({ fire = FIRES[0], scene, players, particles, hud
     return best;
   }
 
-  const flick = (t) => 0.5 + 0.5 * (Math.sin(t * 11.3) * 0.45 + Math.sin(t * 17.9 + 1.3) * 0.35 + Math.sin(t * 5.1 + 4.0) * 0.2);
+  const flick = (t) => 0.5 + 0.5 * (Math.sin(t * 1.65) * 0.45 + Math.sin(t * 2.75 + 1.3) * 0.35 + Math.sin(t * 0.9 + 4.0) * 0.2);
 
   function update(dt, cam = camera && camera.camera ? camera.camera : null, viewportH = 0) {
     time += dt;
@@ -985,7 +989,7 @@ export function createCampfire({ fire = FIRES[0], scene, players, particles, hud
     const hS = interp(H_AT, v) * (1 + 0.45 * flare), wS = interp(W_AT, v) * (1 + 0.25 * flare);
     flames.group.children.forEach((m, i) => {
       const ff = i === 0 ? f : i === 1 ? f2 : 1 - f;
-      m.scale.set(wS * (0.96 + 0.08 * ff), hS * (0.9 + 0.2 * ff * m.userData.flick * 0.9), wS * (0.96 + 0.08 * f2));
+      m.scale.set(wS * (0.96 + 0.08 * ff), hS * (0.96 + 0.1 * ff * m.userData.flick * 0.9), wS * (0.96 + 0.08 * f2));
       m.rotation.z = (ff - 0.5) * 0.08; m.rotation.x = (f2 - 0.5) * 0.08;
       m.material.uniforms.uFlick.value = 0.6 + 0.3 * Math.min(3, v);
     });
@@ -1008,12 +1012,10 @@ export function createCampfire({ fire = FIRES[0], scene, players, particles, hud
         const rate = eff === 3 ? 0.07 : 0.22;
         while (emberT <= 0) { emberT += rate * rnd(0.6, 1.4); embers.spawn(fx, hC + 0.5 + 0.5 * v, fz, 1, { spread: 0.3 * wS + 0.1 }); }
       }
-      if (eff === 0) {                                          // a thin wisp from the cold ashes
-        wispT -= dt;
-        if (wispT <= 0) { wispT = rnd(1.3, 2.1); particles.burst('smoke', { x: fx + rnd(-0.1, 0.1), y: hC + 0.6, z: fz + rnd(-0.1, 0.1) }, { count: 1, radius: 0.05, size: 0.55, speed: 0.6, life: 1.2 }); }
-      } else if (eff >= 2 || vis > 1.5) {
+      // Cold ashes stay quiet; only the brief extinguishing puff remains when fuel runs out.
+      if (eff >= 2 || vis > 1.5) {
         smokeT -= dt;
-        if (smokeT <= 0) { smokeT = eff === 3 ? rnd(0.28, 0.5) : rnd(0.8, 1.3); particles.burst('smoke', { x: fx + rnd(-0.2, 0.2), y: hC + 0.5 + 1.3 * hS, z: fz + rnd(-0.2, 0.2) }, { count: 1, radius: 0.15, size: eff === 3 ? 1.0 : 0.75 }); }
+        if (smokeT <= 0) { smokeT = eff === 3 ? rnd(0.28, 0.5) : rnd(0.8, 1.3); particles.burst('smoke', { x: fx + rnd(-0.2, 0.2), y: hC + 0.5 + 1.3 * hS, z: fz + rnd(-0.2, 0.2) }, { count: 1, radius: 0.15, size: eff === 3 ? 0.55 : 0.4, life: 1.6 }); }
       }
     }
     embers.update(dt, cam, viewportH);

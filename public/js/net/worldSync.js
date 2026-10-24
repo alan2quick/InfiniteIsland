@@ -231,7 +231,7 @@ export class WorldSync {
       case 'resync': this.stats.resyncs++; this._sendSnapshot(screenId); break;
       case 'poses': {
         const slots = this.domains.get('players')?.snapshot?.() || [];
-        const poses = Array.isArray(msg.p) ? msg.p.filter((p) => Array.isArray(p) && p.length <= 16 && Number.isInteger(p[0]) && slots[p[0]]?.screen === screenId && p.every(Number.isFinite)) : [];
+        const poses = Array.isArray(msg.p) ? msg.p.filter((p) => Array.isArray(p) && p.length >= 10 && p.length <= 17 && Number.isInteger(p[0]) && slots[p[0]]?.screen === screenId && p.every(Number.isFinite)) : [];
         for (const p of poses) {
           this._poses.set(p[0], p);
           this._poseOwners.set(p[0], screenId);

@@ -14,7 +14,7 @@ import { TOOLS, TOOL_BONUSES, ISLAND_SWINGS } from '../items/tools.js';
 export function createBagPanel(root, { inventory, islands, collection = null, dungeon = null, players = null, storybook = null, unlocked = () => true, region = () => 'home', canOpen = () => true, onOpen = () => {}, onClose = () => {} }) {
   const el = document.createElement('div');
   el.className = 'bag-overlay'; el.hidden = true;
-  el.innerHTML = `<section class="bag-panel" role="dialog" aria-modal="true" aria-labelledby="bag-title">
+  el.innerHTML = `<section class="bag-panel" role="dialog" aria-modal="false" aria-labelledby="bag-title">
     <header><h2 id="bag-title">${BAG_SVG} Our Bag</h2><button type="button" class="bag-close" aria-label="Close bag">×</button></header>
     <p class="bag-intro">Shared by every islander. Supplies found on several islands are listed once.</p>
     <nav class="bag-tabs"><button type="button" data-tab="bag">Bag</button><button type="button" data-tab="journal">Journal</button><button type="button" data-tab="stickers">Storybook</button><button type="button" data-tab="tools">Tools</button><button type="button" data-tab="provisions" hidden>Provisions</button><button type="button" data-tab="guide" hidden>Compendium</button><button type="button" data-tab="weapons" hidden>Weapons</button><button type="button" data-tab="charms" hidden>Charms</button><button type="button" data-tab="reactions" hidden>Reactions</button></nav>
@@ -190,10 +190,6 @@ export function createBagPanel(root, { inventory, islands, collection = null, du
   closeButton.addEventListener('click', close);
   el.addEventListener('pointerdown', (e) => { if (e.target === el) close(); });
   el.addEventListener('keydown', (e) => {
-    if (e.code === 'Tab') {
-      const buttons = [closeButton, ...visibleTabs(), ...provisions.querySelectorAll('select, button:not(:disabled)')].filter((b) => !b.closest('[hidden]')), i = buttons.indexOf(document.activeElement);
-      e.preventDefault(); buttons[(i + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length].focus();
-    }
     if (!e.ctrlKey && !e.metaKey && !e.altKey && ['KeyB', 'Escape', 'KeyQ', 'Backspace'].includes(e.code)) {
       e.preventDefault(); if (!e.repeat) close();
     }
@@ -226,5 +222,5 @@ export function createBagPanel(root, { inventory, islands, collection = null, du
     }
     if (Math.abs(z) > 0.2) ({ bag: groups, journal, stickers: stickersEl, tools, provisions, guide, weapons, charms, reactions: reactionsEl })[currentTab].scrollTop += z * 700 * dt;
   }
-  return { open: show, close, drive, journal() { selectTab('journal'); return show(); }, toggle: (owner) => open ? close() : show(owner), get isOpen() { return open; }, element: el, panel };
+  return { open: show, close, drive, journal() { selectTab('journal'); return show(); }, openTab(tab, owner) { selectTab(tab); return open || show(owner); }, toggle: (owner) => open ? close() : show(owner), get isOpen() { return open; }, get activeTab() { return currentTab; }, element: el, panel };
 }

@@ -296,13 +296,15 @@ test('the page pose fields round-trip and old packets decode as defaults', () =>
   assert.equal(pageToolOfCode(0), null); assert.equal(codePageTool('banana'), 0);
 });
 
-test('the host relays packets up to 16 fields for their own slot and drops longer ones', () => {   // (Step 73a: field 16 = petId)
+test('the host relays legacy and variant poses for their own slot and drops oversized or foreign-slot packets', () => {   // Field 16 = petId, optional field 17 = variant
   const h = new WorldSync({ role: 'host' }), sent = [];
   h.register('players', { snapshot: () => [{ screen: 's1' }, { screen: 'host' }] });
   h.attachHost({ sendTo() {}, broadcast: (m) => sent.push(m) }); h.screenConnected(1, { clientId: 'c1' }); sent.length = 0;
   const pose = [0, 0, 0, 0, 0, 0, 0, 0, -1, 1, 2, 12, 24, 38, 3, 1];
-  h.screenMessage(1, { type: 'poses', p: [pose, [...pose, 0]] });
-  assert.equal(sent.length, 1); assert.deepEqual(sent[0].p, [pose]);
+  const variantPose = [...pose, 5];
+  const foreignSlot = [1, ...pose.slice(1), 5];
+  h.screenMessage(1, { type: 'poses', p: [pose, variantPose, [...variantPose, 0], foreignSlot] });
+  assert.equal(sent.length, 1); assert.deepEqual(sent[0].p, [pose, variantPose]);
 });
 
 // ---- pages ------------------------------------------------------------------------------------------------------------------------------------------------

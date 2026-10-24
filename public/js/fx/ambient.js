@@ -1,13 +1,15 @@
-// Ambient life: butterflies fluttering around flower patches (by day), fireflies blinking over the meadow, pond and
+// Ambient life: butterflies gliding around flower patches (by day), rare firefly gatherings over the meadow, pond and
 // stream (by night), blossom petals drifting off cherry trees and occasional twinkling glints on the sea near the
-// shore. Each is a single draw call (butterflies two), driven by one update(); spawn positions favour whatever is near
-// the player so the effects are actually seen. `clock` (the DayNight) supplies `nightness` (0 day .. 1 night):
+// shore. Each is a single draw call (butterflies two), driven by one update(); butterflies are sparse across flower
+// patches while petals favour nearby trees. `clock` (the DayNight) supplies `nightness` (0 day .. 1 night):
 // butterflies fly off one by one as it gets dark and fireflies come out, and the reverse at dawn.
 //
 //   const amb = createAmbient({ scene, props, getHeight, clock });
 //   amb.update(dt, t, player.position, camera, drawingBufferHeight)
 //   amb.duskWeight = atmosphere.duskWeight  // canopy fireflies come out by day too; calm still suppresses caves / Frostpine
 import * as THREE from 'three';
+import { butterflyWingAngle, butterflySpeed } from './butterflyMotion.js';
+import { fireflyGathering } from './fireflyGathering.js';
 import { WATER_LEVEL, PALETTE } from '../config.js';
 import { SPAWN, POND, STREAM_PATH } from '../world/terrain.js';
 
@@ -35,6 +37,9 @@ function wingGeometry() {
 class Butterflies {
   constructor(scene, centers, getHeight) {
     this.getHeight = getHeight;
+    this.motion = 0.3;
+    this.time = 0;
+    this.wingTime = 0;
     const n = centers.length;
     this.n = n;
     const mat = new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide });
@@ -53,20 +58,21 @@ class Butterflies {
       col.set(BUTTERFLY_COLORS[i % BUTTERFLY_COLORS.length]);
       this.wings.setColorAt(i * 2, col);
       this.wings.setColorAt(i * 2 + 1, col);
-      const partner = centers[(i * 3 + 1) % n];
+      const partner = c.partner || c;
       return {
-        a: c, b: partner,                                   // wander between two flower patches
+        a: c, b: partner,                                   // wander locally, not across the island through spawn
         mix: rnd(0, TAU), mixSpeed: rnd(0.03, 0.06),
         rx: rnd(1.8, 3.2), rz: rnd(1.6, 3.0),
         wx: rnd(0.55, 0.95), wz: rnd(0.5, 0.9), px: rnd(0, TAU), pz: rnd(0, TAU),
-        hover: rnd(0.55, 0.9), hoverPh: rnd(0, TAU), flap: rnd(0, TAU), flapF: rnd(8, 11),
-        size: rnd(0.95, 1.25),
+        hover: rnd(0.55, 0.9), hoverPh: rnd(0, TAU), flap: rnd(0, TAU), flapF: rnd(2.6, 3.6),
+        size: rnd(0.95, 1.25) * 0.65,
+        altitude: 0.7 + ((i * 0.61803398875) % 1) * 1.2,
         leaveAt: rnd(0.2, 0.55),                           // nightness at which this one heads home
         vis: -1,                                           // 1 = out and about, 0 = gone (-1 = not set yet)
         x: c.x, y: 1.5, z: c.z, yaw: rnd(0, TAU),
       };
     });
-    this.wings.instanceColor.needsUpdate = true;
+    if (this.wings.instanceColor) this.wings.instanceColor.needsUpdate = true;
     scene.add(this.wings, this.bodies);
     this._m = new THREE.Matrix4();
     this._base = new THREE.Matrix4();
@@ -78,7 +84,18 @@ class Butterflies {
     this._yAxis = new THREE.Vector3(0, 1, 0);
   }
 
+  setMotion(value) {
+    const n = Number(value);
+    if (Number.isFinite(n)) this.motion = THREE.MathUtils.clamp(n, 0, 1);
+    return this.motion;
+  }
+
   update(dt, t, night = 0) {
+    // Integrate a local visual clock: changing speed never jumps a butterfly to a new position.
+    this.time += Math.max(0, dt) * butterflySpeed(this.motion);
+    // Wing beats use elapsed seconds, independent of the movement-speed setting.
+    this.wingTime += Math.max(0, dt);
+    t = this.time;
     const m = this._m, base = this._base;
     for (let i = 0; i < this.n; i++) {
       const s = this.state[i];
@@ -106,9 +123,11 @@ class Butterflies {
         d = Math.atan2(Math.sin(d), Math.cos(d));
         s.yaw += d * Math.min(1, dt * 7);
       }
-      s.flap += dt * TAU * (s.flapF + 3 * Math.sin(t * 0.7 + s.px));
+      s.flap += Math.max(0, dt) * TAU * s.flapF * butterflySpeed(this.motion);
       const ground = Math.max(this.getHeight(s.x, s.z), 0.3);
-      const y = ground + 0.6 + s.hover * 0.4 * (1 + Math.sin(t * s.hover + s.hoverPh)) + 0.07 * Math.sin(s.flap * 0.5) + away * away * 5;
+      // Different cruising heights and slow independent rises/dips; never bob at the rapid flap frequency.
+      const y = ground + s.altitude + 0.18 * Math.sin(t * s.hover * 0.55 + s.hoverPh)
+        + 0.1 * Math.sin(t * s.hover * 0.23 + s.pz) + away * away * 5;
       s.y = y;
       // body
       this._q.setFromAxisAngle(this._yAxis, s.yaw);
@@ -117,12 +136,13 @@ class Butterflies {
       const size = s.size * (s.vis < 1 ? Math.sqrt(s.vis) : 1);
       m.copy(base).multiply(this._sc.makeScale(size, size, size));
       this.bodies.setMatrixAt(i, m);
-      // wings: hinge on the body axis, flapping +-theta about local Z
-      const theta = -0.2 + 1.15 * (0.5 + 0.5 * Math.sin(s.flap));
+      // Wings hinge on local Z. Rotate the opposite wing rather than negatively scaling an
+      // instance (unsupported by InstancedMesh and prone to inconsistent face culling).
+      const theta = butterflyWingAngle(this.wingTime, s.flap, s.px, this.motion);
       for (let w = 0; w < 2; w++) {
         const sgn = w === 0 ? 1 : -1;
-        this._rz.makeRotationZ(sgn * theta);
-        m.copy(base).multiply(this._rz).multiply(this._sc.makeScale(sgn * size, size, size));
+        this._rz.makeRotationZ(sgn * theta + (w === 1 ? Math.PI : 0));
+        m.copy(base).multiply(this._rz).multiply(this._sc.makeScale(size, size, size));
         this.wings.setMatrixAt(i * 2 + w, m);
       }
     }
@@ -323,14 +343,17 @@ class Glints {
 }
 
 // =============================================================================================
-// Fireflies: soft glowing dots that drift and blink at night around flowers, the pond, the stream and the campfire
+// Fireflies: rare small gatherings around vegetation, water and campsite anchors, with long quiet gaps.
 // =============================================================================================
 const FIREFLY_VERT = /* glsl */`
 attribute vec2 aParams;   // x = size (world), y = glow 0..1
+attribute float aWarm;
 uniform float uScale;
 varying float vGlow;
+varying float vWarm;
 void main() {
   vGlow = aParams.y;
+  vWarm = aWarm;
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   gl_Position = projectionMatrix * mv;
   gl_PointSize = aParams.x * uScale / max(0.1, -mv.z);
@@ -339,14 +362,15 @@ void main() {
 const FIREFLY_FRAG = /* glsl */`
 uniform float uDusk;
 varying float vGlow;
+varying float vWarm;
 void main() {
   float d = length(gl_PointCoord * 2.0 - 1.0);
   float core = 1.0 - smoothstep(0.08, 0.3, d);            // bright little body
-  float halo = pow(max(0.0, 1.0 - d), 1.3) * 1.1;         // soft glow around it
+  float halo = pow(max(0.0, 1.0 - d), 2.0) * 0.45;         // soft glow around it
   float a = (core + halo) * vGlow;
   if (a < 0.01) discard;
-  vec3 col = mix(vec3(0.75, 1.0, 0.2), vec3(1.0, 1.0, 0.75), core);
-  col = mix(col, vec3(0.44, 0.81, 0.90), uDusk);
+  vec3 col = mix(vec3(1.0, 0.74, 0.32), vec3(1.0, 0.94, 0.65), vWarm);
+  col = mix(col, vec3(1.0, 0.96, 0.78), core * 0.35);
   gl_FragColor = vec4(col * a, a);
   #include <colorspace_fragment>
 }
@@ -354,15 +378,20 @@ void main() {
 
 class Fireflies {
   constructor(scene, count, anchors, getHeight) {
+    count = Math.min(6, Math.max(0, Math.floor(count)));
     this.n = count;
+    this.time = 0;
+    this.gathering = -1;
+    this.anchor = null;
     this.anchors = anchors;
     this.getHeight = getHeight;
-    this.gardenSpots = null;            // Step 38b: () => [{ x, z }] the Emberleaf garden's blooms: about half of the fireflies in view gather over them
+    this.gardenSpots = null;            // Optional bloom anchors join the same rare gathering.
     this.geo = new THREE.BufferGeometry();
     this.aPos = new THREE.BufferAttribute(new Float32Array(count * 3), 3).setUsage(THREE.DynamicDrawUsage);
     this.aPar = new THREE.BufferAttribute(new Float32Array(count * 2), 2).setUsage(THREE.DynamicDrawUsage);
     this.geo.setAttribute('position', this.aPos);
     this.geo.setAttribute('aParams', this.aPar);
+    this.geo.setAttribute('aWarm', new THREE.BufferAttribute(Float32Array.from({ length: count }, (_, i) => (i * 0.618) % 1), 1));
     this.mat = new THREE.ShaderMaterial({
       uniforms: { uScale: { value: 600 }, uDusk: { value: 0 } },
       vertexShader: FIREFLY_VERT, fragmentShader: FIREFLY_FRAG,
@@ -378,11 +407,11 @@ class Fireflies {
     for (let i = 0; i < count; i++) {
       this.s.push({
         ax: 0, az: 0, placed: false,
-        appearAt: rnd(0.35, 0.85),                 // nightness at which this one lights up
+        appearAt: rnd(0.55, 0.7),                 // nightness at which this one lights up
         vis: 0,
-        wx: rnd(0.25, 0.5), wz: rnd(0.2, 0.45), px: rnd(0, TAU), pz: rnd(0, TAU), r: rnd(0.8, 2.2),
+        wx: rnd(0.25, 0.5), wz: rnd(0.2, 0.45), px: rnd(0, TAU), pz: rnd(0, TAU), r: rnd(0.35, 1.1),
         hy: rnd(0.35, 1.1), hw: rnd(0.4, 0.9), hp: rnd(0, TAU),
-        period: rnd(2.2, 4.4), phase: rnd(0, 1), on: rnd(0.45, 0.65), size: rnd(1.1, 1.5),
+        period: rnd(2.2, 4.4), phase: rnd(0, 1), size: rnd(0.16, 0.23),
       });
     }
   }
@@ -394,44 +423,41 @@ class Fireflies {
   }
 
   _anchor(f, focus) {
-    const a = this.anchors;
-    let pick = null;
-    const blooms = this.gardenSpots ? this.gardenSpots() : null;
-    if (blooms && blooms.length && focus && Math.random() < 0.6) {     // over a bloom that is in view
-      for (let tries = 0; tries < 8; tries++) { const c = blooms[(Math.random() * blooms.length) | 0]; if (Fireflies.inView(c.x, c.z, focus)) { pick = c; break; } }
-    }
-    for (let tries = 0; tries < 16 && a.length && !pick; tries++) {       // a favourite haunt (flowers, pond, stream, fire) in view
-      const c = a[(Math.random() * a.length) | 0];
-      if (!focus || Fireflies.inView(c.x, c.z, focus)) { pick = c; break; }
-    }
-    if (!pick && focus) pick = { x: focus.x + rnd(-10, 10), z: focus.z + rnd(-12, 7) };   // else anywhere in view
-    if (!pick) return;
-    const k = blooms && blooms.includes(pick) ? 0.6 : 2.5;           // tight over a bloom
-    f.ax = pick.x + rnd(-k, k);
-    f.az = pick.z + rnd(-k, k);
+    if (!this.anchor) return;
+    f.ax = this.anchor.x + rnd(-0.6, 0.6);
+    f.az = this.anchor.z + rnd(-0.6, 0.6);
     f.placed = true;
   }
 
   update(dt, t, night, focus, camera, viewportHeightPx, calm = false) {
-    if ((night <= 0.3 || calm) && !this.points.visible) return;   // daytime (or a snowy island, `calm`): nothing to do
+    this.time += Math.max(0, Number.isFinite(dt) ? dt : 0);
+    t = this.time;
+    const gathering = fireflyGathering(t);
+    if (gathering.index !== this.gathering) {
+      this.gathering = gathering.index;
+      const candidates = [...this.anchors, ...(this.gardenSpots?.() || [])].filter((a) => !focus || Fireflies.inView(a.x, a.z, focus));
+      this.anchor = candidates.length ? candidates[Math.max(0, gathering.index) % candidates.length] : null;
+      for (const f of this.s) { f.placed = false; f.vis = 0; this._anchor(f, focus); }
+    }
+    if ((night <= 0.3 || calm || gathering.glow === 0 || !this.anchor) && !this.points.visible) return;
     if (camera && viewportHeightPx) {
       this.mat.uniforms.uScale.value = viewportHeightPx / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
     }
     let any = false;
     for (let i = 0; i < this.n; i++) {
       const f = this.s[i];
-      const want = night >= f.appearAt && !calm ? 1 : 0;
+      const want = night >= f.appearAt && !calm && i < gathering.count && this.anchor ? 1 : 0;
       f.vis += Math.sign(want - f.vis) * Math.min(Math.abs(want - f.vis), dt * 0.35);
-      // blink: a smooth pulse for `on` of each period, dark otherwise
+      // A low, continuous breathing twinkle; the gathering envelope supplies long quiet gaps.
       const u = ((t / f.period + f.phase) % 1 + 1) % 1;
-      const blink = u < f.on ? Math.sin((u / f.on) * Math.PI) : 0;
-      // drifted far from the players while dark? quietly move it somewhere nearby
-      if (!f.placed || (blink === 0 && focus && !Fireflies.inView(f.ax, f.az, focus, 8))) this._anchor(f, focus);
+      const blink = 0.65 + 0.35 * Math.sin(u * TAU);
+      // Each group stays around its chosen clearing for its whole appearance.
+      if (!f.placed) this._anchor(f, focus);
       const x = f.ax + f.r * Math.sin(t * f.wx + f.px) + 0.4 * Math.sin(t * f.wx * 2.3 + f.pz);
       const z = f.az + f.r * Math.sin(t * f.wz + f.pz) + 0.4 * Math.sin(t * f.wz * 1.9 + f.px);
       const y = Math.max(this.getHeight(x, z), WATER_LEVEL) + 0.3 + f.hy * (0.6 + 0.4 * Math.sin(t * f.hw + f.hp));
       this.aPos.setXYZ(i, x, y, z);
-      const glow = f.vis * (0.12 + 0.88 * blink);
+      const glow = f.vis * gathering.glow * blink * 0.18;
       this.aPar.setXY(i, f.size * (0.6 + 0.4 * blink), glow);
       if (glow > 0.01) any = true;
     }
@@ -442,30 +468,39 @@ class Fireflies {
 }
 
 // =============================================================================================
-export function createAmbient({ scene, props, getHeight, clock = null, campfire = null, butterflies = 8, petals = 64, glints = 42, fireflies = 40 }) {
-  // Flower patch centres -> butterfly homes: the nearest patches to the spawn first (so you meet them right away),
-  // then patches further out, all at least ~7u apart.
+export function createAmbient({ scene, props, getHeight, clock = null, campfire = null, butterflies = 5, petals = 64, glints = 42, fireflies = 6 }) {
+  // Farthest-point sampling spreads a few homes across the flowers, without
+  // doubling up at the starting campfire or consuming the world's seeded RNG.
   const flowers = (props.handles.flowers && props.handles.flowers.list) || [];
-  const byDist = flowers.slice().sort((a, b) => Math.hypot(a.x - SPAWN.x, a.z - SPAWN.z) - Math.hypot(b.x - SPAWN.x, b.z - SPAWN.z));
+  const outsideCamp = flowers.filter((f) => Math.hypot(f.x - SPAWN.x, f.z - SPAWN.z) >= 14);
+  const candidates = outsideCamp.length ? outsideCamp : flowers;
   const homes = [];
-  const far = (f) => homes.every((h) => Math.hypot(h.x - f.x, h.z - f.z) > 7);
-  for (const f of byDist) { if (homes.length >= Math.ceil(butterflies * 0.5)) break; if (far(f)) homes.push({ x: f.x, z: f.z }); }
-  const rest = flowers.filter((f) => far(f)).sort(() => Math.random() - 0.5);
-  for (const f of rest) { if (homes.length >= butterflies) break; if (far(f)) homes.push({ x: f.x, z: f.z }); }
-  for (let i = 0; homes.length < Math.min(butterflies, 6) && flowers.length; i++) {     // tiny worlds: reuse spots
-    const f = flowers[i % flowers.length];
-    homes.push({ x: f.x, z: f.z });
+  while (homes.length < butterflies && homes.length < candidates.length) {
+    let best = null, bestDistance = -1;
+    for (const f of candidates) {
+      const distance = homes.length ? Math.min(...homes.map((h) => Math.hypot(h.x - f.x, h.z - f.z)))
+        : Math.hypot(f.x - SPAWN.x, f.z - SPAWN.z);
+      if (distance > bestDistance) { best = f; bestDistance = distance; }
+    }
+    if (!best || (homes.length && bestDistance < 14)) break;
+    let partner = best, nearest = 8;
+    for (const f of flowers) {
+      const distance = Math.hypot(f.x - best.x, f.z - best.z);
+      if (distance > 0.5 && distance < nearest) { nearest = distance; partner = f; }
+    }
+    homes.push({ x: best.x, z: best.z, partner: { x: partner.x, z: partner.z } });
   }
-  // two butterflies share the patch nearest the spawn
-  if (homes.length && homes.length < butterflies) homes.push({ x: homes[0].x + 1.2, z: homes[0].z - 1.0 });
 
   const bf = new Butterflies(scene, homes, getHeight);
   const cherries = props.handles.trees.filter((g) => g.userData.cherry);
   const pt = new Petals(scene, cherries, cherries.length ? petals : 1, getHeight);
   const gl = new Glints(scene, glints, getHeight);
 
-  // Firefly haunts: flower patches, around the pond, along the stream and by the campfire.
+  // Land vegetation and campsite haunts, with occasional waterside gatherings.
   const haunts = flowers.filter((_, i) => i % 3 === 0).map((f) => ({ x: f.x, z: f.z }));
+  for (const item of [...props.handles.trees, ...(props.handles.bushes || [])]) {
+    if (item.position) haunts.push({ x: item.position.x, z: item.position.z });
+  }
   for (let a = 0; a < TAU; a += TAU / 10) haunts.push({ x: POND.x + Math.cos(a) * (POND.rx + 1.5), z: POND.z + Math.sin(a) * (POND.rz + 1.5) });
   for (let i = 0; i < STREAM_PATH.length; i += 4) haunts.push({ x: STREAM_PATH[i].x + 1.8, z: STREAM_PATH[i].z });
   if (campfire) for (let k = 0; k < 4; k++) haunts.push({ x: campfire.x + 3.5, z: campfire.z + 1.5 * k - 2 });
@@ -473,6 +508,11 @@ export function createAmbient({ scene, props, getHeight, clock = null, campfire 
 
   return {
     butterflies: bf, petals: pt, glints: gl, fireflies: ff,
+    setButterflyMotion(value) { return bf.setMotion(value); },
+    setFireflyAnchors(anchors) {
+      for (const a of anchors || []) if (Number.isFinite(a.x) && Number.isFinite(a.z)) ff.anchors.push({ x: a.x, z: a.z });
+    },
+    setClock(value) { clock = value; },
     /** Step 29a: set true while the view is on Frostpine: no fireflies there (butterflies / petals live at home's flower patches and cherry trees anyway). */
     calm: false, duskWeight: 0,
     update(dt, t, playerPos, camera, viewportHeightPx) {

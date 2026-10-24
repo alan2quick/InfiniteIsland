@@ -21,6 +21,9 @@ import {
 import { addCollider, overlapsAny } from './colliders.js';
 import { addInteractable } from './interactables.js';
 import { swayClone, wobbleGroup, windTime } from './wind.js';
+import { grassShapeAt } from './grassVariation.js';
+import { softenRockGeometry } from '../render/softRock.js';
+import { autumnTreeMaterial } from '../render/autumnTrees.js';
 import { ritualReserved } from './islands/ritual.js';
 import { rootgateReserved } from './islands/rootgate.js';
 
@@ -179,7 +182,7 @@ const ROCK_TINTS = ['#ffffff', '#f0ecff', '#e2dff2', '#fff5ec'].map(tint);
 const PLAIN = tint('#ffffff');
 // Wind-swaying variants (clones, so the shared PLAIN material keeps its plain shader)
 const FLOWER_MAT = swayClone(PLAIN, { amp: 0.17, speed: 1.0 });
-const GRASS_MAT = swayClone(PLAIN, { amp: 0.16, speed: 1.15 });
+const GRASS_MAT = swayClone(PLAIN, { amp: 0.16, speed: 1.15, variation: true });
 
 // ---------------------------------------------------------------------------------------------
 // Prop geometry builders
@@ -350,6 +353,7 @@ function buildRockVariant(rng, useIco) {
   }
   g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
   g.deleteAttribute('uv');
+  softenRockGeometry(g);
   return { geo: g, outlineGeo: smoothOutlineGeo(g) };
 }
 
@@ -666,8 +670,12 @@ export function createProps(scene) {
 
     const placeTree = (x, z, cherry) => {
       const v = pick(rng, cherry ? cherryV : greenV);
-      const mesh = new THREE.Mesh(v.geo, pick(rng, cherry ? PINK_TINTS : GREEN_TINTS));
-      mesh.castShadow = true; mesh.receiveShadow = true;
+      // Keep the original seeded tint draw: removing it would reshuffle all subsequent tree placements.
+      pick(rng, cherry ? PINK_TINTS : GREEN_TINTS);
+      const mesh = new THREE.Mesh(v.geo, autumnTreeMaterial(x, z));
+      mesh.castShadow = true; mesh.receiveShadow = false;
+      // Overlapping toon foliage already has baked shade colors; suppress noisy self-shadow acne.
+      // It still casts the same moving silhouette onto the terrain.
       outline(mesh, v.outlineGeo, 0.06);
       const g = new THREE.Group();
       g.name = cherry ? 'cherry-tree' : 'tree';
@@ -735,7 +743,9 @@ export function createProps(scene) {
         lx /= ll; lz /= ll;
         const v = pick(rng, variants);
         const mesh = new THREE.Mesh(v.geo, PLAIN);
-        mesh.castShadow = true; mesh.receiveShadow = true;
+        mesh.castShadow = true; mesh.receiveShadow = false;
+      // Overlapping toon foliage already has baked shade colors; suppress noisy self-shadow acne.
+      // It still casts the same moving silhouette onto the terrain.
         outline(mesh, v.outlineGeo, 0.055);
         const g = new THREE.Group();
         g.name = 'palm';
@@ -785,7 +795,9 @@ export function createProps(scene) {
       const berry = berryIdx.has(placed);
       const v = pick(rng, berry ? berryV : otherV);
       const mesh = new THREE.Mesh(v.geo, pick(rng, GREEN_TINTS));
-      mesh.castShadow = true; mesh.receiveShadow = true;
+      mesh.castShadow = true; mesh.receiveShadow = false;
+      // Overlapping toon foliage already has baked shade colors; suppress noisy self-shadow acne.
+      // It still casts the same moving silhouette onto the terrain.
       outline(mesh, v.outlineGeo, 0.05);
       const g = new THREE.Group();
       g.name = berry ? 'berry-bush' : 'bush';
@@ -1057,7 +1069,9 @@ export function createProps(scene) {
       const s = range(rng, 0.85, 1.6);
       dummy.position.set(x, getHeight(x, z) - 0.03, z);
       dummy.rotation.set(0, rng() * Math.PI * 2, 0);
-      dummy.scale.set(s, s * range(rng, 0.85, 1.2), s);
+      // Keep the exact seeded draw count/order; proportions use an independent position hash.
+      const height = range(rng, 0.85, 1.2), shape = grassShapeAt(x, z);
+      dummy.scale.set(s * shape.width, s * height * shape.height, s * shape.depth);
       dummy.updateMatrix();
       mesh.setMatrixAt(count++, dummy.matrix);
     }

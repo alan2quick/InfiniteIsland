@@ -1,0 +1,8 @@
+.camp-friends { font-family:Fredoka,system-ui,sans-serif; color:#2b2340; }
+.camp-friend-label,.camp-friends-greeting { position:fixed; z-index:35; transform:translate(-50%,-100%); border:2px solid #2b2340; border-radius:12px; padding:5px 9px; color:#2b2340; background:#fff8e9ed; font:600 13px Fredoka,system-ui,sans-serif; white-space:nowrap; box-shadow:0 2px 0 #2b234040; }
+.camp-friend-label { cursor:pointer; pointer-events:auto; min-height:32px; }
+.camp-friend-label:hover,.camp-friend-label:focus-visible { background:#ffdf8f; outline:3px solid #9775cb; outline-offset:2px; z-index:36; }
+.camp-friends-greeting { z-index:37; background:#fff4c9; pointer-events:none; font-size:14px; }
+.camp-friends-hint { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); z-index:36; margin:0; padding:9px 14px; border:2px solid #2b2340; border-radius:16px; background:#fff8e9ed; font-size:14px; text-align:center; max-width:min(90vw,560px); }
+.camp-friends [hidden] { display:none !important; }
+@media(max-width:600px) { .camp-friend-label { font-size:12px; padding:5px 7px; }.camp-friends-hint { bottom:10px; font-size:12px; } }

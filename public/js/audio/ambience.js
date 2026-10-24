@@ -3,6 +3,7 @@
 export class AmbienceAudio {
   constructor(sfx, clock) {
     this.sfx = sfx;
+    this._volume = 1; this._bus = null; this._busContext = null;
     this.clock = clock;
     this.elapsed = 0;
     this.nextBird = 2;
@@ -15,6 +16,23 @@ export class AmbienceAudio {
     this.waterfall = () => 0;
     this.fall = { source: null, filter: null, gain: null, level: 0, peak: 0.055 };
     this.nextRegional = 3;
+  }
+
+  get volume() { return this._volume; }
+  setVolume(value) {
+    const n = Number(value);
+    if (Number.isFinite(n)) this._volume = Math.max(0, Math.min(1, n));
+    if (this._bus && this._busContext) this._bus.gain.setTargetAtTime(this._volume, this._busContext.currentTime, 0.08);
+    return this._volume;
+  }
+  // One bus covers existing voices and future birds, crickets, regional wind/animals and waterfall noise.
+  _output(ctx, master) {
+    if (this._busContext !== ctx || !this._bus) {
+      this._bus?.disconnect();
+      this._bus = ctx.createGain(); this._busContext = ctx;
+      this._bus.gain.value = this._volume; this._bus.connect(master);
+    }
+    return this._bus;
   }
 
   chirp(type, level) {
@@ -33,7 +51,7 @@ export class AmbienceAudio {
     g.gain.setValueAtTime(0.0001, t);
     g.gain.exponentialRampToValueAtTime((bird ? 0.012 : 0.004) * level, t + 0.02);
     g.gain.exponentialRampToValueAtTime(0.0001, t + length);
-    o.connect(g).connect(master);
+    o.connect(g).connect(this._output(ctx, master));
     o.start(t); o.stop(t + length + 0.02);
     o.onended = () => { o.disconnect(); g.disconnect(); };
     if (bird) this.birds++; else this.crickets++;
@@ -53,7 +71,7 @@ export class AmbienceAudio {
       f.source = c.createBufferSource(); f.source.buffer = buffer; f.source.loop = true;
       f.filter = c.createBiquadFilter(); f.filter.type = 'lowpass'; f.filter.frequency.value = 1500; f.filter.Q.value = 0.4;
       f.gain = c.createGain(); f.gain.gain.value = 0;
-      f.source.connect(f.filter).connect(f.gain).connect(master); f.source.start();
+      f.source.connect(f.filter).connect(f.gain).connect(this._output(c, master)); f.source.start();
     }
     f.gain.gain.setTargetAtTime(f.peak * f.level, c.currentTime, 0.12);
     f.filter.frequency.setTargetAtTime(700 + 1100 * f.level, c.currentTime, 0.2);       // brighter (more hiss) up close
@@ -96,7 +114,7 @@ export class AmbienceAudio {
       const source = c.createBufferSource(), filter = c.createBiquadFilter(); source.buffer = buffer;
       filter.type = 'lowpass'; filter.frequency.value = 650;
       gain.gain.setValueAtTime(0.0001, t); gain.gain.linearRampToValueAtTime(0.018, t + 0.7); gain.gain.linearRampToValueAtTime(0.0001, t + 2);
-      source.connect(filter).connect(gain).connect(master); source.start(t); source.stop(t + 2);
+      source.connect(filter).connect(gain).connect(this._output(c, master)); source.start(t); source.stop(t + 2);
       source.onended = () => { source.disconnect(); filter.disconnect(); gain.disconnect(); };
     } else {
       const o = c.createOscillator(), f = type === 'owl' ? 380 : type === 'frog' ? 210 : 1200;
@@ -104,7 +122,7 @@ export class AmbienceAudio {
       o.type = type === 'frog' ? 'triangle' : 'sine';
       o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f * (type === 'tropical' ? 1.9 : 0.7), t + len * 0.45); o.frequency.exponentialRampToValueAtTime(f * 0.85, t + len);
       gain.gain.setValueAtTime(0.0001, t); gain.gain.exponentialRampToValueAtTime(type === 'tropical' ? 0.012 : 0.008, t + 0.04); gain.gain.exponentialRampToValueAtTime(0.0001, t + len);
-      o.connect(gain).connect(master); o.start(t); o.stop(t + len + 0.02);
+      o.connect(gain).connect(this._output(c, master)); o.start(t); o.stop(t + len + 0.02);
       o.onended = () => { o.disconnect(); gain.disconnect(); };
     }
     this.regional[type]++;

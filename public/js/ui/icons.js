@@ -5,7 +5,7 @@ export const OUTLINE = '#2b2340';   // outline colour
 const O = OUTLINE;
 export const svg = (body, extra = '') => `<svg viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true" focusable="false"${extra}>${body}</svg>`;
 
-export const BAG_SVG = svg(`<path d="M6 8h12l2 13H4z" fill="#ffd54a" stroke="${O}" stroke-width="2" stroke-linejoin="round"/><path d="M8 8V6a4 4 0 0 1 8 0v2" fill="none" stroke="${O}" stroke-width="2"/><path d="M9 14h6" stroke="${O}" stroke-width="2" stroke-linecap="round"/>`);
+export const BAG_SVG = svg(`<path d="M8 5V3h8v2M5 10H3v10h3m13-10h2v10h-3" fill="#a97843" stroke="${O}" stroke-width="1.7" stroke-linejoin="round"/><rect x="5" y="5" width="14" height="17" rx="5" fill="#edb95b" stroke="${O}" stroke-width="1.8"/><path d="M6 10q6 4 12 0V8q-6-5-12 0Z" fill="#ffe093" stroke="${O}" stroke-width="1.5"/><rect x="8" y="14" width="8" height="6" rx="2" fill="#c88b48" stroke="${O}" stroke-width="1.5"/><path d="M11 9h2v4h-2z" fill="#a7c780" stroke="${O}" stroke-width="1"/>`);
 
 export const PHONE_SVG = svg(`
   <rect x="6" y="2.5" width="12" height="19" rx="3" fill="#fff" stroke="${O}" stroke-width="2"/>

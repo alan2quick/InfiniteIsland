@@ -36,6 +36,14 @@ function islandGrid(island, far = false, farSegs = FAR_TERRAIN_SEGMENTS) {
   return { sizeX, sizeZ, segsX: Math.max(round, Math.round(sizeX / cell / round) * round), segsZ: Math.max(round, Math.round(sizeZ / cell / round) * round) };
 }
 
+// Shared uniforms survive near/far rebuilds; settings never affect terrain sampling or gameplay data.
+export const terrainUniforms = { uGroundBlend: { value: 1 } };
+export function setGroundBlend(value) {
+  const n = Number(value);
+  if (Number.isFinite(n)) terrainUniforms.uGroundBlend.value = clamp01(n);
+  return terrainUniforms.uGroundBlend.value;
+}
+
 let sharedMaterial = null;
 function makeTerrainMaterial() {
   if (sharedMaterial) return sharedMaterial;
@@ -44,6 +52,7 @@ function makeTerrainMaterial() {
   const light = new THREE.Color(PALETTE.grassLight);
   darkRatio.set(darkRatio.r / light.r, darkRatio.g / light.g, darkRatio.b / light.b);
   mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uGroundBlend = terrainUniforms.uGroundBlend;
     shader.uniforms.uGrassDark = { value: new THREE.Vector3(darkRatio.r, darkRatio.g, darkRatio.b) };
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
@@ -56,6 +65,7 @@ function makeTerrainMaterial() {
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
         uniform vec3 uGrassDark;
+        uniform float uGroundBlend;
         varying float vGrass;
         varying vec3 vWPos;
         float tHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -68,12 +78,12 @@ function makeTerrainMaterial() {
         {
           vec2 gp = vWPos.xz;
           float n = tVNoise(gp * 0.17) * 0.65 + tVNoise(gp * 0.43 + 7.0) * 0.35;
-          float w = fwidth(n) * 1.2 + 0.006;
+          float w = fwidth(n) * 1.2 + mix(0.006, 0.12, uGroundBlend);
           float blotch = smoothstep(0.5 - w, 0.5 + w, n);
           vec2 cell = floor(gp / 4.0);
           float checker = mod(cell.x + cell.y, 2.0);
           diffuseColor.rgb *= mix(vec3(1.0), uGrassDark, blotch * vGrass);
-          diffuseColor.rgb *= mix(vec3(1.0), mix(vec3(1.0), uGrassDark, 0.3), checker * vGrass);
+          diffuseColor.rgb *= mix(vec3(1.0), mix(vec3(1.0), uGrassDark, 0.3), mix(checker, n, uGroundBlend) * vGrass);
         }`);
   };
   sharedMaterial = mat;

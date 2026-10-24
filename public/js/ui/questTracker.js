@@ -11,7 +11,8 @@ export function createQuestTracker(root, { quests, inventory, hud = null, sfx = 
   el.hidden = true;
   el.innerHTML = `
     <div class="qt-card">
-      <div class="qt-head" role="button" tabindex="-1" aria-label="Quest">
+      <div class="qt-category">Quest</div>
+      <div class="qt-head" role="button" tabindex="0" aria-label="Expand quest objectives" aria-expanded="false">
         <span class="qt-badge">${QUEST_SVG}</span>
         <span class="qt-name"></span>
         <span class="qt-count"></span>
@@ -36,10 +37,36 @@ export function createQuestTracker(root, { quests, inventory, hud = null, sfx = 
   let allDone = false;
   let open = false;
 
-  head.addEventListener('click', () => {
+  function toggle() {
     open = !open;
     el.classList.toggle('open', open);
+    head.setAttribute('aria-expanded', String(open));
+  }
+  head.addEventListener('click', toggle);
+  head.addEventListener('keydown', (event) => {
+    if (event.code !== 'Space' && event.code !== 'Enter') return;
+    event.preventDefault(); event.stopPropagation(); toggle();
   });
+  // Inventory wraps as resources change. Measure its actual top instead of reserving a fixed row.
+  function positionAboveInventory() {
+    if (!root.getBoundingClientRect || typeof getComputedStyle !== 'function') return;
+    const bounds = root.getBoundingClientRect(), inventoryBar = root.querySelector('.hud-inv');
+    const inventoryBounds = inventoryBar?.getBoundingClientRect();
+    if (inventoryBounds?.height > 0 && getComputedStyle(inventoryBar).display !== 'none') {
+      el.style.setProperty('--quest-bottom', `${Math.max(14, bounds.bottom - inventoryBounds.top + 12)}px`);
+    } else el.style.removeProperty('--quest-bottom');
+    const bottom = parseFloat(getComputedStyle(el).bottom) || 14;
+    const shortTouch = root.classList.contains('touch-host') && bounds.height < 500;
+    const topLimit = shortTouch ? 145 : bounds.height * 0.5 + 148;
+    el.style.maxHeight = `${Math.max(70, bounds.height - bottom - topLimit)}px`;
+  }
+  if (typeof ResizeObserver !== 'undefined') {
+    const observer = new ResizeObserver(positionAboveInventory);
+    observer.observe(root);
+    const inventoryBar = root.querySelector('.hud-inv');
+    if (inventoryBar) observer.observe(inventoryBar);
+  }
+  positionAboveInventory();
 
   const pop = (node, cls = 'pop') => { node.classList.remove(cls); void node.offsetWidth; node.classList.add(cls); };
 
@@ -108,6 +135,7 @@ export function createQuestTracker(root, { quests, inventory, hud = null, sfx = 
       buildRows(q);
       open = false;
       el.classList.remove('open');
+      head.setAttribute('aria-expanded', 'false');
       if (animate) pop(card, 'enter');
       sync(false);
       if (quests.satisfiedAt(region())) { allDone = true; el.classList.add('ready'); }

@@ -1,5 +1,5 @@
 // Compact pose wire format (15 packets/s, normally under 1 KB/s/player upstream):
-// [slot, x*100, z*100, y*100, facing*1000, vx*10, vz*10, flags, heldItemId, hatId, seq, tailId, garlandId, pageBits, pageTool, petId].
+// [slot, x*100, z*100, y*100, facing*1000, vx*10, vz*10, flags, heldItemId, hatId, seq, tailId, garlandId, pageBits, pageTool, petId, variantId?].
 // Flags: walking=1, swing=2, hop=4, steady pose/cook=8, rising in a storybook page=16, falling in a page=32, dandelion puff=64, held sail glide=128 (Step 68b; real y carries the descent; only the canopy needs this flag), fishing line out=256 (Step 72a: the Glowline Rod is cast; avatars draw a bobber and line from the facing, world/fishingPlay.js). (Step 49; y is always sent, so page jumps show on other screens). Hat 0 = default beanie, 1 = bare head, 2 + i = feast hat HATS[i] (game/hatLogic.js), 64 + i = a party bot's ears (Step 80a, player/partyHats.js).
 // tailId (Step 36b, field 12; older clients ignore it, packets without it decode as no tail): 0 = no tail, 1 + i = TAILS[i] (game/tailLogic.js).
 // garlandId (Step 40, field 13): 0 = none, 1 + index; older 12-field packets imply none.
@@ -10,20 +10,27 @@ import { encodeTailId } from '../game/tailLogic.js';
 import { encodeGarlandId } from '../game/garlandLogic.js';
 import { encodePetId } from '../game/petLogic.js';
 import { partyHatId } from '../player/partyHats.js';
+// Optional field 17 keeps original-character packets byte-for-byte compatible. Unknown IDs safely use the original.
+const VARIANT_IDS = ['original', 'rowan', 'pip', 'marlow', 'clover', 'sunny'];
+export const encodeVariantId = (id) => Math.max(0, VARIANT_IDS.indexOf(id));
+export const decodeVariantId = (id) => Number.isInteger(id) && id >= 0 && id < VARIANT_IDS.length ? VARIANT_IDS[id] : 'original';
 const q = (v, scale) => Math.round((Number(v) || 0) * scale);
 export function encodePose(player, held = -1, seq = 0) {
   const p = player.position;
-  return [player.index, q(p.x, 100), q(p.z, 100), q(p.y, 100), q(player.facing, 1000),
+  const packet = [player.index, q(p.x, 100), q(p.z, 100), q(p.y, 100), q(player.facing, 1000),
     q(player.velocity.x, 10), q(player.velocity.z, 10),
     (player.moving ? 1 : 0) | (player.swinging ? 2 : 0) | (player._hopY > 0 ? 4 : 0) | (player._pose ? 8 : 0) | (player._air === 1 ? 16 : player._air === 2 ? 32 : 0) | (player._puff ? 64 : 0) | (player._gliding ? 128 : 0) | (player._lineOut ? 256 : 0),
     held, player.partyHat ? partyHatId(player.partyHat) : player.character.hat ? encodeHatId(player.hatIndex ?? -1) : HAT_BARE_ID, seq, encodeTailId(player.tailIndex ?? -1), encodeGarlandId(player.garlandIndex ?? -1),
     player._pageBits | 0, player._pageToolCode | 0, encodePetId(player.petIndex ?? -1)];
+  const variant = encodeVariantId(player.characterVariant);
+  if (variant) packet.push(variant);
+  return packet;
 }
 export function decodePose(p) {
   if (!Array.isArray(p) || p.length < 10 || !p.every(Number.isFinite)) return null;
   return { slot: p[0] | 0, x: p[1] / 100, z: p[2] / 100, y: p[3] / 100, facing: p[4] / 1000,
     vx: p[5] / 10, vz: p[6] / 10, flags: p[7] | 0, held: p[8] | 0, hat: p[9] | 0, seq: Number.isInteger(p[10]) ? p[10] : null, tail: Number.isInteger(p[11]) ? p[11] : 0, garland: Number.isInteger(p[12]) ? p[12] : 0,
-    pbits: Number.isInteger(p[13]) ? p[13] : 0, ptool: Number.isInteger(p[14]) ? p[14] : 0, pet: Number.isInteger(p[15]) ? p[15] : 0 };
+    pbits: Number.isInteger(p[13]) ? p[13] : 0, ptool: Number.isInteger(p[14]) ? p[14] : 0, pet: Number.isInteger(p[15]) ? p[15] : 0, variant: decodeVariantId(p[16]) };
 }
 const lerp = (a, b, k) => a + (b - a) * k;
 const angle = (a, b) => Math.atan2(Math.sin(b - a), Math.cos(b - a));

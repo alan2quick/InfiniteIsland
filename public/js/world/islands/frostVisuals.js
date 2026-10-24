@@ -36,7 +36,7 @@ const mats = () => {
   if (!_mat) {
     _mat = toonMat('#ffffff', { vertexColors: true });
     _flowerMat = swayClone(_mat, { amp: 0.17, speed: 1.0 });
-    _tuftMat = swayClone(_mat, { amp: 0.16, speed: 1.15 });
+    _tuftMat = swayClone(_mat, { amp: 0.16, speed: 1.15, variation: true });
   }
   return { mat: _mat, flowerMat: _flowerMat, tuftMat: _tuftMat };
 };

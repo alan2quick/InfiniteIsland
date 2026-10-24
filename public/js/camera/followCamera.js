@@ -1,4 +1,4 @@
-// Fixed-angle, never-rotating follow camera (Animal Crossing style) that also drags the sun's shadow
+// Original fixed-angle camera plus optional gently rotating behind-character follow. Both drag the sun's shadow
 // frustum along with the player so shadows stay crisp.
 //
 //   const cam = new FollowCamera(camera, { sun });
@@ -10,6 +10,7 @@
 // With several players the focus is their centroid and the offset distance grows up to CAMERA_MAX_ZOOM x (eased); the sun's shadow
 // box grows with it. With zoomTarget = 1 (solo) nothing changes.
 import * as THREE from 'three';
+import { cameraSettings, chaseOffset, advanceChaseYaw, chasePositionRate, cameraRelativeMove, introEase } from './followMath.js';
 import { CAMERA_OFFSET, CAMERA_FOLLOW_LERP, SHADOW_MAP_SIZE, CAMERA_MAX_ZOOM, CAMERA_ZOOM_MARGIN, CAMERA_ZOOM_LERP, CAMERA_FOV } from '../config.js';
 
 const LOOK_UP = 0.9;             // look a little above the feet
@@ -28,6 +29,18 @@ export class FollowCamera {
     this._first = true;
     this._shadowZoom = 1;                   // quantised zoom the shadow box was last sized for
     this._shadowMap = sun ? (sun.shadow.mapSize.x || SHADOW_MAP_SIZE) : SHADOW_MAP_SIZE;
+    this.settings = cameraSettings();
+    this.subject = null;
+    this.followActive = false;
+    this._yaw = 0;
+    this._yawMotion = { yaw: 0, velocity: 0 };
+    this._movementYaw = null;
+    this._chaseOffset = new THREE.Vector3();
+    this._desired = new THREE.Vector3();
+    this._followPosition = new THREE.Vector3();
+    this._resolved = new THREE.Vector3();
+    this._intro = null;
+    this._occlusion = null;
     this.touch = false;
     this.framingZoom = 1;
     this.regionBlend = 0;                   // Step 69c: 0..1 weight of regionCamera (Duskcrown's gentler camera); exactly 0 everywhere else = the old numbers bit for bit
@@ -48,6 +61,56 @@ export class FollowCamera {
       this._ly = z.clone().cross(this._lx).normalize();
       this._texel = (SHADOW_HALF * 2) / this._shadowMap;
     }
+  }
+
+  /** Shared environment settings; original remains the default. Does not write player saves. */
+  setSettings(settings) {
+    const previous = this.settings;
+    this.settings = cameraSettings(settings, previous);
+    if (previous.mode !== this.settings.mode) this._movementYaw = null;
+    if (!this.settings.intro) this.skipIntro();
+    return { ...this.settings };
+  }
+
+  /** Call before input polling and camera update. Special areas and shared screens use the original view. */
+  setSubject(player, { allowed = true, count = 1 } = {}) {
+    const active = !!(player && Number.isFinite(player.facing) && allowed && count === 1 && this.settings.mode === 'follow' && this.enabled);
+    if (active && (!this.followActive || player !== this.subject)) {
+      this._yaw = this._yawMotion.yaw = player.facing;
+      this._yawMotion.velocity = 0;
+    }
+    if (active !== this.followActive || player !== this.subject) this._movementYaw = null;
+    this.subject = player;
+    this.followActive = active;
+    if (!allowed || count !== 1) this.skipIntro();
+  }
+
+  /** Mutates movement once per freshly polled frame. Keep a stable basis until release, avoiding chase-camera steering feedback. */
+  transformMovement(move) {
+    if (!this.followActive) { this._movementYaw = null; return move; }
+    if (Math.hypot(move.x, move.z) < 0.001) { this._movementYaw = null; return move; }
+    if (this._movementYaw === null) this._movementYaw = this._yaw;
+    return cameraRelativeMove(move, this._movementYaw);
+  }
+
+  /** Optional collision adapter: (focus, desiredPosition, outputPosition) -> void. It must not mutate focus. */
+  setOcclusionResolver(resolve) { this._occlusion = typeof resolve === 'function' ? resolve : null; }
+
+  /** A brief opening only: never restarts on resize, settings edits or teleport. Caller supplies current island centre. */
+  startIntro({ center = this.focus, height = 65, duration = 3 } = {}) {
+    if (!this.settings.intro || !this.enabled || ![center.x, center.y, center.z].every(Number.isFinite)) return false;
+    this._intro = {
+      time: 0, duration: Math.max(0.5, Math.min(6, Number.isFinite(duration) ? duration : 3)),
+      center: new THREE.Vector3(center.x, center.y, center.z),
+      position: new THREE.Vector3(center.x, center.y + Math.max(25, Math.min(Number.isFinite(this.camera.far) ? this.camera.far * 0.8 : 600, Number.isFinite(height) ? height : 65)), center.z + 20),
+    };
+    return true;
+  }
+  skipIntro() { this._intro = null; }
+  get introActive() { return !!this._intro; }
+  get introDistance() {
+    if (!this._intro) return 0;
+    return (this._intro.time === 0 ? this._intro.position : this.camera.position).distanceTo(this.focus);
   }
 
   /** The offset in effect: `offset` itself while the region blend is 0, else eased towards regionCamera.offset by the blend. */
@@ -81,7 +144,7 @@ export class FollowCamera {
   }
 
   /** Jump straight to the target on the next update (use after teleporting the player). */
-  snap() { this._first = true; }
+  snap() { this._first = true; this._chaseFirst = true; this._movementYaw = null; this._yawMotion.velocity = 0; this.skipIntro(); }
 
   /** Tiny additive camera shake: `amount` world units of jitter that decays to 0 over `duration` s (stronger shakes win). */
   shake(amount = 0.08, duration = 0.2) {
@@ -106,11 +169,40 @@ export class FollowCamera {
       this.focus.y += (ty - this.focus.y) * (1 - Math.exp(-this.lerp * 0.6 * dt));   // vertical eases a bit slower
     }
     if (this.enabled) {           // disabled in ?debug mode where OrbitControls owns the camera
-      this.camera.position.copy(this.focus).addScaledVector(this.effectiveOffset(), this.zoom * this.framingZoom);
+      if (this.followActive) {
+        const rate = chasePositionRate(this.settings.smoothness);
+        advanceChaseYaw(this._yawMotion, this.subject.facing, dt, this.settings.smoothness);
+        this._yaw = this._yawMotion.yaw;
+        chaseOffset(this._yaw, this.settings, this._chaseOffset);
+        this._desired.copy(this.focus).add(this._chaseOffset);
+        if (this._occlusion) {
+          this._resolved.copy(this._desired);
+          this._occlusion(this.focus, this._desired, this._resolved);
+          if ([this._resolved.x, this._resolved.y, this._resolved.z].every(Number.isFinite)) this._desired.copy(this._resolved);
+        }
+        const a = 1 - Math.exp(-rate * Math.max(0, dt));
+        if (this._chaseFirst !== false || dt === 0) this._followPosition.copy(this._desired);
+        else if (this._occlusion && this._desired.distanceToSquared(this.focus) < this._followPosition.distanceToSquared(this.focus)) this._followPosition.copy(this._desired);
+        else this._followPosition.lerp(this._desired, a);
+        this.camera.position.copy(this._followPosition);
+        this._chaseFirst = false;
+      } else {
+        this._chaseFirst = true;
+        this.camera.position.copy(this.focus).addScaledVector(this.effectiveOffset(), this.zoom * this.framingZoom);
+      }
       // Aim slightly above the player so touch controls and the upper HUD leave a clear playable band.
       let aimLift = this.touch ? (this.camera.aspect < 0.8 ? 2.1 : 0.45) : 0;
       if (this.regionBlend > 0 && this.regionCamera) aimLift += this.regionCamera.aim * this.regionBlend;   // Duskcrown: aim a little higher so the caps come into frame
-      this.camera.lookAt(this.focus.x, this.focus.y + aimLift, this.focus.z);
+      if (this.followActive) aimLift = 0.35;
+      if (this._intro) {
+        const intro = this._intro;
+        intro.time += Math.max(0, dt);
+        const t = introEase(intro.time / intro.duration);
+        this.camera.position.lerpVectors(intro.position, this.camera.position, t);
+        this._desired.copy(intro.center).lerp(this.focus, t);
+        this.camera.lookAt(this._desired.x, this._desired.y + aimLift, this._desired.z);
+        if (t >= 1) this._intro = null;
+      } else this.camera.lookAt(this.focus.x, this.focus.y + aimLift, this.focus.z);
       const sh = this._shake;
       if (sh.dur > 0) {
         sh.t += dt;

@@ -1063,7 +1063,7 @@ html, body {
 }
 #hud.touch-host .hud-roster.solo .roster-chip.empty { display: none; }
 #hud.touch-host .hud-roster.solo .roster-join { display: block; }
-.hud-options { position: absolute; top: 12px; right: 14px; z-index: 35; }
+.hud-options { position: absolute; top: 12px; right: 14px; z-index: 38; }
 .hud-more-btn, .hud-fullscreen-btn {
   display: flex; justify-content: center; align-items: center; width: 44px; height: 44px; padding: 0;
   background: #fff; border: 3px solid var(--outline); border-radius: 50%;
@@ -1071,6 +1071,12 @@ html, body {
 }
 .hud-more-btn { display: none; background: #ffd54a; }
 .hud-options-panel { display: flex; align-items: center; gap: 10px; }
+/* Quiet backplates separate grouped controls from scenery without changing hit areas or layout. */
+#hud .hud-roster, #hud .hud-inv, #hud .hud-options:not(.compact) .hud-options-panel {
+  background: rgba(255, 250, 235, 0.72);
+  border-radius: 20px;
+  box-shadow: 0 0 0 6px rgba(255, 250, 235, 0.72), 0 5px 16px 6px rgba(35, 30, 48, 0.12);
+}
 .hud-options-panel > button { position: static; flex: none; }
 .hud-options-panel > button[hidden] { display: none; }
 .hud-options.compact .hud-more-btn { display: flex; }
@@ -1131,19 +1137,32 @@ html, body {
   #hud.touch-host .hud-dialog-box { padding: 20px 14px 10px; }
 }
 
-/* Step 19: a readable clock alongside both the desktop toolbar and compact options. */
+/* Passive illustrated day cycle; phase is available to assistive technology. */
 .hud-time-dial {
-  position: absolute; right: calc(100% + 10px); top: -5px; width: 68px; height: 55px;
-  background: #fff5d7; border: 2px solid var(--outline); border-radius: 16px;
-  color: #826633; box-shadow: 0 3px 0 var(--outline); pointer-events: auto;
+  position: absolute; left: 50%; top: max(12px, env(safe-area-inset-top));
+  width: clamp(200px, 30vw, 360px); height: 54px; transform: translateX(-50%);
+  color: #49324f; pointer-events: none; user-select: none;
 }
-.hud-time-dial.night { background: #dce7ff; color: #5a669d; }
-.time-arc { position: absolute; left: 0; top: 2px; width: 64px; height: 30px; }
-.time-body { position: absolute; width: 17px; height: 17px; transform: translate(-50%, -50%); }
-.time-body svg { display: block; width: 100%; height: 100%; }
-.time-label { position: absolute; left: 0; right: 0; bottom: 2px; text-align: center; font-size: 11px; font-weight: 600; color: var(--outline); }
-#hud:not(.compact-hud) .hud-roster { max-width: calc(100vw - 340px); }
-#hud.compact-hud .hud-roster { max-width: calc(100vw - 162px); }
+.hud-time-dial > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.hud-time-dial .time-track { opacity: .45; }
+.hud-time-dial > .time-wheel { display: none; }
+.hud-time-dial .time-body {
+  position: absolute; left: var(--time-x); top: var(--time-y); width: 46px; height: 46px; transform: translate(-50%, -50%);
+}
+.hud-time-dial .time-body svg { display: block; width: 100%; height: 100%; overflow: visible; }
+#hud:not(.compact-hud) .hud-roster, #hud.compact-hud .hud-roster {
+  max-width: calc((100vw - clamp(200px, 30vw, 360px)) / 2 - 28px);
+}
+@media (max-width: 700px) {
+  .hud-time-dial { width: 64px; height: 64px; top: calc(12px + env(safe-area-inset-top)); }
+  .hud-time-dial > .time-track { display: none; }
+  .hud-time-dial > .time-wheel { display: block; opacity: .4; }
+  .hud-time-dial .time-body { left: var(--wheel-x); top: var(--wheel-y); width: 34px; height: 34px; }
+  #hud:not(.compact-hud) .hud-roster, #hud.compact-hud .hud-roster { max-width: calc(100vw - 110px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hud-time-dial, .hud-time-dial * { animation: none; transition: none; }
+}
 
 /* Short landscape touch screens (phones on their side): the controls sit at the sides, not in a bottom band, and the
    joystick is hidden while a dialog is open. So the dialog takes the full height and the left side, stays clear of the
@@ -1248,7 +1267,7 @@ html, body {
 .bag-name { flex: 1; font-size: 16px; overflow-wrap: anywhere; }
 .bag-count { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; }
 .bag-panel footer { flex: none; margin-top: 12px; font-size: 13px; color: #756d7a; }
-#hud.bag-open > :not(.bag-overlay):not(.feast-layer) { visibility: hidden; }
+#hud.bag-open > :not(.bag-overlay):not(.feast-layer):not(.inv-bag-button):not(.hud-journal-dock):not(.hud-personal-glass) { visibility: hidden; }
 #hud.bag-open .tc-zone { pointer-events: none; }
 #hud.touch-host.bag-open > .tc { visibility: visible; }
 #hud.touch-host.bag-open .tc-zone, #hud.touch-host.bag-open .tc-stick { visibility: hidden; }
@@ -1578,3 +1597,123 @@ html, body {
   .pu-exit { font-size: 13px; padding: 4px 10px; }
 }
 @media (max-height: 500px) and (min-width: 561px) { .pu-card { top: calc(62px + var(--sat)); transform: translateX(-50%); width: min(520px, calc(100vw - 16px)); } }      /* landscape phones: under the top button row */
+
+/* Arrival controls stay below the world view, then quietly leave; help remains in the options group. */
+.controls-arrival { position: absolute; z-index: 32; left: 50%; bottom: max(26px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: max-content; max-width: calc(100% - 32px); text-align: center; pointer-events: none; animation: controls-arrival-fade 6s ease-in forwards; }
+.controls-arrival .title-hint, .controls-help-dialog .title-hint { animation: none; line-height: 1.5; }
+.controls-arrival small { display: block; margin-top: 12px; font-size: 12px; color: var(--outline); background: var(--bubble); border-radius: 10px; padding: 4px 10px; }
+@keyframes controls-arrival-fade { 0%, 75% { opacity: 1; } 100% { opacity: 0; } }
+#hud.touch-host .controls-arrival { bottom: calc(var(--controls-band) + 12px); max-width: min(460px, 76vw); }
+#hud.touch-host .controls-arrival .title-hint { font-size: 13px; border-radius: 18px; }
+#hud .hud-controls-help > span { position: relative; display: inline-flex; }
+#hud .hud-controls-help b { position: absolute; right: -5px; top: -10px; background: #ffe27a; color: var(--outline); border: 1.5px solid var(--outline); border-radius: 50%; width: 17px; height: 18px; font-size: 12px; line-height: 15px; text-align: center; }
+.controls-help-dialog { pointer-events: auto; width: min(520px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto; padding: 22px; background: var(--bubble); color: var(--outline); border: 3px solid var(--outline); border-radius: 22px; font: 16px/1.5 var(--font); box-shadow: 0 6px 0 #30263b55; }
+.controls-help-dialog::backdrop { background: #25223755; }
+.controls-help-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.controls-help-dialog h2 { margin: 0; font-size: 24px; }
+.controls-help-dialog header button { width: 42px; height: 42px; border: 2px solid var(--outline); border-radius: 50%; background: #ffe27a; color: var(--outline); font: 26px var(--font); cursor: pointer; }
+.controls-help-dialog button:focus-visible { outline: 3px solid #7651d0; outline-offset: 3px; }
+.controls-help-dialog .title-hint { border-radius: 16px; padding: 14px; font-size: 16px; }
+.controls-help-note { margin-bottom: 0; font-size: 14px; }
+#hud:has(.pair-backdrop:not([hidden]), .bag-overlay:not([hidden]), .hud-dialog:not([hidden]), .fs-prompt:not([hidden])) .controls-arrival { visibility: hidden; }
+@media (max-height: 500px) { #hud.touch-host .controls-arrival { bottom: 12px; max-width: 48vw; } .controls-arrival .title-hint { font-size: 12px; gap: 4px; padding: 6px 10px; } .controls-arrival small { display: none; } }
+@media (prefers-reduced-motion: reduce) { .controls-arrival { animation-timing-function: step-end; } }
+
+/* Roomy, labeled settings stay easy to scan and tap on desktop and phones. */
+.hud-options.compact .hud-options-panel { top: 60px; width: min(350px, calc(100vw - 28px)); padding: 14px; gap: 10px; max-height: calc(100dvh - 94px); }
+.hud-settings-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 0 2px 10px; border-bottom: 2px solid #30263b22; grid-column: 1 / -1; }
+.hud-settings-heading strong { font-size: 23px; }
+.hud-settings-heading button { flex: none; width: 44px; height: 44px; padding: 0; font: 28px var(--font); color: var(--outline); background: #ffe27a; border: 2px solid var(--outline); border-radius: 50%; cursor: pointer; }
+.hud-options.compact .hud-options-panel > button { min-height: 58px; padding: 11px 14px; gap: 16px; }
+.hud-options.compact .hud-options-panel > button::after { font-size: 18px; text-align: left; }
+.hud-options.compact .hud-options-panel > button svg { width: 30px; height: 30px; }
+.hud-options.compact .hud-options-panel button:focus-visible { outline: 3px solid #7651d0; outline-offset: 2px; }
+@media (orientation: landscape) and (max-height: 500px) { .hud-options.compact.open .hud-options-panel { width: min(650px, calc(100vw - 28px)); } }
+
+/* A playful readable settings panel; quiet left-side shortcuts remain outside it. */
+.hud-options.compact .hud-options-panel { width: min(410px, calc(100vw - 28px)); padding: 18px; gap: 12px; }
+.hud-settings-heading strong { font-size: 30px; }
+.hud-options.compact .hud-options-panel > button { min-height: 72px; gap: 18px; padding: 13px 16px; }
+.hud-options.compact .hud-options-panel > button::after { font-size: 24px; line-height: 1.15; }
+.hud-options.compact .hud-options-panel > button svg { width: 38px; height: 38px; }
+#hud > .hud-journal-dock { position: absolute; z-index: var(--layer-hud); left: calc(76px + var(--sal)); top: calc(50% - 26px); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; width: 58px; min-height: 60px; padding: 3px; color: var(--outline); background: #fff7dfe8; border: 2px solid var(--outline); border-radius: 14px; box-shadow: 0 3px 0 #30263b55; font: 600 12px var(--font); cursor: pointer; }
+.hud-journal-dock svg { width: 32px; height: 34px; }
+.hud-journal-dock:focus-visible, .qt-head:focus-visible { outline: 3px solid #7651d0; outline-offset: 3px; }
+#hud.feast-on > .hud-journal-dock, #hud.party-active > .hud-journal-dock, #hud.touch-host.dialog-open > .hud-journal-dock { visibility: hidden; }
+#hud .hud-roster .roster-chip.empty { display: none; }
+#hud > .quest-tracker { top: auto; right: auto; left: 14px; bottom: var(--quest-bottom, 26px); translate: var(--sal) 0; width: min(280px, calc(100% - 28px)); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.qt-category { margin: 0 0 5px; color: #7358a1; font-size: 12px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; }
+.qt-card { transform-origin: 0 100%; }
+#hud.touch-host > .quest-tracker { bottom: var(--quest-bottom, calc(var(--controls-band) + 12px)); width: min(240px, calc(100% - 28px)); }
+@media (max-width: 520px) { .hud-options.compact .hud-options-panel { padding: 14px; } .hud-options.compact .hud-options-panel > button { min-height: 65px; gap: 14px; padding: 12px; } .hud-options.compact .hud-options-panel > button::after { font-size: 21px; } .hud-options.compact .hud-options-panel > button svg { width: 34px; height: 34px; } }
+@media (orientation: landscape) and (max-height: 500px) { #hud.touch-host > .quest-tracker { left: calc(var(--tc-btn) * 1.8 + 22px); width: min(240px, calc(100% - 300px)); } .hud-options.compact.open .hud-options-panel { width: min(730px, calc(100vw - 28px)); } }
+
+/* Matching individual backplates give the personal dock a friendly, readable silhouette. */
+.island-tools { top: calc(50% - 104px); }
+.island-tools > button.island-profile-avatar { width: 70px; height: 70px; padding: 4px; border: 3px solid #2b2340; border-radius: 21px; background: #fff3d9ed; box-shadow: 0 4px 0 #2b234066, 0 7px 18px #30263b20; }
+#hud > button.inv-bag-button, #hud.touch-host > button.inv-bag-button { left: 10px; top: calc(50% - 20px); bottom: auto; width: 72px; height: 76px; padding: 3px; border: 3px solid var(--outline); border-radius: 21px; background: #fff3d9ed; box-shadow: 0 4px 0 #2b234066, 0 7px 18px #30263b20; }
+#hud > button.inv-bag-button svg { width: 60px; height: 64px; }
+#hud > button.hud-journal-dock { left: calc(90px + var(--sal)); top: calc(50% - 20px); width: 72px; min-height: 76px; padding: 3px; border: 3px solid var(--outline); border-radius: 21px; background: #fff3d9ed; box-shadow: 0 4px 0 #2b234066, 0 7px 18px #30263b20; }
+#hud > button.hud-journal-dock svg { width: 54px; height: 52px; }
+#hud > button.hud-journal-dock span { font-size: 13px; }
+
+/* One quiet glass backing; the personal icons themselves are large and unboxed. */
+#hud > .hud-personal-glass { position: absolute; pointer-events: none; z-index: 29; left: 4px; top: calc(50% - 144px); width: 100px; height: 288px; border-radius: 30px; background: linear-gradient(135deg, #fff5dc70, #d9c7ed36); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); box-shadow: 0 5px 20px #30263b14; }
+.island-tools { left: 10px; top: calc(50% - 138px); }
+.island-tools > button.island-profile-avatar { width: 88px; height: 88px; padding: 2px; border: 0; border-radius: 20px; background: transparent; box-shadow: none; }
+#hud > button.inv-bag-button, #hud.touch-host > button.inv-bag-button { left: 10px; top: calc(50% - 46px); width: 88px; height: 88px; padding: 2px; border: 0; border-radius: 20px; background: transparent; box-shadow: none; }
+#hud > button.inv-bag-button svg { width: 80px; height: 84px; }
+#hud > button.hud-journal-dock { left: calc(10px + var(--sal)); top: calc(50% + 46px); width: 88px; min-height: 88px; padding: 0; border: 0; border-radius: 20px; background: transparent; box-shadow: none; }
+#hud > button.hud-journal-dock svg { width: 78px; height: 70px; }
+#hud > button.hud-journal-dock span { font-size: 14px; }
+#hud.feast-on > .hud-personal-glass, #hud.party-active > .hud-personal-glass, #hud.touch-host.dialog-open > .hud-personal-glass { visibility: hidden; }
+#hud.touch-host > .quest-tracker { left: 112px; width: min(240px, calc(100% - 126px)); }
+/* Active players always remain visible; reveal only opens the available slots and join action. */
+.roster-chip { position: relative; }
+.roster-expand { position: absolute; inset: 0; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
+.roster-expand:focus-visible { outline: 3px solid #7651d0; outline-offset: 4px; }
+.roster-chip .rc-leave, .roster-chip .rc-split { z-index: 2; }
+#hud .hud-roster .roster-join { display: none; }
+#hud .hud-roster.join-open .roster-chip.empty { display: inline-flex; cursor: pointer; animation: roster-slot-reveal .2s ease-out both; }
+#hud .hud-roster.join-open .roster-join { display: inline-flex; width: auto; align-items: center; justify-content: center; padding: 4px 12px; white-space: nowrap; font-size: 16px; }
+#hud .hud-roster.join-open { max-width: min(460px, calc(100% - 84px)); }
+@keyframes roster-slot-reveal { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { #hud .hud-roster.join-open .roster-chip.empty { animation: none; } }
+/* Override the legacy touch-only solo join shortcut until the player explicitly reveals it. */
+#hud.touch-host .hud-roster.solo .roster-join { display: none; }
+#hud.touch-host .hud-roster.join-open .roster-chip.empty { display: inline-flex; }
+#hud.touch-host .hud-roster.solo.join-open .roster-join { display: inline-flex; }
+
+/* Personal-panel navigation stays above its panels, so switching never hides another shortcut. */
+body .island-tools { z-index: 1301; left: 10px; top: calc(50% - 138px); }
+#hud > button.inv-bag-button, #hud > button.hud-journal-dock { z-index: 1301; visibility: visible; }
+#hud > .hud-personal-glass { z-index: 1300; }
+#hud > .bag-overlay { padding-left: max(116px, calc(var(--sal) + 112px)); }
+#hud.touch-host > .bag-overlay { bottom: 0; }
+#hud.feast-on > button.inv-bag-button, #hud.feast-on > button.hud-journal-dock, #hud.party-active > button.hud-journal-dock { visibility: hidden; }
+body:has(.player-appearance-overlay, #hud.bag-open) #hud > button.inv-bag-button,
+body:has(.player-appearance-overlay, #hud.bag-open) #hud > button.hud-journal-dock,
+body:has(.player-appearance-overlay, #hud.bag-open) #hud > .hud-personal-glass { visibility: visible; }
+body:has(.player-appearance-overlay, #hud.bag-open) .island-tools { display: flex; visibility: visible; }
+
+/* Settings and player setup share one quiet top-right lane on every screen size. */
+#hud .hud-options .hud-more-btn { width: 56px; height: 56px; padding: 6px; color: #626872; background: transparent; border: 0; box-shadow: none; }
+#hud .hud-options .hud-more-btn > svg { width: 42px; height: 42px; }
+#hud .hud-options .hud-more-btn:focus-visible { outline: 3px solid #7651d0; outline-offset: 2px; }
+#hud .hud-options.compact .hud-options-panel { top: 68px; }
+#hud > .hud-roster, #hud.compact-hud > .hud-roster, #hud:not(.compact-hud) > .hud-roster, #hud .hud-roster.join-open { left: auto; right: 14px; top: 82px; width: max-content; max-width: min(180px, calc(100% - 28px)); max-height: calc(100% - 102px); flex-direction: column; flex-wrap: nowrap; align-items: flex-end; gap: 10px; overflow-y: auto; overflow-x: clip; scrollbar-width: thin; translate: calc(-1 * var(--sar)) var(--sat); }
+#hud .hud-roster > .roster-chip { flex-shrink: 0; }
+#hud .hud-roster.join-open .roster-join { flex-shrink: 0; }
+
+/* Matching oval player controls, including available slots and the join action. */
+#hud .hud-roster > .roster-chip,
+#hud .hud-roster.join-open > .roster-join {
+  box-sizing: border-box;
+  width: 156px;
+  min-width: 156px;
+  min-height: 48px;
+  height: auto;
+  justify-content: center;
+  padding: 8px 12px;
+  border-radius: 50%;
+}

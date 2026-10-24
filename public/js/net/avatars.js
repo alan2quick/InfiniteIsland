@@ -11,6 +11,7 @@ import { decodePetId } from '../game/petLogic.js';
 import { unpackPageBits } from '../game/pageCoopLogic.js';
 import { partyHatKey } from '../player/partyHats.js';
 import { botByName } from '../game/party/botRoster.js';
+import { attachVariant, normaliseVariant } from '../player/characterVariants.js';
 
 export class Avatars {
   constructor({ scene, hudRoot, players, table, sync, items, sfx }) {
@@ -52,7 +53,7 @@ export class Avatars {
     player.away = false;
     player.root.visible = false; // wait for the first pose (or a shared feast)
     this.visuals.attach(player);
-    r = { player, buffer: new PoseBuffer(), lastFlags: 0, item: null, lastAt: 0 };
+    r = { player, buffer: new PoseBuffer(), lastFlags: 0, item: null, lastAt: 0, variant: 'original', variantCleanup: null };
     this.remote.set(slot, r);
     return r;
   }
@@ -62,6 +63,7 @@ export class Avatars {
     if (!r) return;
     if (r.item?.pivot.parent === r.player.parts.handSocket) { r.item.pivot.removeFromParent(); r.item.pivot.visible = false; }
     this.visuals.detach(r.player);
+    r.variantCleanup?.();
     r.player.dispose();
     this.remote.delete(slot);
   }
@@ -111,6 +113,16 @@ export class Avatars {
     }
   }
 
+  /** Cosmetic identity is owner-controlled pose data, not shared-world authority. Build only on a change. */
+  _appearance(r, pose) {
+    const variant = normaliseVariant(pose.variant);
+    if (variant === r.variant) return;
+    r.variantCleanup?.();
+    r.variantCleanup = attachVariant(r.player.character, variant);
+    r.variant = variant;
+    r.player.characterVariant = variant;
+  }
+
   update(dt, camera) {
     if (!this.cinematic) this._publish(dt);
     const now = performance.now();
@@ -119,6 +131,7 @@ export class Avatars {
       if (this.cinematic) { p.root.visible = true; continue; }
       const pose = r.buffer.sample(now);
       if (!pose) continue;
+      this._appearance(r, pose);
       const dist = Math.hypot(pose.x - this.players.focus.x, pose.z - this.players.focus.z);
       const near = dist < 48;
       p.root.visible = near;

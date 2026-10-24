@@ -184,17 +184,17 @@ const VOICES = {
 
   // ukulele / nylon-guitar-ish pluck: triangle + a little saw through a low-pass that closes quickly
   pluck(e, t, m, dur, vel, out, o) {
-    const c = e.ctx, f = mtof(m), ring = o.ring || 0.9;
+    const c = e.ctx, f = mtof(m), ring = o.ring || 0.9, gentle = o.gentle === true;
     const lp = c.createBiquadFilter(), g = c.createGain(), gs = c.createGain();
     lp.type = 'lowpass'; lp.Q.value = 0.5;
-    lp.frequency.setValueAtTime(Math.min(f * (o.bright || 6), 4200), t);
+    lp.frequency.setValueAtTime(Math.min(f * (o.bright || (gentle ? 3 : 6)), gentle ? 1800 : 4200), t);
     lp.frequency.exponentialRampToValueAtTime(Math.max(f * 1.5, 350), t + ring * 0.35);
     const a = c.createOscillator(), b = c.createOscillator();
-    a.type = 'triangle'; b.type = 'sawtooth';
+    a.type = gentle ? 'sine' : 'triangle'; b.type = gentle ? 'triangle' : 'sawtooth';
     a.frequency.value = f; b.frequency.value = f * 1.004;
-    gs.gain.value = 0.26;
+    gs.gain.value = gentle ? 0.06 : 0.26;
     a.connect(lp); b.connect(gs); gs.connect(lp); lp.connect(g); g.connect(out);
-    env(g.gain, t, vel, 0.004, ring);
+    env(g.gain, t, vel * (gentle ? 0.55 : 1), gentle ? 0.045 : 0.004, ring);
     a.start(t); b.start(t); a.stop(t + ring + 0.05); b.stop(t + ring + 0.05);
   },
   // marimba / mallet: sine + a fast-decaying overtone
@@ -455,10 +455,11 @@ function buildTrack(def) {
   return { events, steps: barAbs * STEPS_PER_BAR };
 }
 
-// ---- 1. Morning Breeze: C major, 96 BPM, straight and bouncy. Ukulele strums, marimba tune, soft bass.
+// ---- 1. Morning Breeze: C major, 96 BPM. A gentle sine/triangle accompaniment, marimba tune and soft bass.
+// Playback-only gentleStrum preserves every authored note, rhythm and historical event fingerprint.
 const C_ = chord('C'), G_ = chord('G'), Am_ = chord('A', 'min'), F_ = chord('F'), Em_ = chord('E', 'min'), Dm_ = chord('D', 'min');
 const MORNING = {
-  title: 'Morning Breeze', bpm: 96, swing: 0.5, seed: 1101, trim: 0.31,
+  title: 'Morning Breeze', bpm: 96, swing: 0.5, seed: 1101, trim: 0.31, gentleStrum: true,
   key: { pc: 0, scale: MAJOR },
   prog: { I: [C_, G_, Am_, G_], A: [C_, G_, Am_, F_], B: [F_, G_, Em_, Am_, Dm_, G_, C_, G_], O: [F_, C_] },
   form: [{ name: 'I', bars: 4 }, { name: 'A', bars: 8 }, { name: 'A', bars: 8, v: 1 }, { name: 'B', bars: 8 }, { name: 'A', bars: 8, v: 2 }, { name: 'O', bars: 2 }],
@@ -1327,7 +1328,9 @@ export class Sequencer {
         const lag = now - t;
         if (lag > 0.25) { this.base += lag + 0.05; this.resyncs++; continue; }     // the timer stalled: shift the clock, never bunch notes up
       }
-      VOICES[x.k](e, t, x.m, x.d * ss / this.k, x.v * trim, e.bus(x.k), x.o);
+      // Soften only Morning Breeze's accompaniment. Event lists stay immutable; live, resumed and offline scheduling share this path.
+      const options = x.k === 'pluck' && this.tr.def.gentleStrum ? { ...x.o, gentle: true } : x.o;
+      VOICES[x.k](e, t, x.m, x.d * ss / this.k, x.v * trim, e.bus(x.k), options);
       this.i++; this.count++;
     }
   }
@@ -1389,6 +1392,8 @@ export class Music {
     this._listeners = { track: new Set(), enabled: new Set() };
     this._wanted = false; this._booted = false; this._running = false;
     this._poll = 0; this._timer = 0;
+    this._volume = MUSIC_VOL;
+    this._impactAmount = 1; this._impactUntil = 0;
     this._duck = 1;
     this._eng = null; this._seq = null;
     this._idx = -1;              // index of the track that is playing / paused / just played
@@ -1400,6 +1405,7 @@ export class Music {
     this._state = 'idle';        // idle | playing | gap
     this._forced = null;         // Step 80a: a party game's track index while it plays (music.party)
     this._tempo = 1;             // ... and its tempo scale (music.setTempo)
+    this._baseTempo = 0.8;       // exploration setting; party timing keeps its own unscaled tempo
     this._gapUntil = 0; this._gapLeft = GAP; this._pos = 0;
     this.stats = { notes: TRACKS.map(() => 0), total: 0, resyncs: 0, ticks: 0 };
     document.addEventListener('visibilitychange', () => this._sync());
@@ -1414,6 +1420,13 @@ export class Music {
   get running() { return this._running; }
   get titles() { return TRACK_TITLES; }
   get duckLevel() { return this._duck; }
+  get volume() { return this._volume; }
+  setVolume(value) {
+    const n = Number(value);
+    if (Number.isFinite(n)) this._volume = clamp(n, 0, 1);
+    this._applyBus();
+    return this._volume;
+  }
 
   setClock(clock) {
     this.clock = clock;
@@ -1489,8 +1502,9 @@ export class Music {
   /** Brief local impact duck; a scene/music change cancels its scheduled restore. */
   impact(amount = 0.707, duration = 0.25) {
     if (!this._booted) return;
-    const now = this.ctx.currentTime, target = this._active() ? MUSIC_VOL * this._duck : 0;
-    this.bus.gain.cancelScheduledValues(now); this.bus.gain.setTargetAtTime(target * amount, now, 0.012); this.bus.gain.setTargetAtTime(target, now + duration, 0.05);
+    this._impactAmount = clamp(Number(amount) || 0, 0, 1);
+    this._impactUntil = this.ctx.currentTime + Math.max(0, Number(duration) || 0);
+    this._applyBus(0.012);
   }
 
   /** Skip to the next track (quick fade, then the next one starts). */
@@ -1527,7 +1541,22 @@ export class Music {
     k = clamp(Number(k) || 1, 0.5, 2);
     if (k === this._tempo) return;
     this._tempo = k;
-    if (this._seq && this._booted) this._seq.setTempo(k, this.ctx.currentTime);
+    this._applyTempo(k);
+  }
+  /** A stable regional/exploration setting. Party games retain their authored speed and dynamic tempo. */
+  setBaseTempo(value) {
+    const n = Number(value);
+    if (!Number.isFinite(n)) return this._baseTempo;
+    this._baseTempo = clamp(n, 0.5, 1.5);
+    if (this._forced === null) this._applyTempo(this._baseTempo);
+    return this._baseTempo;
+  }
+  get baseTempo() { return this._baseTempo; }
+  _applyTempo(k) {
+    if (!this._seq || !this._booted) return;
+    // _pos is a paused wall-time offset, not musical time. Keep the same bar across tempo edits while paused.
+    if (!this._running && this._state === 'playing') this._pos *= this._seq.k / k;
+    this._seq.setTempo(k, this.ctx.currentTime);
   }
   get partyTrack() { return this._forced; }
 
@@ -1561,9 +1590,11 @@ export class Music {
 
   _applyBus(tc = 0.12) {
     if (!this._booted) return;
-    const target = this._active() ? MUSIC_VOL * this._duck : 0;
-    this.bus.gain.cancelScheduledValues?.(this.ctx.currentTime);
-    this.bus.gain.setTargetAtTime(target, this.ctx.currentTime, tc);
+    const now = this.ctx.currentTime, target = this._active() ? this._volume * this._duck : 0;
+    this.bus.gain.cancelScheduledValues?.(now);
+    const impact = now < this._impactUntil;
+    this.bus.gain.setTargetAtTime(target * (impact ? this._impactAmount : 1), now, tc);
+    if (impact) this.bus.gain.setTargetAtTime(target, this._impactUntil, 0.05);
   }
 
   /** Fade an engine out and throw it away a little later. */
@@ -1620,7 +1651,7 @@ export class Music {
     eng.fade.gain.linearRampToValueAtTime(1, now + 0.15 + (this._forced !== null ? 0.12 : FADE_IN));
     this._eng = eng;
     this._seq = new Sequencer(eng, tr, now + 0.15);
-    if (this._forced !== null) this._seq.k = this._tempo;
+    this._seq.k = this._forced !== null ? this._tempo : this._baseTempo;
     this._idx = idx;
     if (REGION_TRACKS.party.includes(idx) && this._forced === null) this._lobbyLast = idx;      // (Step 80c: the lobby rotation remembers which of its tracks played last)
     this._nextIdx = this._chooseNext(idx);

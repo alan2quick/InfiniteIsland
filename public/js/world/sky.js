@@ -180,6 +180,10 @@ export function createSky(scene) {
   sun.shadow.camera.far = 220;
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.06;
+  // Wider existing PCF filter and gentler contrast; no larger map or extra shadow pass.
+  sun.shadow.radius = 1.5;
+  sun.shadow.intensity = 0.82;
+  const compactLightDirection = new THREE.Vector3();
   scene.add(sun, sun.target);
 
   // ---- Clouds
@@ -222,7 +226,11 @@ export function createSky(scene) {
       hemi.intensity = look.hemiIntensity;
       sun.color.copy(look.light);
       sun.intensity = clock.lightIntensity;
-      sun.position.copy(sun.target.position).addScaledVector(clock.direction, Math.hypot(48, 70, 34));
+      // Keep the illustrated sky's sun/moon arc while avoiding enormous grazing-angle ground shadows.
+      compactLightDirection.copy(clock.direction);
+      compactLightDirection.y = Math.max(compactLightDirection.y, Math.hypot(compactLightDirection.x, compactLightDirection.z) / 1.1);
+      compactLightDirection.normalize();
+      sun.position.copy(sun.target.position).addScaledVector(compactLightDirection, Math.hypot(48, 70, 34));
       for (const c of clouds) {
         c.children[0].material.color.copy(look.cloud);
         c.children[0].material.emissive.copy(look.emissive);

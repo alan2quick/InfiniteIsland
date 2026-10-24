@@ -14,6 +14,7 @@
 import * as THREE from 'three';
 import { ICONS } from './icons.js';
 import { JUICE } from '../config.js';
+import { createRosterDisclosure } from './rosterDisclosure.js';
 
 // Inline SVGs (emoji render as empty boxes in some browsers).
 const INPUT_ALIAS = { phone: 'remote', touch: 'remote', controller: 'gamepad', pad: 'gamepad' };
@@ -76,10 +77,16 @@ export function createHud(root) {
   const joinButton = document.createElement('button');
   joinButton.type = 'button';
   joinButton.className = 'roster-join';
-  joinButton.setAttribute('aria-label', 'Connect a phone');
-  joinButton.textContent = '+';
+  joinButton.setAttribute('aria-label', 'Add player');
+  joinButton.textContent = '+ Add player';
   roster.appendChild(joinButton);
   root.appendChild(roster);
+  const rosterTrigger = document.createElement('button');
+  rosterTrigger.type = 'button'; rosterTrigger.className = 'roster-expand';
+  rosterTrigger.setAttribute('aria-label', 'Show available player slots');
+  rosterTrigger.setAttribute('aria-expanded', 'false'); rosterTrigger.setAttribute('aria-controls', 'island-roster-slots');
+  roster.id = 'island-roster-slots'; chips[0].el.appendChild(rosterTrigger);
+  const rosterDisclosure = createRosterDisclosure({ roster, trigger: rosterTrigger, joinButton, slots: chips.slice(1).map((c) => c.el) });
   const inputState = new Map();                                    // legacy setInputConnected() bookkeeping
 
   // ---- toasts (top-center stack)
@@ -144,7 +151,7 @@ export function createHud(root) {
   }
 
   const hud = {
-    root, prompt, bubbles, joinButton,
+    root, prompt, bubbles, joinButton, rosterDisclosure,
     /** (slot) => void: the leave button on the keyboard player's chip was clicked (main.js wires it to players.leaveLocal). */
     onLeave: null,
     /** (slot) => void: the split button on a keyboard + controller chip was clicked (main.js wires it to players.splitLocal). */
@@ -185,6 +192,8 @@ export function createHud(root) {
         c.sig = sig;
         c.el.style.setProperty('--pc', s.color);
         c.el.classList.toggle('empty', s.state === 'empty');
+        if (i > 0 && s.state === 'empty') { c.el.setAttribute('role', 'button'); c.el.setAttribute('tabindex', '0'); c.el.setAttribute('aria-label', `Add player ${s.label}`); }
+        else if (i > 0) { c.el.removeAttribute?.('role'); c.el.removeAttribute?.('tabindex'); c.el.removeAttribute?.('aria-label'); }
         c.el.classList.toggle('away', s.state === 'away');
         c.el.classList.toggle('remote', !!s.remote);
         c.label.textContent = s.label;

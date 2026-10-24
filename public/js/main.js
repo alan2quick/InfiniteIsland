@@ -1,6 +1,7 @@
 // Bootstrap: renderer, scene, loop. Wires world, input, player and the fixed-angle follow camera together.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { createDebugPan } from './camera/debugPan.js';
 import { VERSION, MOUSE_STEER, JUICE, EMBER_FX, MAX_PIXEL_RATIO, CAMERA_FOV, CAMERA_NEAR, CAMERA_FAR, INTERACT_RADIUS, CAMPFIRE, MAX_PLAYERS, ISLANDS, BRIDGES, DROP_HOLD, DUSK_CAMERA } from './config.js';
 import { getHeight, getGroundType, isWalkable, regionOf, inlandDistance, setBridgeOpen, isBridgeOpen, getIslandModule, setNoclip, getNoclip, SPAWN } from './world/terrain.js';
 import { createWater } from './world/water.js';
@@ -83,6 +84,9 @@ import { createOptionsMenu } from './ui/optionsMenu.js';
 import { createFullscreenPrompt } from './ui/fullscreenPrompt.js';
 import { TitleCard } from './ui/titleCard.js';
 import { createAmbient } from './fx/ambient.js';
+import { createCoastalLife } from './fx/coastalLife.js';
+import { createCampsiteDressing } from './world/campsiteDressing.js';
+import { createCampSleep } from './world/campSleep.js';
 import { createAtmosphere } from './fx/atmosphere.js';
 import { duskFlora } from './world/islands/duskVisuals.js';
 import { buildDuskPlacement } from './world/islands/duskPlacement.js';
@@ -132,10 +136,14 @@ import { createGardenMenu } from './game/gardenMenu.js';
 import { createGardenStages } from './world/gardenStages.js';
 import { createThoughtBubbles } from './ui/thoughtBubble.js';
 import { createBridges } from './world/bridges.js';
+import { mountPlayerPresentation } from './player/bootstrap.js';
+import { createWorldOcclusion } from './camera/followMath.js';
+import { forEachFrameStep } from './utils/frameSteps.js';
 
 const app = document.getElementById('app');
 const params = new URLSearchParams(location.search);
 const DEBUG = params.has('debug');
+let presentation = null;
 
 // ---- World sync (Step 22) + screens (Step 23). Every page is the world HOST by default; `?join=CODE` makes it a REPLICA ("screen") of room CODE:
 // it renders the shared world and has its own local players and camera, but sends requests to the host and mirrors its events / snapshot
@@ -194,7 +202,7 @@ const ambienceAudio = new AmbienceAudio(sfx, dayNight);
 
 // ---- HUD, particles
 const hudRoot = document.getElementById('hud');
-hudRoot.classList.toggle('touch-host', wantsTouch());
+hudRoot.classList.toggle('touch-host', coarse);
 const hud = createHud(hudRoot);
 const particles = new Particles(scene, { pool: 640, ground: getHeight });
 
@@ -205,7 +213,7 @@ const input = new InputManager();
 const keyboard = input.addSource('keyboard', new KeyboardSource());
 keyboard.attachMouse(renderer.domElement);
 let touch = null;
-if (wantsTouch()) touch = input.addSource('touch', new TouchSource(hudRoot));
+if (coarse) touch = input.addSource('touch', new TouchSource(hudRoot));
 const gamepad = new GamepadSource();
 const link = getTransport() === 'ws' ? new RemoteLink() : new PeerLink();
 const remote = new RemoteSource(link);
@@ -235,6 +243,7 @@ const player = players.p1;                // (debug handle only: the game logic 
 const followCam = new FollowCamera(camera, { sun: sky.sun });
 followCam.regionCamera = DUSK_CAMERA;                       // Step 69c: Duskcrown's gentler camera, blended by atmosphere.duskWeight each tick
 followCam.touch = coarse;
+followCam.setOcclusionResolver(createWorldOcclusion(getHeight, getColliders));
 followCam.update(0, players.focus);       // snap to the players before the first frame
 worldVis.snap();                          // regions from that first view: no far / full pop-in on the first frame
 
@@ -502,6 +511,12 @@ const petStable = createPetStable({ scene, players, avatars, world: worldVis, do
 const beachFinds = createBeachFinds({ scene, collection, sync, world: worldVis });
 // The bridge-opening cutscene (Step 28c): takes over the final stage of a bridge (hook of world/bridges.js) on every screen
 const bridgeScene = createBridgeScene({ scene, camera, followCam, players, avatars, hud, cinematic, bridges, npcs, particles, sfx, sync, worldVis, dialog });
+// Decorative-only additions plan after gameplay props/paths are registered and use the existing renderer.
+const coastalLife = createCoastalLife({ scene, world: worldVis });
+const campsiteDressing = createCampsiteDressing({ scene, world: worldVis, fire: CAMPFIRE });
+ambient.setFireflyAnchors?.(campsiteDressing.layout);
+const campSleep = createCampSleep({ scene, clock: dayNight, sync, dialog, world: worldVis, campsite: campsiteDressing,
+  getBlocked: () => cinematic.busy || party.active || storybook.pageMode || dungeon.underground || !!presentation?.isOpen });
 pairPanel.setControllers(players.phones());
 players.on('change', () => pairPanel.setControllers(players.phones()));   // roster / phone -> player changes
 link.on('room', (code) => pairPanel.setRoom(code));
@@ -626,12 +641,12 @@ window.addEventListener('keydown', (e) => {
 music.start();
 const title = new TitleCard(hudRoot, { duration: 2.6 });
 // Phones / tablets: offer a one-tap fullscreen (or an Add-to-Home-Screen tip on iPhone) once the title card is gone.
-if (touch) createFullscreenPrompt(hudRoot, { hud, delay: 3 });
+if (touch) createFullscreenPrompt(hudRoot, { hud, delay: 7 });
 window.addEventListener('pointerdown', () => title.dismiss(), { passive: true });
 
-let controls = null;
+let controls = null, debugPan = null;
 if (DEBUG) {
-  // ?debug: free OrbitControls camera (the player can still be moved with the keyboard).
+  // ?debug: arrows explore the view; WASD still moves the character.
   followCam.enabled = false;
   camera.position.set(0, 58, 92);
   controls = new OrbitControls(camera, renderer.domElement);
@@ -640,13 +655,20 @@ if (DEBUG) {
   controls.maxPolarAngle = Math.PI * 0.49;
   controls.maxDistance = 220;
   controls.update();
+  debugPan = createDebugPan({ camera, controls, keyboard, blocked: () => !!presentation?.isOpen || cinematic.busy });
+  const hint = document.createElement('div'); hint.id = 'debug-camera-hint';
+  hint.textContent = 'Arrow keys: move view · drag: rotate · scroll: zoom';
+  Object.assign(hint.style, { position: 'fixed', left: '12px', bottom: '12px', zIndex: '30', pointerEvents: 'none', maxWidth: 'calc(100vw - 24px)', padding: '8px 12px', borderRadius: '12px', background: '#2b2340e8', color: '#fff2d6', font: '13px Fredoka, sans-serif' });
+  document.body.appendChild(hint);
 }
 
 // ---- Resize
-let lastW = 0, lastH = 0, lastDpr = 0;
+let lastW = 0, lastH = 0, lastDpr = 0, lastWindowW = 0, lastWindowH = 0;
 function onResize() {
   const w = window.innerWidth;
   const h = window.innerHeight;
+  lastWindowW = window.innerWidth; lastWindowH = window.innerHeight;
+  followCam.touch = coarse;
   if (!w || !h) return;                 // hidden / minimised: keep the previous size until we get a real one
   lastW = w; lastH = h; lastDpr = window.devicePixelRatio || 1;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelCap));   // re-read DPR: it changes when the window moves between monitors
@@ -699,7 +721,7 @@ mouseRing.visible = false;
 scene.add(mouseRing);
 function mouseBlocked() {
   const p = players.get(players.local.playerIndex);
-  return players.frozenAll || p?.frozen || cinematic.busy || bagPanel.isOpen || pairPanel.isOpen ||
+  return !!presentation?.isOpen || players.frozenAll || p?.frozen || cinematic.busy || bagPanel.isOpen || pairPanel.isOpen ||
     (dialog.isOpen && (!dialog.owner || dialog.owner === p));
 }
 // Reject presses during a block even if the menu closes before the next poll.
@@ -749,6 +771,7 @@ function tick(realDt) {
   if (!keyboard.mouseHeld) clearMouseFeedback();
   sync.update(dt);                            // world sync timers: grace period of a screen that left (host), request timeouts (replica)
   if ((joinCode && (sync.status !== 'synced' || sync.hostAway)) || (!joinCode && sync.hostAway)) return; // keep rendering the last good frame while the host is unavailable
+  presentation?.beforeFrame?.();
   dayNight.update(dt);
   sky.setTimeOfDay(dayNight);
   atmosphere.update(dt, simTime, renderer.domElement.height);   // region look after the clock: Frostpine / Emberleaf tint, Duskcrown canopy + spores (last frame's view is fine)
@@ -757,12 +780,26 @@ function tick(realDt) {
   storybook.lightPage(sky, renderer, dayNight);   // inside a storybook page: night stays readable (an illustration, not a dark island)
   party.light(sky, renderer);                    // the Party Glade: its own bright fixed light (or the night stage's), whatever the hour
   dungeon.lightArea(sky, renderer);              // inside a cave: its own fixed light and dark background, whatever the hour (config AREA_LIGHT)
+  presentation?.afterLighting?.();
   campfires.setNightness(dayNight.nightness);
-  timeDial.update();
+  timeDial.update(dayNight);
   clearMouseFeedback();
   if (mouseBlocked()) keyboard.releaseMouse();   // also runs while keys override the mouse
   party.preInput(dt);                         // Step 80a: the party bots decide and press (their BotSources) before the devices are polled
+  debugPan?.releasePlayerArrows();             // Debug arrows belong exclusively to the camera, including scripted key presses.
   players.pollInput(dt);                      // every device -> claims / leaves -> per-player actions
+  // Polling may claim a second local player this frame; decide camera ownership once, using the current count.
+  followCam.setSubject(player, {
+    count: players.list.filter((p) => !p.away).length + avatars.list.filter((p) => !p.away).length,
+    allowed: !DEBUG && !presentation?.isSelecting && !dungeon.state.active && !party.pageMode && !storybook.pageMode && !cinematic.busy && !boatLookouts.active,
+  });
+  if (players.activity) followCam.skipIntro();
+  for (const p of players.list) {
+    if (p === player && presentation?.isOpen) {
+      p.actions.move.x = 0; p.actions.move.z = 0;
+      for (const key of Object.keys(p.actions)) if (typeof p.actions[key] === 'boolean') p.actions[key] = false;
+    } else if (!p.bot) followCam.transformMovement(p.actions.move);
+  }
   renderer.domElement.classList.toggle('mouse-steering', keyboard.mouseHeld);
   for (const p of players.list) actionsWithCharmRouting(p.actions, dungeon.contains(p));   // Step 58: outside combat areas Charm is a second Jump
   storybook.preInput();                       // inside a page the strip only runs left / right
@@ -943,6 +980,7 @@ function tick(realDt) {
   for (const m of props.handles.mushrooms) m.material.emissiveIntensity = dayNight.nightness * (0.33 + 0.07 * Math.sin(simTime * 2 + m.position.x));
   sky.update(dt, camera);
   worldVis.update(simTime);                   // region visibility from the view centre (after every camera move above) + the volcano smoke
+  presentation?.update?.(dt);                   // real-scene campfire friends and their projected name/greeting labels
   {                                           // Step 69c: Duskcrown's canopy fade: giant caps over a local player, or between the camera and one, dither out (duskFade.js)
     _fadePts.length = 0;
     for (const p of players.list) { const q = _fadePool[_fadePts.length] || (_fadePool[_fadePts.length] = { x: 0, y: 0, z: 0 }); q.x = p.position.x; q.y = p.position.y + 1.1; q.z = p.position.z; _fadePts.push(q); }
@@ -959,6 +997,10 @@ function tick(realDt) {
   ambient.calm = atmosphere.calm || dungeon.underground || party.pageMode;   // (no night fireflies in a cave)
   // Party presets own the life; island fireflies otherwise re-enable their Points at night.
   if (!party.pageMode) ambient.update(dt, simTime, players.focus, camera, renderer.domElement.height);
+  const islandDressingHidden = party.pageMode || storybook.pageMode || dungeon.underground;
+  coastalLife.update(dt, simTime, players.focus, { hidden: islandDressingHidden });
+  campsiteDressing.update(simTime, players.focus, { hidden: islandDressingHidden });
+  campSleep.update(dt, { hidden: islandDressingHidden });
   ambienceAudio.update(dt);
   if (mouseBlocked()) keyboard.releaseMouse();   // a menu or scene can start during this tick
   if (!keyboard.mouseHeld) clearMouseFeedback();
@@ -972,8 +1014,9 @@ function frame() {
   const rawDt = clock.getDelta();
   monitorPerf(rawDt);
   // Cheap safety net besides the resize event (mobile URL bars, DPR changes, panes that were hidden at load).
-  if (window.innerWidth !== lastW || window.innerHeight !== lastH || (window.devicePixelRatio || 1) !== lastDpr) onResize();
-  tick(Math.min(rawDt, 0.1));
+  if (window.innerWidth !== lastWindowW || window.innerHeight !== lastWindowH || (window.devicePixelRatio || 1) !== lastDpr) onResize();
+  debugPan?.update(rawDt);
+  forEachFrameStep(rawDt, tick);
   if (controls) controls.update();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
@@ -1290,7 +1333,7 @@ window.__game = {
     cycle: (p = players.p1) => garlandStand.cycle(p), get unlocked() { return garlandStand.unlocked; },
     preview: (i) => players.p1.wearGarland(i), evaluate: () => garlandStand.evaluate(), api: garlandStand,
   }, world, npcs, garden: gardenDebug, mossback, critters: critterDebug, fishing: fishingDebug, camp: campDebug, paths, campMenu, bridges: { ...bridges.debug, api: bridges, cutscene: (id) => bridgeScene.replay(id), scene: bridgeScene },
-  renderer, scene, camera, controls, terrain, water, sky, dayNight, timeDial, props, ambient, atmosphere, ambienceAudio, sfx, music, title, quality, lowerQuality,
+  renderer, scene, camera, controls, terrain, water, sky, dayNight, timeDial, props, ambient, coastalLife, campsiteDressing, campSleep, atmosphere, ambienceAudio, sfx, music, title, quality, lowerQuality,
   player, players, avatars, input, keyboard, gamepad, link, remote, touch, pairPanel, optionsMenu, followCam, hud, dialog, particles, interactions, juice: dungeon.juice,
   getColliders, resolveCircle, getInteractables, findNearest, items, harvest, storybook,
   inventory, invBar, bagPanel, islandTracker, collection, journalShowcase, beachFinds, travel, dungeon, rootgate, caveMouth, lavaMouth, combat, pickups, gathering, collect, campfire, campfires, quests, questTracker, feast, cinematic, sync, screenLink, slotTable,
@@ -1352,3 +1395,10 @@ islandTracker.update(players.list);
 window.addEventListener('pagehide', rememberPlayers);
 document.addEventListener('visibilitychange', () => { if (document.hidden) rememberPlayers(); });
 if (params.has('debug') && params.get('goto')) world.goto(params.get('goto'));
+
+// Local cosmetic controls never block the first playable frame.
+mountPlayerPresentation(window.__game).then((value) => {
+  presentation = value;
+  window.__game.presentation = value;
+  onResize();
+}).catch((error) => console.warn('Optional character presentation unavailable:', error.message));
