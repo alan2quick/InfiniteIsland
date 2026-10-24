@@ -1,0 +1,6 @@
+# Local CLI state and environment files never belong in the deployment sources.
+.temp/
+.branches/
+.env
+.env.*
+!.env.example

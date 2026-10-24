@@ -1,0 +1,129 @@
+.island-editor-root { --editor-ink: #253244; --editor-paper: #f8fafc; --editor-accent: #c9e2ff; position: fixed; inset: 0; z-index: 900; pointer-events: none; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: var(--editor-ink); }
+.island-release-notes { pointer-events: auto; color: var(--editor-ink); background: var(--editor-paper); border: 1px solid #aab7c6; border-radius: 10px; padding: 22px; width: min(520px, calc(100vw - 32px)); max-height: 80vh; overflow: auto; font: 15px/1.5 system-ui, sans-serif; }
+.island-release-notes::backdrop { background: #20182d66; }
+.island-release-notes header { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.island-release-notes h2, .island-release-notes h3 { margin: 0 0 12px; }
+.island-release-notes article { margin: 18px 0; }
+.island-release-notes li { margin: 8px 0; }
+.island-release-link { margin-top: 12px; width: 100%; }
+.island-release-source { background: #e9eef4; padding: 12px; border-radius: 12px; font-size: 13px; }
+.island-release-source p { margin: 6px 0; }
+.island-release-source a { color: #175ea6; }
+.island-release-warning { background: #fff0c7; padding: 8px 10px; border-radius: 8px; font-size: 12px; line-height: 1.4; }
+.island-feature-new { display: inline-block; background: #d9f0d1; color: #24512e; border: 1px solid #70a166; border-radius: 8px; font: 11px/1.4 system-ui, sans-serif; padding: 0 5px; vertical-align: middle; }
+.island-release-notes .island-editor-buttonrow { flex-wrap: wrap; }
+.island-editor-root *, .island-editor-root *::before, .island-editor-root *::after { box-sizing: border-box; }
+.island-editor-root button, .island-editor-root input, .island-editor-root select { font: inherit; }
+.island-editor-root button { cursor: pointer; color: var(--editor-ink); border: 1px solid #aab7c6; border-radius: 5px; background: #fff; padding: 8px 11px; font-weight: 500; }
+.island-editor-root button:hover:not(:disabled) { background: #e7f1ff; }
+.island-editor-root button:focus-visible, .island-editor-root input:focus-visible, .island-editor-root select:focus-visible, .island-editor-root summary:focus-visible { outline: 3px solid #246fbc; outline-offset: 3px; }
+.island-editor-root button:disabled { opacity: .45; cursor: default; }
+.island-editor-root .island-editor-launch { pointer-events: auto; position: absolute; right: 0; top: max(80px, 20vh); display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 12px 16px 12px 12px; border-radius: 8px 0 0 8px; border-right: 0; border-color: #506176; background: #253244; color: #fff; box-shadow: 0 4px 18px #17233544; text-align: left; font-size: 14px; font-weight: 650; }
+.island-editor-root .island-editor-launch:hover { background: #35485f; }
+.island-editor-launch > span:first-child { font-size: 26px; line-height: 1; }
+.island-editor-launch small { display: block; color: #b9c9db; font-size: 10px; margin-top: 3px; letter-spacing: .07em; text-transform: uppercase; }
+.island-editor { pointer-events: auto; position: absolute; top: 12px; right: 12px; bottom: 12px; width: min(350px, calc(100vw - 24px)); background: var(--editor-paper); border: 1px solid #aab7c6; border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 8px 32px #17233540; font-size: 14px; }
+.island-editor-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid #162231; background: #253244; color: #fff; }
+.island-editor-eyebrow { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+.island-editor h1 { font-size: 21px; line-height: 1.15; margin: 3px 0 0; }
+.island-editor-root .island-editor-close { font-size: 28px; padding: 0; width: 36px; height: 40px; line-height: 28px; background: #35485f; border-color: #687c93; color: #fff; }
+.island-editor-root .island-editor-close:hover { background: #48617f; }
+.island-editor-live { display: inline-block; margin-top: 8px; color: #bbddff; font-size: 11px; }
+.island-editor-live::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 6px; background: #8bd1b1; border-radius: 50%; vertical-align: 1px; }
+.island-editor-scroll { overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; padding: 0 18px 12px; scrollbar-width: thin; }
+.island-editor-hint { color: #566579; font-size: 12px; line-height: 1.5; margin: 12px 0; }
+.island-editor-viewport { border: 0; margin: 0 0 8px; padding: 0; display: flex; gap: 5px; }
+.island-editor-viewport legend { font-size: 12px; padding: 0 0 7px; }
+.island-editor-viewport button { flex: 1; font-size: 11px; padding: 7px 3px; }
+.island-editor-viewport button[aria-pressed="true"] { background: var(--editor-accent); }
+.island-editor-section { padding: 14px 0; border-bottom: 1px solid #cdd6e0; }
+.island-editor-section:last-child { border: 0; }
+.island-editor-section h2 { font-size: 16px; margin: 0 0 14px; }
+.island-editor-section > summary { cursor: pointer; font-size: 14px; font-weight: 650; padding: 4px 0; }
+.island-editor-section > summary::marker { color: #61758d; }
+.island-editor-section[open] > summary { margin-bottom: 12px; }
+.island-editor-control { margin: 12px 0; }
+.island-editor-control label { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.island-editor-control output { color: #566579; font-size: 12px; font-variant-numeric: tabular-nums; }
+.island-editor-control input[type="range"] { display: block; width: 100%; min-height: 26px; margin: 4px 0 0; accent-color: #246fbc; cursor: pointer; }
+.island-editor-toggle { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin: 12px 0; min-height: 28px; cursor: pointer; }
+.island-editor-toggle input { width: 19px; height: 19px; accent-color: #246fbc; }
+.island-editor-control select, .island-editor-login input { display: block; width: 100%; padding: 8px; border: 2px solid #aab7c6; border-radius: 8px; color: var(--editor-ink); background: #fff; margin: 6px 0 10px; }
+.island-editor-buttonrow { display: flex; gap: 6px; }
+.island-editor-buttonrow > button { flex: 1; min-width: 0; }
+.island-editor-file { display: none; }
+.island-editor-login { margin-top: 16px; }
+.island-editor-login summary { cursor: pointer; }
+.island-editor-login form { padding-top: 12px; }
+.island-editor-login label { font-size: 12px; }
+.island-editor-account { margin-top: 14px; font-size: 12px; }
+.island-editor-root .island-editor-restore { border-color: #aab7c6; background: transparent; font-size: 12px; width: 100%; margin-top: 18px; }
+.island-editor-footer { padding: 12px 14px 14px; background: #e9eef4; border-top: 2px solid #cdd6e0; }
+.island-editor-status { font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
+.island-editor-footer small { display: block; font-size: 10px; color: #566579; margin-top: 4px; }
+.island-editor-footer .island-editor-buttonrow { margin-top: 10px; }
+.island-editor-root .island-editor-publish { background: var(--editor-accent); }
+@media (max-width: 480px) { .island-editor { width: min(320px, calc(100vw - 16px)); top: 8px; right: 8px; bottom: 8px; } .island-editor-root .island-editor-launch { top: 80px; right: 0; } }
+@media (prefers-reduced-motion: reduce) { .island-editor-root * { scroll-behavior: auto; } }
+
+/* Roomy release reader: current notes fill the desktop width, with short pages on phones. */
+.island-release-notes { width: min(1240px, calc(100vw - 40px)); max-height: calc(100dvh - 32px); padding: 28px 32px; border-radius: 20px; font-size: 17px; line-height: 1.5; }
+.island-release-notes h2 { font-size: 28px; }
+.island-release-notes h3 { font-size: 22px; }
+.island-release-tabs { display: flex; gap: 10px; margin: 12px 0 20px; }
+.island-release-tabs button[aria-pressed="true"] { background: #dcecff; border-color: #246fbc; }
+.island-release-changes { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 36px; padding-left: 24px; }
+.island-release-changes li { margin: 0; padding-left: 4px; break-inside: avoid; }
+.island-release-notes .island-editor-hint, .island-release-source { font-size: 15px; }
+.island-release-footer { display: flex; justify-content: flex-end; align-items: center; gap: 18px; margin-top: 20px; }
+.island-release-footer nav { display: flex; align-items: center; gap: 14px; margin-right: auto; }
+.island-release-notes button { min-height: 44px; }
+@media (max-width: 800px), (max-height: 700px) {
+  .island-release-notes { width: calc(100vw - 20px); padding: 16px; font-size: 16px; max-height: calc(100dvh - 20px); }
+  .island-release-notes h2 { font-size: 24px; }
+  .island-release-notes h3 { font-size: 20px; margin-bottom: 8px; }
+  .island-release-tabs { gap: 6px; margin: 8px 0 12px; }
+  .island-release-tabs button { flex: 1; padding: 6px; font-size: 14px; }
+  .island-release-changes { grid-template-columns: 1fr; gap: 12px; }
+  .island-release-notes article { margin: 12px 0; }
+  .island-release-notes .island-editor-buttonrow { display: grid; grid-template-columns: 1fr 1fr; }
+  .island-release-notes .island-editor-buttonrow button { font-size: 14px; }
+  .island-release-footer { gap: 8px; margin-top: 12px; }
+  .island-release-footer nav { gap: 8px; }
+}
+
+@media (min-width: 1100px) {
+  .island-release-changes { grid-template-columns: repeat(3, 1fr); }
+  .island-release-notes { padding: 20px 28px; }
+}
+@media (min-width: 801px) {
+  .island-release-notes { line-height: 1.4; padding: 18px 28px; }
+  .island-release-tabs { margin: 6px 0 12px; }
+  .island-release-notes article { margin: 12px 0; }
+  .island-release-changes { gap: 10px 32px; }
+  .island-release-footer { margin-top: 12px; }
+}
+
+.island-comparison { pointer-events: auto; position: fixed; inset: 12px 386px 12px 12px; display: grid; grid-template-columns: 1fr 1.6fr; grid-template-rows: 1fr 1fr; gap: 12px; padding: 12px; border-radius: 18px; background: #182333; box-shadow: 0 8px 32px #17233540; }
+.island-comparison-card { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border: 1px solid #64768d; border-radius: 12px; background: #27364b; }
+.island-comparison-desktop { grid-column: 1 / -1; }
+.island-comparison-card > header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; color: #f8fafc; font-size: 14px; }
+.island-comparison-card > header span { color: #b9c9db; font-size: 12px; }
+.island-comparison-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #111b29; }
+.island-comparison-stage > div { position: relative; flex: none; }
+.island-comparison iframe { display: block; position: absolute; left: 0; top: 0; transform-origin: top left; border: 0; background: #182333; }
+@media (max-width: 900px) {
+  .island-comparison { right: 374px; grid-template-columns: 1fr; grid-template-rows: repeat(3, 1fr); gap: 6px; padding: 6px; }
+  .island-comparison-card > header { flex-wrap: wrap; padding: 5px; font-size: 12px; }
+}
+@media (max-width: 700px) {
+  .island-comparison { inset: 8px 8px 340px; grid-template-columns: 1fr 1.6fr; grid-template-rows: 1fr 1fr; }
+  .island-editor-comparing .island-editor { top: auto; height: 320px; width: calc(100vw - 16px); bottom: 8px; right: 8px; }
+}
+.island-admin-help p { font-size: 14px; line-height: 1.5; }
+.island-admin-help h3 { font-size: 16px; margin: 18px 0 8px; }
+.island-admin-travel { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.island-admin-command { margin: 12px 0; display: grid; grid-template-columns: 1fr auto; gap: 6px; align-items: center; }
+.island-admin-command > span { font-size: 13px; font-weight: 600; }
+.island-admin-command code { grid-column: 1 / -1; grid-row: 2; display: block; padding: 10px; background: #e9eef4; border-radius: 8px; overflow-wrap: anywhere; font-size: 12px; user-select: text; }
+.island-admin-unlock { width: 100%; }

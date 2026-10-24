@@ -7,14 +7,22 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "prestart": "node scripts/build.mjs --local",
+    "build": "node scripts/build.mjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "dependencies": {
     "qrcode": "^1.5.4",
     "three": "^0.186.1",
-    "ws": "^8.22.0"
+    "ws": "^8.22.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "@supabase/supabase-js": "2.118.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

@@ -3,3 +3,12 @@ node_modules/
 *.log
 .vercel/
 scratchpad/
+
+# Optional editor bundles, browser-public local config, and deployment output
+public/generated/
+dist/
+.env*
+!.env.example
+.supabase/
+
+node_modules

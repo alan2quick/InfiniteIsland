@@ -474,6 +474,7 @@ export function createAmbient({ scene, props, getHeight, clock = null, campfire 
   return {
     butterflies: bf, petals: pt, glints: gl, fireflies: ff,
     /** Step 29a: set true while the view is on Frostpine: no fireflies there (butterflies / petals live at home's flower patches and cherry trees anyway). */
+    setClock(value) { clock = value; },
     calm: false, duskWeight: 0,
     update(dt, t, playerPos, camera, viewportHeightPx) {
       const night = clock ? clock.nightness : 0;

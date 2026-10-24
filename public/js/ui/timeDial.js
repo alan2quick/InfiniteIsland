@@ -9,22 +9,22 @@ export function createTimeDial(root, { clock }) {
   root.querySelector('.hud-options').prepend(el);
   const body = el.querySelector('.time-body'), label = el.querySelector('.time-label');
   let lastMinute = -1, lastMoon = null;
-  function update() {
-    const minute = Math.floor(clock.hour * 60);
-    if (minute === lastMinute && clock.isMoon === lastMoon) return;
+  function update(clockOverride = clock) {
+    const minute = Math.floor(clockOverride.hour * 60);
+    if (minute === lastMinute && clockOverride.isMoon === lastMoon) return;
     lastMinute = minute;
-    lastMoon = clock.isMoon;
+    lastMoon = clockOverride.isMoon;
     const hour = Math.floor(minute / 60);
     const text = `${hour % 12 || 12}:${String(minute % 60).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`;
     label.textContent = text;
-    el.title = `${clock.phase} · ${text}`;
+    el.title = `${clockOverride.phase} · ${text}`;
     el.setAttribute('aria-label', el.title);
-    body.innerHTML = clock.isMoon ? MOON_SVG : SUN_SVG;
-    const progress = clock.isMoon ? ((clock.hour - 19.5 + 24) % 24) / 10 : (clock.hour - 5.5) / 14;
+    body.innerHTML = clockOverride.isMoon ? MOON_SVG : SUN_SVG;
+    const progress = clockOverride.isMoon ? ((clockOverride.hour - 19.5 + 24) % 24) / 10 : (clockOverride.hour - 5.5) / 14;
     const angle = Math.PI * (1 - progress);
     body.style.left = (32 + Math.cos(angle) * 24) + 'px';
     body.style.top = (25 - Math.sin(angle) * 22) + 'px';
-    el.classList.toggle('night', clock.isMoon);
+    el.classList.toggle('night', clockOverride.isMoon);
   }
   update();
   return { element: el, update };

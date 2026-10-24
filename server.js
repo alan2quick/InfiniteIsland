@@ -7,6 +7,7 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 import QRCode from 'qrcode';
+import { collectReleaseStatus } from './scripts/release-status.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -106,6 +107,19 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost');
     const pathname = url.pathname;
 
+    if (pathname === '/api/release-status') {
+      let buildDate = null, buildVersion = null;
+      try {
+        const built = JSON.parse(await fs.promises.readFile(path.join(PUBLIC_DIR, 'generated', 'release-status.json'), 'utf8'));
+        if (typeof built.buildDate === 'string') buildDate = built.buildDate;
+        if (typeof built.buildVersion === 'string') buildVersion = built.buildVersion;
+      } catch { /* A checkout may not have been built yet. */ }
+      const status = await collectReleaseStatus({ cwd: __dirname, buildDate, buildVersion });
+      return send(res, 200, req.method === 'HEAD' ? '' : JSON.stringify(status), {
+        'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store',
+      });
+    }
+
     if (pathname === '/api/info') {
       return send(res, 200, JSON.stringify({ lanUrls: getLanUrls(), port: PORT }), {
         'Content-Type': 'application/json; charset=utf-8',
@@ -123,7 +137,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname.startsWith('/vendor/three/')) {
       filePath = safeResolve(THREE_DIR, pathname.slice('/vendor/three/'.length));
     } else {
-      let p = pathname;
+      let p = pathname === "/editor" ? "/index.html" : pathname;
       if (p.endsWith('/')) p += 'index.html';
       filePath = safeResolve(PUBLIC_DIR, p);
     }

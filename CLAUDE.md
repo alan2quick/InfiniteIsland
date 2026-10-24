@@ -1,7 +1,7 @@
 # Infinite Island: developer guide for new sessions
 
 A cozy Three.js island game in the style of Animal Crossing and Stardew Valley, for up to 4 players. Players can share one screen (keyboard, gamepads, phones as controllers) or join from their own device with their own camera (hybrid local + online over PeerJS). It has gathering, tools, cooking, quests, a day/night cycle and procedural music.
-It runs as plain ES modules with **no build step** and deploys as a static site to Vercel.
+The game runs as plain ES modules. Optional React admin/cloud components have a small build step (`npm run build`) and deploy as a static site to Vercel; see docs/SETUP.md.
 
 - **Repo:** https://github.com/alan2quick/InfiniteIsland, branch `main`. Pushing to `main` redeploys on Vercel if the repo is connected.
 - **[README.md](README.md):** user-facing docs covering features, controls, debug flags, the phone link protocol and a project structure map.
@@ -15,7 +15,7 @@ It runs as plain ES modules with **no build step** and deploys as a static site 
 
 ```bash
 npm install
-npm start            # node server.js -> http://localhost:3000 (static + /vendor/three + /api/info + /api/qr + WebSocket relay /ws)
+npm start            # bundles optional tools, then node server.js -> http://localhost:3000 (static + /vendor/three + /api/info + /api/qr + WebSocket relay /ws)
 ```
 
 - The Claude desktop Browser pane has launch configs in `.claude/launch.json`:

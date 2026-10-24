@@ -1,4 +1,5 @@
 // Bootstrap: renderer, scene, loop. Wires world, input, player and the fixed-angle follow camera together.
+import { isEditorPreview, createPreviewLink } from './settings/previewRuntime.js';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VERSION, MOUSE_STEER, JUICE, EMBER_FX, MAX_PIXEL_RATIO, CAMERA_FOV, CAMERA_NEAR, CAMERA_FAR, INTERACT_RADIUS, CAMPFIRE, MAX_PLAYERS, ISLANDS, BRIDGES, DROP_HOLD, DUSK_CAMERA } from './config.js';
@@ -132,24 +133,26 @@ import { createGardenMenu } from './game/gardenMenu.js';
 import { createGardenStages } from './world/gardenStages.js';
 import { createThoughtBubbles } from './ui/thoughtBubble.js';
 import { createBridges } from './world/bridges.js';
+import { mountExtensions } from './settings/bootstrap.js';
 
 const app = document.getElementById('app');
 const params = new URLSearchParams(location.search);
 const DEBUG = params.has('debug');
+let extensions = null;
 
 // ---- World sync (Step 22) + screens (Step 23). Every page is the world HOST by default; `?join=CODE` makes it a REPLICA ("screen") of room CODE:
 // it renders the shared world and has its own local players and camera, but sends requests to the host and mirrors its events / snapshot
 // instead of owning shared state, and it never saves (game/save.js switch). The phone join choice (controller.html) sends people here.
 // The host also owns the 4 global player slots (players/slotTable.js, domain 'players'). See net/worldSync.js and PLAN.md "22a design notes".
-const joinCode = getJoinCode();
+const joinCode = isEditorPreview ? '' : getJoinCode();
 const sync = new WorldSync({ role: joinCode ? 'replica' : 'host' });
 const playerMemory = createPlayerMemory();
 if (joinCode) setSaveEnabled(false);
 else document.addEventListener('visibilitychange', () => sync.setHostAway(document.hidden));
 
 // ---- Renderer
-const coarse = wantsTouch();
-let pixelCap = coarse ? Math.min(1.5, MAX_PIXEL_RATIO) : MAX_PIXEL_RATIO;
+const coarse = isEditorPreview ? params.has('touch') : wantsTouch();
+let pixelCap = isEditorPreview ? 1 : coarse ? Math.min(1.5, MAX_PIXEL_RATIO) : MAX_PIXEL_RATIO;
 const renderer = new THREE.WebGLRenderer({ antialias: true, stencil: true });   // stencil: characters mark their visible pixels (occluded-player silhouette)
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelCap));
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -168,7 +171,7 @@ const camera = new THREE.PerspectiveCamera(CAMERA_FOV, window.innerWidth / windo
 
 // ---- World
 const sky = createSky(scene);
-if (coarse) sky.sun.shadow.mapSize.set(1024, 1024);
+if (coarse || isEditorPreview) sky.sun.shadow.mapSize.set(1024, 1024);
 // The host's clock rules (PLAN Step 22b): a replica ignores ?time / ?daylock (and has no saved time), adopts the host's hour / lock / speed and eases toward it.
 const dayNight = new DayNight({ params: joinCode ? new URLSearchParams() : params });
 dayNight.attachSync(sync);
@@ -186,6 +189,7 @@ const ambient = createAmbient({ scene, props, getHeight, clock: dayNight, campfi
 // Region atmosphere (Step 29a): snowfall + a cooler look while the view is on Frostpine, eased in / out across the bridge
 const atmosphere = createAtmosphere({ scene, camera, sky, clock: dayNight, getHeight, view: () => worldVis.viewCentre() });
 const sfx = new Sfx();                                        // WebAudio blips; wakes up on the first user gesture
+if (isEditorPreview) { sfx.muted = true; sfx.unlock = () => false; }
 const music = new Music(sfx);                                 // cycling procedural background tracks (starts after the first gesture)
 // Impact duck stays on this screen and respects the music's current cinematic level.
 sfx.musicImpact = () => music.impact(JUICE.sound.duck, JUICE.sound.duckTime);
@@ -194,7 +198,7 @@ const ambienceAudio = new AmbienceAudio(sfx, dayNight);
 
 // ---- HUD, particles
 const hudRoot = document.getElementById('hud');
-hudRoot.classList.toggle('touch-host', wantsTouch());
+hudRoot.classList.toggle('touch-host', coarse);
 const hud = createHud(hudRoot);
 const particles = new Particles(scene, { pool: 640, ground: getHeight });
 
@@ -205,9 +209,9 @@ const input = new InputManager();
 const keyboard = input.addSource('keyboard', new KeyboardSource());
 keyboard.attachMouse(renderer.domElement);
 let touch = null;
-if (wantsTouch()) touch = input.addSource('touch', new TouchSource(hudRoot));
+if (coarse) touch = input.addSource('touch', new TouchSource(hudRoot));
 const gamepad = new GamepadSource();
-const link = getTransport() === 'ws' ? new RemoteLink() : new PeerLink();
+const link = isEditorPreview ? createPreviewLink() : getTransport() === 'ws' ? new RemoteLink() : new PeerLink();
 const remote = new RemoteSource(link);
 let screenLink = null;
 if (joinCode) { screenLink = createScreenLink(joinCode); bindReplicaLink(sync, screenLink); }   // replica: the host of room CODE
@@ -626,7 +630,7 @@ window.addEventListener('keydown', (e) => {
 music.start();
 const title = new TitleCard(hudRoot, { duration: 2.6 });
 // Phones / tablets: offer a one-tap fullscreen (or an Add-to-Home-Screen tip on iPhone) once the title card is gone.
-if (touch) createFullscreenPrompt(hudRoot, { hud, delay: 3 });
+if (touch && !isEditorPreview) createFullscreenPrompt(hudRoot, { hud, delay: 3 });
 window.addEventListener('pointerdown', () => title.dismiss(), { passive: true });
 
 let controls = null;
@@ -643,10 +647,12 @@ if (DEBUG) {
 }
 
 // ---- Resize
-let lastW = 0, lastH = 0, lastDpr = 0;
+let lastW = 0, lastH = 0, lastDpr = 0, lastWindowW = 0, lastWindowH = 0;
 function onResize() {
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  const preview = extensions?.bridge.getViewportSize();
+  const w = preview?.width ?? window.innerWidth, h = preview?.height ?? window.innerHeight;
+  lastWindowW = window.innerWidth; lastWindowH = window.innerHeight;
+  followCam.touch = preview?.touch ?? coarse;
   if (!w || !h) return;                 // hidden / minimised: keep the previous size until we get a real one
   lastW = w; lastH = h; lastDpr = window.devicePixelRatio || 1;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, pixelCap));   // re-read DPR: it changes when the window moves between monitors
@@ -699,7 +705,7 @@ mouseRing.visible = false;
 scene.add(mouseRing);
 function mouseBlocked() {
   const p = players.get(players.local.playerIndex);
-  return players.frozenAll || p?.frozen || cinematic.busy || bagPanel.isOpen || pairPanel.isOpen ||
+  return !!extensions?.isOpen || players.frozenAll || p?.frozen || cinematic.busy || bagPanel.isOpen || pairPanel.isOpen ||
     (dialog.isOpen && (!dialog.owner || dialog.owner === p));
 }
 // Reject presses during a block even if the menu closes before the next poll.
@@ -749,20 +755,27 @@ function tick(realDt) {
   if (!keyboard.mouseHeld) clearMouseFeedback();
   sync.update(dt);                            // world sync timers: grace period of a screen that left (host), request timeouts (replica)
   if ((joinCode && (sync.status !== 'synced' || sync.hostAway)) || (!joinCode && sync.hostAway)) return; // keep rendering the last good frame while the host is unavailable
+  const visualClock = extensions?.bridge.beforeFrame(dt) || dayNight;
   dayNight.update(dt);
-  sky.setTimeOfDay(dayNight);
+  sky.setTimeOfDay(visualClock);
   atmosphere.update(dt, simTime, renderer.domElement.height);   // region look after the clock: Frostpine / Emberleaf tint, Duskcrown canopy + spores (last frame's view is fine)
-  water.setTimeOfDay(dayNight, atmosphere.waterWeight);
-  renderer.toneMappingExposure = dayNight.look.exposure;
+  water.setTimeOfDay(visualClock, atmosphere.waterWeight);
+  renderer.toneMappingExposure = visualClock.look.exposure;
   storybook.lightPage(sky, renderer, dayNight);   // inside a storybook page: night stays readable (an illustration, not a dark island)
   party.light(sky, renderer);                    // the Party Glade: its own bright fixed light (or the night stage's), whatever the hour
   dungeon.lightArea(sky, renderer);              // inside a cave: its own fixed light and dark background, whatever the hour (config AREA_LIGHT)
-  campfires.setNightness(dayNight.nightness);
-  timeDial.update();
+  extensions?.bridge.afterLighting();
+  campfires.setNightness(visualClock.nightness);
+  timeDial.update(visualClock);
   clearMouseFeedback();
   if (mouseBlocked()) keyboard.releaseMouse();   // also runs while keys override the mouse
   party.preInput(dt);                         // Step 80a: the party bots decide and press (their BotSources) before the devices are polled
   players.pollInput(dt);                      // every device -> claims / leaves -> per-player actions
+  if (extensions?.isOpen) for (const p of players.list) {
+    if (p !== player) continue;
+    p.actions.move.x = p.actions.move.z = 0;
+    for (const key of Object.keys(p.actions)) if (typeof p.actions[key] === 'boolean') p.actions[key] = false;
+  }
   renderer.domElement.classList.toggle('mouse-steering', keyboard.mouseHeld);
   for (const p of players.list) actionsWithCharmRouting(p.actions, dungeon.contains(p));   // Step 58: outside combat areas Charm is a second Jump
   storybook.preInput();                       // inside a page the strip only runs left / right
@@ -970,9 +983,13 @@ const clock = new THREE.Timer();
 function frame() {
   clock.update();
   const rawDt = clock.getDelta();
+  if (extensions?.bridge.comparisonOpen) {
+    if (link.screens.size || link.controllers.size) tick(Math.min(rawDt, 0.1));
+    requestAnimationFrame(frame); return;
+  }
   monitorPerf(rawDt);
   // Cheap safety net besides the resize event (mobile URL bars, DPR changes, panes that were hidden at load).
-  if (window.innerWidth !== lastW || window.innerHeight !== lastH || (window.devicePixelRatio || 1) !== lastDpr) onResize();
+  if (window.innerWidth !== lastWindowW || window.innerHeight !== lastWindowH || (window.devicePixelRatio || 1) !== lastDpr) onResize();
   tick(Math.min(rawDt, 0.1));
   if (controls) controls.update();
   renderer.render(scene, camera);
@@ -1352,3 +1369,7 @@ islandTracker.update(players.list);
 window.addEventListener('pagehide', rememberPlayers);
 document.addEventListener('visibilitychange', () => { if (document.hidden) rememberPlayers(); });
 if (params.has('debug') && params.get('goto')) world.goto(params.get('goto'));
+
+// The original first frame never waits for optional administration/cloud bundles.
+mountExtensions(window.__game).then((editor) => { extensions = editor; window.__game.editor = editor; onResize(); })
+  .catch((error) => console.warn('Optional world editor unavailable:', error.message));

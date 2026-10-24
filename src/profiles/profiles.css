@@ -1,0 +1,15 @@
+.cg-profiles-overlay { position:fixed; inset:0; z-index:1200; display:grid; place-items:center; padding:16px; background:#2523389c; color:#2b2340; font-family:Fredoka,system-ui,sans-serif; }
+.cg-profiles-panel { box-sizing:border-box; width:min(100%,580px); max-height:92dvh; overflow:auto; padding:22px; background:#fff8e9; border:3px solid #2b2340; border-radius:22px; }
+.cg-profiles-panel header { display:flex; align-items:start; gap:12px; justify-content:space-between; }
+.cg-profiles-panel h1 { margin:0 0 6px; font-size:27px; }.cg-profiles-panel h2 { font-size:19px; margin:20px 0 10px; }
+.cg-profiles-panel p { line-height:1.4; }.cg-profiles-panel label { display:grid; gap:5px; margin:12px 0; }
+.cg-profiles-panel input, .cg-profiles-panel select { min-width:0; padding:10px; border:2px solid #514861; border-radius:9px; color:inherit; background:white; font:inherit; }
+.cg-profiles-panel button { padding:9px 12px; border:2px solid #2b2340; border-radius:10px; color:inherit; background:#d7e8ca; font:inherit; cursor:pointer; }
+.cg-profiles-panel button:disabled { opacity:.55; cursor:wait; }.cg-profiles-panel :focus-visible { outline:3px solid #9570cd; outline-offset:3px; }
+.cg-profiles-actions { display:flex; gap:8px; flex-wrap:wrap; }.cg-profiles-detail { font-size:14px; color:#61566b; }
+.cg-profiles-nudge { padding:14px; border-radius:12px; background:#ffdf8f; margin-top:16px; }.cg-profiles-nudge button { margin-right:8px; }
+.cg-profiles-list { display:grid; gap:8px; grid-template-columns:repeat(2,1fr); }.cg-profiles-list button { display:flex; flex-direction:column; gap:4px; }.cg-profiles-list button[aria-pressed=true] { background:#ffdf8f; }
+.cg-profiles-panel details { margin-top:18px; }.cg-profiles-panel summary { cursor:pointer; }.cg-profiles-message { min-height:22px; }.cg-profiles-panel footer { margin-top:12px; }
+/* Leave the personal dock accessible while this panel is open. */
+.cg-profiles-overlay { padding-left: max(116px, calc(env(safe-area-inset-left, 0px) + 112px)); }
+.cg-profiles-panel { min-width: 0; }

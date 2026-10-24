@@ -7,15 +7,18 @@
 //   setSaveEnabled(false) / saveEnabled   the master switch: while off, nothing is read from or written to storage. A joined REPLICA page
 //                       (`?join=CODE`, Step 22) runs with it off from the start: the host owns the world and the only save, and a joining
 //                       screen must never overwrite its own (or the host's) save with a world it only mirrors.
+//                       Editor comparison frames are also permanently disabled and use isolated ephemeral storage.
 //                       EVERY game-state writer must go through writeSave / clearSave (never localStorage directly) so the switch covers it.
 //
 // ?newgame is stripped from the address bar right after it was read (history.replaceState), so a later reload keeps the
 // progress made since; NEW_GAME itself stays true for the rest of the page's life so every module can react to it once.
-const params = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
-export const NEW_GAME = params.has('newgame');
+import { isEditorPreview } from '../settings/previewRuntime.js';
 
-export let saveEnabled = !(params.get('join'));      // a replica page (?join=CODE) never saves; see the header
-export function setSaveEnabled(on) { saveEnabled = !!on; }
+const params = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
+export const NEW_GAME = !isEditorPreview && params.has('newgame');
+
+export let saveEnabled = !(params.get('join')) && !isEditorPreview;      // a replica page (?join=CODE) never saves; see the header
+export function setSaveEnabled(on) { saveEnabled = !!on && !isEditorPreview; }
 
 if (NEW_GAME) {
   try {
