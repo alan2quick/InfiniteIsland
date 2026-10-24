@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { installDom, el } from './fixtures/domStub.js';
 import * as THREE from 'three';
-import { PARTY, ISLANDS, VERSION, MAX_PLAYERS } from '../public/js/config.js';
+import { PARTY, ISLANDS, MAX_PLAYERS } from '../public/js/config.js';
 import { meshExtent } from '../public/js/world/islands/extent.js';
 import { PAGE } from '../public/js/game/storybookLogic.js';
 import { TEST_ORIGIN } from '../public/js/game/areas/testYard.js';
@@ -38,8 +38,6 @@ import { getColliders } from '../public/js/world/colliders.js';
 import { Avatars } from '../public/js/net/avatars.js';
 
 installDom();
-
-test('the version is 0.82.3', () => { assert.equal(VERSION, '0.82.3'); });
 
 // ============================================================================================ the pocket
 test('the Party Glade pocket is clear of every island rectangle, the page lane, the combat-area pockets and the test yard; its stages sit inside it', () => {

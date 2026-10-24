@@ -1,6 +1,7 @@
 // Step 60: Cinder Tubes, Emberleaf's combat area: height bands (terraces, ramps, cliffs, ledge drops; the older areas stay bit-identical), the five sections and their gates, the burn / defend / hunt
 // objectives, the chiefs' modifiers, the Magma Toad's attacks, the Armory unlocks, a scripted clear for 1 and 3 players, a pacing estimate and the lava-tube mouth's clearing on Emberleaf
 // (Emberleaf's seeded placement is pinned unchanged). All pure (DungeonRun + the area data), no browser.
+import { assertPlacementGolden } from './helpers/placementGolden.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -405,9 +406,10 @@ test('the lava-tube mouth stands on Emberleaf\'s east flank on walkable grass cl
 });
 test('Emberleaf\'s seeded placement did not move: trees, boulders, ferns, flowers, decor, gathering spots, tools, seed spots and respawn spots hash as before Step 60', async () => {
   const P = buildEmberPlacement(island, mod), G = planEmberGathering(island, mod), T = planEmberTools(island, mod), S = planEmberSeeds(island, mod, P);
+  assertPlacementGolden(P.flowers, 'emberFlowers', '834b877a48');
   const { sampleEmberSpots } = await import('../public/js/world/islands/emberPlacement.js');
-  assert.deepEqual({ trees: hash(P.trees), boulders: hash(P.boulders), ferns: hash(P.ferns), flowers: hash(P.flowers), decor: hash(P.decor), G: hash(G), T: hash(T), S: hash(S), plots: hash(P.garden.plots), lanes: hash(P.lanes) },
-    { trees: '2014801176', boulders: '98cd3aa689', ferns: '356ed6e089', flowers: '834b877a48', decor: 'abf0410989', G: '7b457aaba9', T: '013ab09ce6', S: '7f68b8d680', plots: '556af713d0', lanes: '54052443b5' });
+  assert.deepEqual({ trees: hash(P.trees), boulders: hash(P.boulders), ferns: hash(P.ferns), decor: hash(P.decor), G: hash(G), T: hash(T), S: hash(S), plots: hash(P.garden.plots), lanes: hash(P.lanes) },
+    { trees: '2014801176', boulders: '98cd3aa689', ferns: '356ed6e089', decor: 'abf0410989', G: '7b457aaba9', T: '013ab09ce6', S: '7f68b8d680', plots: '556af713d0', lanes: '54052443b5' });
   assert.deepEqual([['jungle', 5], ['soil', 7], ['jungle', 9]].map(([area, seed]) => hash(sampleEmberSpots(island, mod, { area, count: 20, seed }))), ['1a0ce89734', 'f4b2a2af6f', 'bac5efb7a8']);
   assert.equal(P.solids.length, 189, 'the only addition is the mouth\'s own solid (188 before Step 60)');
   assert.ok(sampleEmberSpots(island, mod, { area: 'jungle', count: 60, seed: 5, r: 0.6, minDist: 3 }).every((q) => !lavaMouthReserved(q.x, q.z)), 'respawned spots keep off it too');

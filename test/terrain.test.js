@@ -12,13 +12,16 @@ import { ritualIslandDistance, ritualPathDistance, ritualChannelDistance } from 
 
 const golden = JSON.parse(readFileSync(new URL('./fixtures/homeTerrain.json', import.meta.url), 'utf8'));
 
-test('home island outside the ritual annex matches the pre-refactor golden samples exactly', () => {
+test('home island outside the ritual annex matches the pre-refactor golden samples within floating-point precision', () => {
   let bad = 0;
   for (let i = 0; i < golden.count; i++) {
     const x = golden.xz[i * 2], z = golden.xz[i * 2 + 1];
     // Only the new annex and its slope-sampling fringe intentionally replace original terrain.
     if (ritualIslandDistance(x, z) < 12.8 || ritualPathDistance(x, z) < 5.9 || ritualChannelDistance(x, z) < 6.5) continue;
-    if (getHeight(x, z) !== golden.h[i]) bad++;
+    // Node/V8 versions can differ in the last bits of trigonometric results.
+    // 1e-12 world units is far below visual or collision precision.
+    const height = getHeight(x, z);
+    if (!Number.isFinite(height) || Math.abs(height - golden.h[i]) > 1e-12) bad++;
     else if (getGroundType(x, z) !== golden.types[golden.g[i]]) bad++;
     else if ((isWalkable(x, z) ? 1 : 0) !== golden.w[i]) bad++;
   }

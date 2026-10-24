@@ -1,5 +1,6 @@
 // Step 68b's pure course layouts: real-hop flights, timed sink rows and seeded clearing probes.
 // Node tests intentionally use the real Emberleaf terrain, not a conveniently empty substitute.
+import { assertPlacementGolden } from './helpers/placementGolden.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -100,8 +101,9 @@ test('part courses occupy clearings of the existing props, lanes, gathering, too
 test('Emberleaf placement remains at the Step 60 pinned hashes; layouts are cached and do not claim solids', () => {
   const hash = (o) => crypto.createHash('md5').update(JSON.stringify(o)).digest('hex').slice(0, 10);
   const p = buildEmberPlacement(island, terrain);
-  assert.deepEqual({ trees: hash(p.trees), boulders: hash(p.boulders), ferns: hash(p.ferns), flowers: hash(p.flowers), decor: hash(p.decor), lanes: hash(p.lanes) },
-    { trees: '2014801176', boulders: '98cd3aa689', ferns: '356ed6e089', flowers: '834b877a48', decor: 'abf0410989', lanes: '54052443b5' });
+  assertPlacementGolden(p.flowers, 'emberFlowers', '834b877a48');
+  assert.deepEqual({ trees: hash(p.trees), boulders: hash(p.boulders), ferns: hash(p.ferns), decor: hash(p.decor), lanes: hash(p.lanes) },
+    { trees: '2014801176', boulders: '98cd3aa689', ferns: '356ed6e089', decor: 'abf0410989', lanes: '54052443b5' });
   assert.equal(p.solids.length, 189);
   assert.equal(partLayouts(island, terrain), layouts);
   assert.deepEqual(partCourses(island, terrain), Object.values(layouts).map((l) => l.course));

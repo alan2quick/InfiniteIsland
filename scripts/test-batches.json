@@ -1,0 +1,172 @@
+{
+  "editor": {
+    "description": "World editor, persistence and admin tools",
+    "files": []
+  },
+  "release": {
+    "description": "Release metadata and publishing",
+    "files": [
+      "test/releaseMetadata.test.js"
+    ]
+  },
+  "camera": {
+    "description": "Camera movement and island framing",
+    "files": [
+      "test/duskCamera.test.js"
+    ]
+  },
+  "ui": {
+    "description": "HUD, input and personal panels",
+    "files": [
+      "test/gamepad.test.js",
+      "test/mouseSteer.test.js",
+      "test/tipCard.test.js"
+    ]
+  },
+  "multiplayer": {
+    "description": "Synchronization, slots and shared state",
+    "files": [
+      "test/playerMemory.test.js",
+      "test/poseSync.test.js",
+      "test/regroup.test.js",
+      "test/slotTable.test.js",
+      "test/worldDomains.test.js",
+      "test/worldSync.test.js"
+    ]
+  },
+  "party": {
+    "description": "Party games, balance simulations and stage geometry",
+    "files": [
+      "test/party.test.js",
+      "test/partyBonk.test.js",
+      "test/partyBumpers.test.js",
+      "test/partyCast.test.js",
+      "test/partyEggs.test.js",
+      "test/partyFeastround.test.js",
+      "test/partyGladeLiving.test.js",
+      "test/partyGlowcap.test.js",
+      "test/partyHuddle.test.js",
+      "test/partyMarloSays.test.js",
+      "test/partyScatter.test.js",
+      "test/partySession.test.js",
+      "test/partySizzle.test.js",
+      "test/partySpectators.test.js",
+      "test/partyStagesLiving.test.js",
+      "test/partyStagesLiving82c.test.js",
+      "test/partyTilty.test.js",
+      "test/partyTimber.test.js",
+      "test/partyVineSkip.test.js"
+    ]
+  },
+  "boat": {
+    "description": "Boat mechanics, voyages and geometry",
+    "files": [
+      "test/boat.test.js",
+      "test/boatCourses.test.js",
+      "test/boatGlide.test.js",
+      "test/boatHull.test.js",
+      "test/boatParts.test.js",
+      "test/boatRepair.test.js",
+      "test/boatSail.test.js",
+      "test/boatSight.test.js",
+      "test/boatVoyage.test.js"
+    ]
+  },
+  "characters": {
+    "description": "Characters, companions and cosmetic items",
+    "files": [
+      "test/capray.test.js",
+      "test/critterState.test.js",
+      "test/critters.test.js",
+      "test/garlands.test.js",
+      "test/hatMigration.test.js",
+      "test/hats.test.js",
+      "test/journalModels.test.js",
+      "test/npcs.test.js",
+      "test/pets.test.js",
+      "test/tailLogic.test.js",
+      "test/tails.test.js",
+      "test/tdoongz.test.js",
+      "test/tdoongzVisits.test.js"
+    ]
+  },
+  "audio": {
+    "description": "Music composition and audio behavior",
+    "files": [
+      "test/duskMusic.test.js",
+      "test/framingMusic.test.js",
+      "test/regionalMusic.test.js"
+    ]
+  },
+  "world": {
+    "description": "Terrain, scenery, lighting and wildlife",
+    "files": [
+      "test/archipelago.test.js",
+      "test/areas.test.js",
+      "test/dayNight.test.js",
+      "test/duskAtmosphere.test.js",
+      "test/duskFlora.test.js",
+      "test/duskMushrooms.test.js",
+      "test/duskcrown.test.js",
+      "test/emberFalls.test.js",
+      "test/fires.test.js",
+      "test/frostPlacement.test.js",
+      "test/regions.test.js",
+      "test/snow.test.js",
+      "test/terrain.test.js"
+    ]
+  },
+  "gameplay": {
+    "description": "Progression, combat, movement, story and gathering",
+    "files": [
+      "test/bridgeLogic.test.js",
+      "test/bridgeScene.test.js",
+      "test/campJobs.test.js",
+      "test/chapters.test.js",
+      "test/charm.test.js",
+      "test/cinder.test.js",
+      "test/combat.test.js",
+      "test/downed.test.js",
+      "test/dungeon.test.js",
+      "test/dungeonAtmosphere.test.js",
+      "test/dungeonBook.test.js",
+      "test/ember.test.js",
+      "test/emberGarden.test.js",
+      "test/fishing.test.js",
+      "test/fishing72b.test.js",
+      "test/frostCamp.test.js",
+      "test/frostCampStages.test.js",
+      "test/frostGathering.test.js",
+      "test/garden.test.js",
+      "test/gardenGrowth.test.js",
+      "test/gardenJobs.test.js",
+      "test/glimmerfrost.test.js",
+      "test/guardianAttacks.test.js",
+      "test/hop.test.js",
+      "test/interactables.test.js",
+      "test/juice.test.js",
+      "test/jump.test.js",
+      "test/jungle.test.js",
+      "test/pageCoop.test.js",
+      "test/pageMotion.test.js",
+      "test/pageWorld.test.js",
+      "test/platformer.test.js",
+      "test/reactions.test.js",
+      "test/regionalQuests.test.js",
+      "test/resourceBalance.test.js",
+      "test/ritual.test.js",
+      "test/seeds.test.js",
+      "test/stoneRoll.test.js",
+      "test/storybook.test.js",
+      "test/tiltLogic.test.js",
+      "test/wildroot.test.js"
+    ]
+  },
+  "infrastructure": {
+    "description": "Test runner, helpers and local watcher",
+    "files": [
+      "test/testInfrastructure.test.js",
+      "test/testBatches.test.js"
+    ]
+  }
+}

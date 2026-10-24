@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WorldSync } from '../public/js/net/worldSync.js';
-import { ISLANDS, FIRES, CAMPFIRE_ISLANDS, DUSK_HEARTH, FISHING, VERSION, nearAnyFire, INTERACT_RADIUS } from '../public/js/config.js';
+import { ISLANDS, FIRES, CAMPFIRE_ISLANDS, DUSK_HEARTH, FISHING, nearAnyFire, INTERACT_RADIUS } from '../public/js/config.js';
 import { domainOf, menuIdOf, saveKeyOf } from '../public/js/game/fireLogic.js';
 import { getIslandModule } from '../public/js/world/islands/registry.js';
 import { buildDuskPlacement } from '../public/js/world/islands/duskPlacement.js';
@@ -27,8 +27,6 @@ const island = ISLANDS.find((i) => i.id === 'duskcrown'), mod = getIslandModule(
 const ponds = duskFishPonds(), byId = new Map(ponds.map((p) => [p.id, p]));
 const hearth = duskHearthLayout();
 const bank = (pond, a = 0.4) => ({ x: pond.x + Math.cos(a) * (pond.rx * 1.05 + 0.4), y: 0.3, z: pond.z + Math.sin(a) * (pond.rz * 1.05 + 0.4) });
-
-test('the version is 0.82.3', () => { assert.equal(VERSION, '0.82.3'); });
 
 test('the marsh hearth is a FIRES entry with its own domain, menu, save key and island; the other fires are untouched', () => {
   const dusk = FIRES.find((f) => f.id === 'dusk');

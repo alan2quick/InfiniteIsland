@@ -1,5 +1,6 @@
 // Step 68a: the hop-course system (game/hopLogic.js), its player integration (player.js, only inside course zones), the tide-pool tutorial course of Skipper's Cove (world/islands/emberCove.js) and the
 // cove's place on Emberleaf. Pure / Node only: the Player is driven without a scene (its animation is stubbed), the real terrain and colliders answer.
+import { assertPlacementGolden } from './helpers/placementGolden.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -264,6 +265,7 @@ test('Skipper\'s Cove stands on walkable sand in a clearing of Emberleaf\'s plac
 test('Emberleaf\'s seeded placement is unchanged by the cove and its trail (the hashes of Step 60 still hold)', () => {
   const hash = (o) => crypto.createHash('md5').update(JSON.stringify(o)).digest('hex').slice(0, 10);
   const P = buildEmberPlacement(island, mod);
-  assert.deepEqual({ trees: hash(P.trees), boulders: hash(P.boulders), ferns: hash(P.ferns), flowers: hash(P.flowers), decor: hash(P.decor), lanes: hash(P.lanes) },
-    { trees: '2014801176', boulders: '98cd3aa689', ferns: '356ed6e089', flowers: '834b877a48', decor: 'abf0410989', lanes: '54052443b5' });
+  assertPlacementGolden(P.flowers, 'emberFlowers', '834b877a48');
+  assert.deepEqual({ trees: hash(P.trees), boulders: hash(P.boulders), ferns: hash(P.ferns), decor: hash(P.decor), lanes: hash(P.lanes) },
+    { trees: '2014801176', boulders: '98cd3aa689', ferns: '356ed6e089', decor: 'abf0410989', lanes: '54052443b5' });
 });

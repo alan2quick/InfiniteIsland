@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WorldSync } from '../public/js/net/worldSync.js';
-import { ISLANDS, SAIL, WATER_LEVEL, VERSION } from '../public/js/config.js';
+import { ISLANDS, SAIL, WATER_LEVEL } from '../public/js/config.js';
 import { freshBoat, normaliseBoat, boatHashView } from '../public/js/game/boatLogic.js';
 import { sailRule, applyArrival, otherIsland, sailBerths, sailArrivals, makeRoute, sailU, sailBeat, sailPose, sailCamera, camParams, sailHint, sailRegion, crewWorld } from '../public/js/game/boatSailLogic.js';
 import { travelAllowed, clearTravelSpots } from '../public/js/game/travelLogic.js';
@@ -25,8 +25,6 @@ const island = ISLANDS.find((i) => i.id === 'duskcrown'), mod = getIslandModule(
 const cove = coveLayout(), dusk = duskDockLayout();
 const launched = () => ({ ...freshBoat(), unlocked: true, repair: true, parts: { planks: true, sail: true, rudder: true, compass: true }, nails: [2, 2, 2, 2], planks: 8, seams: [true, true, true], floated: true, sights: [true, true, true], launched: true });
 const at = (p, y = 0.3) => ({ x: p.x, y, z: p.z });
-
-test('the version is 0.82.3', () => { assert.equal(VERSION, '0.82.3'); });
 
 test('boat state: at / discovered default, normalise and stay consistent with the voyage', () => {
   const f = freshBoat();

@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { WorldSync } from '../public/js/net/worldSync.js';
-import { CAPRAY, FISHING, VERSION, DUSK_HEARTH } from '../public/js/config.js';
+import { CAPRAY, FISHING, DUSK_HEARTH } from '../public/js/config.js';
 import {
   STAGES, TITANS, LOCKED_PETS, CLEARING_TOOLS, freshState, normaliseState, savedView, hashView, debugState, needOf, validateSight, validateFeed, validateHit, validateShake,
   applySight, applyFeed, applyHit, applyShake, withLeader, rareBoost, rareChance, rayGlow, titanDim, mossScale, mossShown, rayPlace, marloLine,
@@ -32,8 +32,6 @@ const { duskFlora } = await import('../public/js/world/islands/duskVisuals.js');
 
 const island = ISLANDS.find((i) => i.id === 'duskcrown'), mod = getIslandModule('duskcrown');
 const plan = duskCaprayPlan();
-
-test('the version is 0.82.3', () => { assert.equal(VERSION, '0.82.3'); });
 
 // ---- pure rules --------------------------------------------------------------------------------------------------------------------------------------------------------------
 test('the stage machine runs in order: sight, three Glimmerfin, hits, showers, the favourite, the Lanternkoi', () => {

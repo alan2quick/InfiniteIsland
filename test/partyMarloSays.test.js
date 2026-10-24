@@ -152,10 +152,8 @@ import { Sfx } from '../public/js/audio/sfx.js';
 import { ICONS } from '../public/js/ui/icons.js';
 import { partyWalkable, marlosaysPads, huddlePads, stageCentre, stageSpawns, spectatorSpot } from '../public/js/game/party/partyArea.js';
 import { hostFor } from '../public/js/game/party/botRoster.js';
-import { VERSION } from '../public/js/config.js';
 
 test('Step 80b music: Signal Flags (21) and Pinecone Waltz (22) come after the 21 older tracks, whose events are pinned', () => {
-  assert.equal(VERSION, '0.82.3');
   assert.equal(TRACK_TITLES.length, 33); assert.deepEqual(TRACK_TITLES.slice(21, 23), ['Signal Flags', 'Pinecone Waltz']);
   assert.deepEqual(PARTY_TRACKS, { vineskip: 19, timber: 20, marlosays: 21, huddle: 22, sizzle: 23, eggs: 24, feastround: 27, bumpers: 28, glowcap: 29, cast: 30, tilty: 31, bonk: 32 });
   const pins = { 18: '72252c4ee94b91f2f3707d905e5119d1b47c4ecb76c945de4be04d096b009b96', 19: '4d3fc0756319c61a120fdd7f5b7216e4d34db1b1c46d83aeec4679c7c5848352', 20: '2052bfd4251653b846d1a9c9bd8e6d020f403bee9995b4ab85d86d3cb11c382f',

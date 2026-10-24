@@ -7,10 +7,14 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/*.test.js"
+    "test": "node scripts/test-timings.mjs",
+    "test:timings": "node scripts/test-timings.mjs",
+    "test:batch": "node scripts/test-batches.mjs",
+    "test:history": "node scripts/test-history.mjs",
+    "dev:check": "node scripts/dev-check.mjs"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "dependencies": {
     "qrcode": "^1.5.4",

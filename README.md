@@ -992,3 +992,7 @@ props skip outlines and shadows. Each character costs 16 draw calls including it
 merged vertex-coloured meshes (head + face, torso, four limbs) sharing one toon material, with the outline shells baked into the
 same geometry. Four players at the spawn view draw about 320 calls in total. The pixel ratio is capped at 2. If the average frame time exceeds 25 ms for 3 seconds the game
 drops to pixel ratio 1 and a 1024 shadow map (disable with `?hq`).
+
+## Test tooling
+
+Use Node 24 and `npm ci`. `npm test` records every completed run in `test-results/history.md`; `npm run test:history` regenerates the table. `npm run test:batch -- --list` lists categories; `npm run dev:check` continuously retests on edits. A build runs only when the checkout supplies `scripts/build.mjs`. See [docs/TESTING.md](docs/TESTING.md).

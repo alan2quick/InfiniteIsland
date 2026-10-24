@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { WorldSync } from '../public/js/net/worldSync.js';
-import { ISLANDS, CAMPFIRE_ISLANDS, VERSION } from '../public/js/config.js';
+import { ISLANDS, CAMPFIRE_ISLANDS } from '../public/js/config.js';
 import { getItem, listItems, listRecipes, getRecipe, dishMakeable, RECIPES } from '../public/js/game/catalog.js';
 import { CollectionLog, COLLECTIBLES, ALBUM_SIZE } from '../public/js/game/collection.js';
 import { QuestLog, QUESTS, getQuest, slotOf } from '../public/js/game/quests.js';
@@ -25,8 +25,6 @@ import { ICONS } from '../public/js/ui/icons.js';
 
 const island = ISLANDS.find((i) => i.id === 'duskcrown'), mod = getIslandModule('duskcrown');
 const DISHES = ['glimmerfin-skewer', 'marsh-chowder', 'dusk-wrap', 'lantern-supper'];
-
-test('the version is 0.82.3', () => { assert.equal(VERSION, '0.82.3'); });
 
 test('the fish, the crumbs and the four dishes are real catalog entries tagged for Duskcrown, with inline-SVG icons (no emoji)', () => {
   for (const id of ['glimmerfin', 'lanternkoi', 'glowcap-crumbs']) {

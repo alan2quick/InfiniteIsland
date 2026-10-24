@@ -3,3 +3,7 @@ node_modules/
 *.log
 .vercel/
 scratchpad/
+
+# Dependencies may be a directory or a symlink.
+node_modules
+test-results/

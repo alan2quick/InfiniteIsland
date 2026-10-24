@@ -1,6 +1,7 @@
 // Step 59: Glimmerfrost Caves, Frostpine's combat area: the five sections and their gates, the Frozen Ford (Frost Nova freezes the water into an ice bridge), the `rescue` objective, Frost
 // Nova itself (freeze, bosses chill, cooldown), shatter, the slingshot, flyers (the icicle bat is never immune), falling icicles, the Snow Golem's ice armor, the Armory unlocks, a scripted
 // clear for 1 and 3 players, a pacing estimate and the cave mouth's clearing on Frostpine. All pure (DungeonRun + the area data), no browser.
+import { assertPlacementGolden } from './helpers/placementGolden.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -558,8 +559,9 @@ test('the cave mouth stands on Frostpine\'s west lake bank, on gentle walkable g
 test('Frostpine\'s seeded placement did not move: trees, boulders, flowers, tufts, logs, spires, reeds, snowmen, gathering spots and critters hash as before Step 59', () => {
   const P = buildFrostPlacement(island, mod), G = planFrostGathering(island, mod), C = planCritters(island, mod);
   const h = (o) => crypto.createHash('md5').update(JSON.stringify(o)).digest('hex').slice(0, 10);
-  assert.deepEqual({ trees: h(P.trees), boulders: h(P.boulders), flowers: h(P.flowers), tufts: h(P.tufts), logs: h(P.logs), spires: h(P.spires), reeds: h(P.reeds), snowmen: h(P.snowmen), G: h(G), C: h(C) },
-    { trees: '10920ae081', boulders: '74e4276595', flowers: '21e5f95445', tufts: '2c942fd39a', logs: 'dbcd16f17c', spires: '46030bc993', reeds: 'dc25717e03', snowmen: 'eb93e4e3ba', G: '061f069356', C: '3054e7bf80' });
+  assert.deepEqual({ trees: h(P.trees), boulders: h(P.boulders), flowers: h(P.flowers), logs: h(P.logs), spires: h(P.spires), reeds: h(P.reeds), snowmen: h(P.snowmen), G: h(G), C: h(C) },
+    { trees: '10920ae081', boulders: '74e4276595', flowers: '21e5f95445', logs: 'dbcd16f17c', spires: '46030bc993', reeds: 'dc25717e03', snowmen: 'eb93e4e3ba', G: '061f069356', C: '3054e7bf80' });
+  assertPlacementGolden(P.tufts, 'frostTufts', '2c942fd39a');
   assert.equal(P.solids.length, 220, 'the only addition is the cave mouth\'s own solid (219 before Step 59)');
 });
 

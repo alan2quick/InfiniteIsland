@@ -1,5 +1,7 @@
 # Infinite Island: developer guide for new sessions
 
+**Test tooling:** use Node 24 and repository test commands so completed runs reach `test-results/history.md`. See [docs/TESTING.md](docs/TESTING.md) for focused batches and the continuous watcher. No cloud/editor feature is required by this tooling.
+
 A cozy Three.js island game in the style of Animal Crossing and Stardew Valley, for up to 4 players. Players can share one screen (keyboard, gamepads, phones as controllers) or join from their own device with their own camera (hybrid local + online over PeerJS). It has gathering, tools, cooking, quests, a day/night cycle and procedural music.
 It runs as plain ES modules with **no build step** and deploys as a static site to Vercel.
 

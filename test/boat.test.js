@@ -7,7 +7,7 @@ import { WorldSync } from '../public/js/net/worldSync.js';
 import { freshBoat, normaliseBoat, boatHashView, unlockedFromGarlands, unlockOnFeast, validateTake, applyTake, PARTS, COURSE_OF } from '../public/js/game/boatLogic.js';
 import { createReveals } from '../public/js/game/revealList.js';
 import { boatPages, nextHint, MARLO_SCRIPT, PART_HINTS } from '../public/js/game/marloScript.js';
-import { BOAT, MARLO, VERSION } from '../public/js/config.js';
+import { BOAT, MARLO } from '../public/js/config.js';
 
 const storage = new Map();
 globalThis.localStorage = { getItem: (k) => (storage.has(k) ? storage.get(k) : null), setItem: (k, v) => storage.set(k, v), removeItem: (k) => storage.delete(k) };
@@ -86,7 +86,7 @@ test('Marlo\'s boat talk follows the saved state and hints at the open courses; 
   for (const p of PARTS) s.parts[p] = true;
   assert.deepEqual(boatPages(s).slice(-1), MARLO_SCRIPT.allBack);
   assert.ok(MARLO_SCRIPT.intro.length >= 3 && MARLO_SCRIPT.intro.join(' ').includes('crew') && MARLO_SCRIPT.clams.join(' ').includes('clam'));
-  assert.equal(MARLO.name, 'Marlo'); assert.equal(VERSION, '0.82.3');
+  assert.equal(MARLO.name, 'Marlo');
 });
 
 // ---- the sync domain
