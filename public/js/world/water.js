@@ -36,6 +36,11 @@ export function setWaterLook(clock, duskWeight = 0) {
   waterUniforms.uNight.value = THREE.MathUtils.lerp(clock.nightness, 1, k);
 }
 
+// A local inlet opening, derived from the existing stream rather than a new terrain cut.
+const mouthStart = STREAM_PATH.find((p) => getTerrainHeight(p.x, p.z) < 0.45) || STREAM_PATH[STREAM_PATH.length - 4];
+const mouthEnd = STREAM_PATH[STREAM_PATH.length - 1];
+export const HOME_STREAM_MOUTH = Object.freeze({ ax: mouthStart.x, az: mouthStart.z, bx: mouthEnd.x, bz: mouthEnd.z, halfWidth: STREAM_HALF_WIDTH * 1.2 });
+
 const HEIGHT_TEX_SIZE = 384;      // home's patch: 150 u -> 0.39 u per texel (unchanged)
 const ISLAND_TEX_SIZE = 320;      // big islands: 244 u -> 0.76 u per texel
 const OCEAN_PAD = 450;           // outer plane reaches this far past the outermost island square (fog hides the edge by 330 u)
@@ -166,6 +171,8 @@ function oceanFrag(n) {
   uniform vec3 uDeepTint;
   uniform vec3 uFoamTint;
   uniform float uNight;
+  uniform vec4 uHomeMouthSegment;
+  uniform float uHomeMouthWidth;
   varying vec3 vWorld;
   ${decl}
 
@@ -211,6 +218,13 @@ function oceanFrag(n) {
     // Traveling foam belongs at sloping banks, not on broad flat, ankle-deep sandbars.
     float bank = smoothstep(0.035, 0.12, shoreSlope);
     float foam = max(rim, max(line1, line2 * 0.85) * bank);
+    // The shore is open where the stream enters: no white foam bar across the inlet.
+    vec2 inletA = uHomeMouthSegment.xy, inletB = uHomeMouthSegment.zw;
+    vec2 inletD = inletB - inletA;
+    float inletT = clamp(dot(p - inletA, inletD) / max(dot(inletD, inletD), 0.001), 0.0, 1.0);
+    float inletDistance = length(p - (inletA + inletD * inletT));
+    float inletOpen = 1.0 - smoothstep(uHomeMouthWidth * 0.82, uHomeMouthWidth * 1.1, inletDistance);
+    foam *= 1.0 - inletOpen;
     col = mix(col, uFoam * uFoamTint, foam);
 
     float alpha = mix(0.5, 0.97, smoothstep(0.0, 1.5, depth));
@@ -290,12 +304,14 @@ const STREAM_FRAG = /* glsl */`
  *   width  half width in u, a number or (i, p) => number
  *   opts.y(p, i) -> y | null   the water level at a point; null ENDS the ribbon there (it flows into a pond). Default: p.y
  *   opts.fall(p, i) -> 0..1    (optional) a per-vertex "falling / splashing" amount for the ember variant's shader (attribute aFall)
+ *   opts.mouth(p, i) -> 0..1   (optional) home pond-depth fade: shares the lake wave phase and dissolves into its surface (attribute aMouth)
  * Returns a THREE.BufferGeometry (or null when fewer than two points survive); makeRibbonMaterial() builds the matching material.
  */
 export function buildRibbonGeometry(path, width, opts = {}) {
   const positions = [];
   const uvs = [];
   const falls = [];
+  const mouths = [];
   const indices = [];
   let dist = 0;
   let prev = null;
@@ -316,6 +332,7 @@ export function buildRibbonGeometry(path, width, opts = {}) {
     positions.push(p.x + nx * hw, y, p.z + nz * hw, p.x - nx * hw, y, p.z - nz * hw);
     uvs.push(0, dist, 1, dist);
     if (opts.fall) { const f = opts.fall(p, i); falls.push(f, f); }
+    if (opts.mouth) { const amount = opts.mouth(p, i); mouths.push(amount, amount); }
     if (count > 0) {
       const k = count * 2;
       indices.push(k - 2, k - 1, k, k - 1, k + 1, k);
@@ -327,6 +344,7 @@ export function buildRibbonGeometry(path, width, opts = {}) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   if (opts.fall) geo.setAttribute('aFall', new THREE.Float32BufferAttribute(falls, 1));
+  if (opts.mouth) geo.setAttribute('aMouth', new THREE.Float32BufferAttribute(mouths, 1));
   geo.setIndex(indices);
   return geo;
 }
@@ -340,6 +358,21 @@ export function makeRibbonMaterial(uniformsShared = waterUniforms, opts = {}) {
       .replace('float flow = sin(vUv.y * 1.6 - uTime * 2.6', 'float flow = sin(vUv.y * (1.6 + 1.6 * vFall) - uTime * (2.6 + 3.0 * vFall)')
       .replace('gl_FragColor = vec4(col, 0.94);', 'float churn = step(0.55, 0.5 + 0.5 * sin(vUv.y * 5.3 - uTime * 7.0 + vUv.x * 9.0)); col = mix(col, uFoam * uFoamTint, vFall * (0.35 + 0.5 * churn)); gl_FragColor = vec4(col, 0.94);');
   }
+  if (opts.mouth) {
+    vertexShader = vertexShader.replace('varying vec2 vUv;', 'varying vec2 vUv; attribute float aMouth; varying float vMouth; uniform float uTime;')
+      .replace('vUv = uv;', 'vUv = uv; vMouth = aMouth;')
+      .replace('vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);', `
+        vec3 p = position;
+        vec3 wp = (modelMatrix * vec4(p, 1.0)).xyz;
+        float pondWave = sin(wp.x * 0.30 + uTime * 0.8) + sin(wp.z * 0.26 - uTime * 0.6) + sin((wp.x + wp.z) * 0.17 + uTime * 0.5);
+        p.y += pondWave * 0.05 * smoothstep(0.0, 0.12, aMouth);
+        vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);`);
+    fragmentShader = fragmentShader.replace('varying vec2 vUv;', 'varying vec2 vUv; varying float vMouth;')
+      .replace('step(0.82, e))', 'step(0.82, e) * (1.0 - smoothstep(0.08, 0.45, vMouth)))')
+      .replace('gl_FragColor = vec4(col, 0.94);', `float mouthFade = 1.0 - smoothstep(0.1, 1.0, vMouth);
+        float sideFade = 1.0 - smoothstep(mix(0.98, 0.65, vMouth), 1.0, e);
+        gl_FragColor = vec4(col, 0.94 * mouthFade * sideFade);`);
+  }
   const mat = new THREE.ShaderMaterial({
     uniforms: THREE.UniformsUtils.merge([THREE.UniformsLib.fog, {
       uTime: uniformsShared.uTime,
@@ -350,6 +383,7 @@ export function makeRibbonMaterial(uniformsShared = waterUniforms, opts = {}) {
     vertexShader,
     fragmentShader,
     transparent: true,
+    depthWrite: !opts.mouth,
     side: THREE.DoubleSide,
     fog: true,
     polygonOffset: true,
@@ -375,13 +409,13 @@ export function buildRibbon(path, width, opts = {}) {
   return mesh;
 }
 
-/** Home's stream: the plateau-foot spring down to the pond (unchanged look). */
+/** Home's stream: a soft inlet overlaps the lake, follows its waves and fades before the ribbon ends. */
 function buildStream() {
   return buildRibbon(STREAM_PATH, (i) => STREAM_HALF_WIDTH * 1.12 * (0.35 + 0.65 * Math.min(1, i / 4)), {   // tapers into a little spring
-    y(p, i) {
+    mouth(p) { return Math.max(0, Math.min(1, (WATER_LEVEL - getTerrainHeight(p.x, p.z)) / 1.05)); },
+    y(p) {
       const h = getHeight(p.x, p.z);
-      if (i > 8 && h < WATER_LEVEL - 0.12) return null;    // flows into the pond
-      return Math.max(h + 0.2, WATER_LEVEL + 0.03);
+      return Math.max(h + 0.2, WATER_LEVEL + 0.012);
     },
   });
 }
@@ -416,6 +450,8 @@ export function createWater() {
       uMarshDeep: { value: new THREE.Color(DUSK_WATER.deep) },
       uMarshGlint: { value: new THREE.Color(DUSK_WATER.glint) },
       uWaveAmp: { value: waveAmp },
+      uHomeMouthSegment: { value: new THREE.Vector4(HOME_STREAM_MOUTH.ax, HOME_STREAM_MOUTH.az, HOME_STREAM_MOUTH.bx, HOME_STREAM_MOUTH.bz) },
+      uHomeMouthWidth: { value: HOME_STREAM_MOUTH.halfWidth },
       uShallow: { value: new THREE.Color(PALETTE.waterShallow) },
       uDeep: { value: new THREE.Color(PALETTE.waterDeep) },
     }]);
