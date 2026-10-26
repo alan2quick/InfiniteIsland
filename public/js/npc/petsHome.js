@@ -129,17 +129,36 @@ function buildCaterpillarMesh() {
     ...Array.from({ length: n }, (_, i) => ({ name: `seg${i}`, pos: [0, CAT.foot + segRadius(i), restZ(i)] })),
     { name: 'head', pos: [0, CAT.headY, hz] },
   ];
-  return buildSkinned({ entry: e, bones, name: 'pet-caterpillar' });
+  const sk = buildSkinned({ entry: e, bones, name: 'pet-caterpillar' });
+  sk.headRanges = (e.roles.head || []).map(([s, c]) => [s, c]);           // the head's vertex runs (the tummy-ache tint, Step 74b)
+  return sk;
 }
 
 export function buildCaterpillar() {
   const sk = buildCaterpillarMesh();
   const { root, rig } = modelShell('pet-caterpillar', sk.mesh);
   const n = CAT.n, segs = Array.from({ length: n }, (_, i) => sk.bones[`seg${i}`]), headPivot = sk.bones.head;
-  const st = { k: 0, phase: 0, look: 0, nib: 0 };
+  const st = { k: 0, phase: 0, look: 0, nib: 0, ache: 0 };
+  const headBase = sk.headRanges.map(([s, c]) => sk.geometry.attributes.color.array.slice(s * 3, (s + c) * 3));   // the head's own colours, to blend from
+  const GREEN = new THREE.Color('#9fcf5a'), tmp = new THREE.Color();
   const model = {
     id: 'carle:caterpillar', kind: 'caterpillar', root, rig, mesh: sk.mesh, meshes: [sk.mesh], geometries: [sk.geometry], skeleton: sk.skeleton, bones: sk.bones,
     segments: segs, headPivot, drawCalls: 2, length: 0, height: 0, state: st,
+    /** The tummy ache (Step 74b): k 0 (the red head) .. 1 (a sickly green face), by rewriting the head's vertex colours (no new material, uniform or draw call). Cheap no-op while k does not change. */
+    setAche(k) {
+      k = clamp01(k);
+      if (Math.abs(k - st.ache) < 0.004 && (k !== 0 || st.ache === 0)) return;
+      st.ache = k;
+      const C = sk.geometry.attributes.color;
+      sk.headRanges.forEach(([s, c], r) => {
+        const base = headBase[r];
+        for (let i = 0; i < c; i++) {
+          tmp.setRGB(base[i * 3], base[i * 3 + 1], base[i * 3 + 2]).lerp(GREEN, k * 0.85);
+          C.setXYZ(s + i, tmp.r, tmp.g, tmp.b);
+        }
+      });
+      C.needsUpdate = true;
+    },
     update(dt, t, { anim = 'idle', speed = 1 } = {}) {
       const crawling = anim === 'crawl' || anim === 'walk', nibbling = anim === 'nibble';
       st.k += ((crawling ? 1 : 0) - st.k) * Math.min(1, dt * 4);

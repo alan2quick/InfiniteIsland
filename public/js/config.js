@@ -2,7 +2,7 @@
 
 // Game version, shown on the title card. The client can't read package.json (only public/ is deployed), so this is
 // the source of truth: bump it together with "version" in package.json. Minor = last completed PLAN.md step.
-export const VERSION = '0.85.4';
+export const VERSION = '0.85.5';
 
 // Held-mouse direction: world-unit dead bands, optional pooled ground ring.
 export const MOUSE_STEER = { dead: 0.6, sideDead: 0.4, ring: true };
@@ -795,6 +795,33 @@ export const CAPRAY = {
   dim: 0.85, dimEase: 1.4,                   // a smothered titan's cap glow drops by this fraction; seconds the glow takes to fade back (and to dim when the moss grows in)
   home: { from: 22, to: 75, want: 40 },      // the home pond lies this far from the hearth (want = the preferred distance), never the pond nearest to it
   pondR: [4.5, 8.5],                         // the home pond's radius range ("mid-size")
+};
+
+// ---- Step 74b: time that passes while the game is closed or the tab is hidden (world/dayNight.js catch-up, game/offlineTime.js). `maxAway` = the most real seconds one catch-up counts (30 days);
+// `minGap` = a hidden tab shorter than this many seconds is ignored (tab flicks).
+export const OFFLINE = { maxAway: 30 * 24 * 3600, minGap: 5 };
+
+// ---- Step 74b ("The Very Hungry Visitor", Carle's quest line on the home island): tunables for game/carleLogic.js (pure rules), game/carle.js (the host domain), world/carleWorld.js and world/islands/homeCarle.js.
+// `days[k]` = what the caterpillar wants on feeding day k+1: `items` { catalog id: count } (every id is pinned to the catalogue and `from` by a test) and `from` = the island(s) the items come from (a hint line, not a rule).
+// Lengths in units, times in seconds. `cocoonDays` = in-game days the cocoon needs (Step 74c; counted by dawns like the week).
+export const CARLE = {
+  days: [
+    { items: { apple: 1 }, from: ['home'] },
+    { items: { lingonberry: 2 }, from: ['frost'] },
+    { items: { banana: 3 }, from: ['ember'] },
+    { items: { peach: 4 }, from: ['home'] },
+    { items: { pineapple: 5 }, from: ['ember'] },
+    { items: { 'berry-jam': 1, 'lingonberry-tart': 1, 'grilled-banana': 1 }, from: ['home', 'frost', 'ember'] },   // the feast: one dish cooked at each island's campfire
+    { items: { mint: 1 }, from: ['frost'] },
+  ],
+  cocoonDays: 3,
+  sight: 6, feedReach: 3.2, remoteSlack: 2.5,    // first sight within this of the perch; a feeding from this far; the host accepts a REMOTE actor this much further (latency slack)
+  growth: { from: 1, to: 1.35 },                 // the caterpillar's root scale before the first feeding and after the seventh
+  // The caterpillar's own sapling (world/islands/homeCarle.js picks the spot): a small leafy plant 5.5-7 u from the home fire, preferably on the camera side (+Z, the follow camera looks north from the south).
+  // `radii` = the distances tried (in this order, for each angle step); `step` = degrees between the angles tried, fanning out from +Z; `room` = the free circle round the trunk (colliders, other interactables, grass only);
+  // `height` = the sapling's top; `leafY` / `leafOut` = the big leaf the caterpillar sits on: this high, and this far out toward the camera from the trunk; `hangY` = the branch the cocoon hangs from; `trunkR` = the collider.
+  sapling: { min: 5.5, max: 7, radii: [6.2, 5.8, 6.7], step: 15, room: 1.5, height: 1.25, leafY: 0.8, leafOut: 0.55, hangY: 1.02, hangOut: 0.45, trunkR: 0.16 },
+  beat: { eat: 2.4, hunger: 3.2 },               // s of the munching beat after a feeding; s a hunger bubble stays
 };
 
 // ---- Step 80a: Party Games (PLAN "Steps 80-84"). Short 4-player minigames in a themed pocket far west of every island (the Party Glade): game/party/*.js (pure rules), game/party.js (the screen runtime), world/party/*.js (the

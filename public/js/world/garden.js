@@ -144,6 +144,8 @@ export function createGarden({ world, sync, hud = null, clock = null, inventory 
   if (clock && typeof clock.on === 'function') {
     clock.on('phase', (p) => { if (sync.isHost) hostGrown(growPhases(state, state.phase, p), p); });
   }
+  // Step 74b: a hidden-tab catch-up jumps the clock WITHOUT phase events; the garden keeps no offline growth, so it just adopts the new phase (counting nothing). (The load catch-up is covered by reconcilePhase above.)
+  if (clock && typeof clock.onCatchUp === 'function') clock.onCatchUp((d) => { if (d && d.live && sync.isHost) hostGrown({ state, changed: [] }, clock.phase); });
 
   function hostFindSeed(id, actor, debug = false) {
     if (!isFlower(id)) return { reject: 'unknown' };

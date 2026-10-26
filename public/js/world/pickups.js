@@ -304,6 +304,19 @@ const MODELS = {
   },
 };
 
+// Step 74b: Carle's caterpillar munches the item's pickup model (apple, peach, banana, ...). A NEW mesh of the shared VERTEX_TOON material each call (the caller scales / disposes it: dispose the geometry
+// and the outline's); null for an item without a ground model (dishes: the caller draws its own stand-in). Origin at the base, already scaled to the pickup's size.
+export function createFoodModel(id) {
+  const build = MODELS[id];
+  if (!build) return null;
+  const m = build();
+  restOnGround(m.geo);
+  const mesh = new THREE.Mesh(m.geo, VERTEX_TOON);
+  mesh.add(makeOutline(m.geo, 0.028, smoothOutlineGeo(m.geo)));
+  mesh.scale.setScalar(m.scale || 1);
+  return mesh;
+}
+
 const COLLECT_RANGE = MAGNET_RADIUS + 3;      // the host accepts a remote collect from this far (latency + the actor moved on)
 const BACKOFF_MS = 1000;                     // replica: wall-clock wait before a refused pickup may be requested again (doubles per refusal, max 8 s)
 const AWAIT_TIMEOUT = 2.5;                    // s a replica's pickup waits for the host's verdict before dropping back

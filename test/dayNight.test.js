@@ -94,7 +94,7 @@ test('saves resume the game hour and malformed/blocked storage stays playable', 
     const a = new DayNight(); a.set(22.25); a.dispose();
     const b = new DayNight(); near(b.hour, 22.25); b.update(5); b.dispose();
     near(new DayNight().hour, 22.5);
-    for (const data of ['bad JSON', '{"v":1,"hour":"12"}', '{"v":1,"hour":99}', '{"v":2,"hour":12}']) {
+    for (const data of ['bad JSON', '{"v":1,"hour":"12"}', '{"v":1,"hour":99}', '{"v":3,"hour":12}']) {
       values.set(TIME_KEY, data); near(new DayNight().hour, 8);
     }
     globalThis.localStorage = { getItem() { throw Error('blocked'); }, setItem() { throw Error('blocked'); } };

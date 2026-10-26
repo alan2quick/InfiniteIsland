@@ -1,4 +1,4 @@
-// Simulation-time clock and reusable lighting sample. No wall-clock catch-up while away.
+// Simulation-time clock and reusable lighting sample. update(dt) only runs while the page runs, but since Step 74b the clock CATCHES UP by the real time that passed while the game was closed or the tab hidden (below).
 // set(hour) wraps to 0..24; update(dt) crosses phase boundaries at their configured rates.
 // Look colours are linear RGB; all interpolation targets/vectors are allocated once.
 //
@@ -8,9 +8,21 @@
 // host's `locked` / speed are adopted, so the `?time` and `?daylock` URL flags of a replica are ignored (main.js builds its clock without them):
 // the host's flags rule. Replicas never save the time (saving is off there). set(hour) on a replica is a debug request to the host.
 // Step 25 turns the easing into a proper clock-offset estimate. hashView = {locked, speed} (the hour itself differs by the latency).
+//
+// OFFLINE TIME (Step 74b; game/offlineTime.js has the maths). The time save 'infinite-island.time.v1' is { v: 2, hour, savedAt } (savedAt = Date.now() at each save: every ~5 s, on pagehide and when the tab hides); a v1 save
+// loads as before with no catch-up the first time. The HOST'S clock catches up in two places, at the normal rate (1 real s = 1 simulation s), never longer than config OFFLINE.maxAway, a clock that went backwards counts 0:
+//   - at LOAD (the constructor): away = now - savedAt (a gap under OFFLINE.minGap is ignored). Not with ?newgame, ?daylock or ?time, and not on a replica (new DayNight({ host: false }), which main.js passes for ?join). `?away=900` pretends 900 s passed
+//     (once, at load; it overrides ?newgame but not ?daylock / ?time). `clock.away` = { seconds, entered: { dawn, day, dusk, night } } for this load, or null.
+//   - when a HIDDEN TAB becomes visible again after OFFLINE.minGap s or more (`setHidden(false)`, wired to visibilitychange); `clock.catchUp(seconds)` runs the same path (debug: __game.dayNight.catchUp(n)).
+// A catch-up moves the hour (and re-samples the look) WITHOUT firing 'phase' events and WITHOUT moving elapsedHours, so timed world events and the Emberleaf garden (which keeps NO offline catch-up: it adopts the jumped
+// clock through reconcilePhase / its onCatchUp hook, counting nothing) are unaffected. Replicas get the new hour through the 'daynight' sync (they snap: more than 0.25 h off).
+//   clock.onCatchUp(fn({ seconds, entered, live }))   systems that DO count time away (Carle's days). `live` = a hidden-tab / debug catch-up; false = the load one. Returns an unsubscribe function.
+//   clock.flushCatchUp()   main.js calls it ONCE after every domain is created: it fires the LOAD catch-up (queued in the constructor, when nothing could listen yet) to the listeners. No-op without a pending one.
+//   clock.setHidden(hidden)   the visibility hook (testable without a DOM)
 import * as THREE from 'three';
-import { DAY_PHASES, PALETTE } from '../config.js';
+import { DAY_PHASES, PALETTE, OFFLINE } from '../config.js';
 import { NEW_GAME, loadSave, writeSave, clearSave } from '../game/save.js';
+import { advanceClock, awaySeconds } from '../game/offlineTime.js';
 
 export const TIME_KEY = 'infinite-island.time.v1';
 const wrap = (h) => ((h % 24) + 24) % 24;
@@ -56,8 +68,14 @@ function phaseAt(hour) {
 }
 
 export class DayNight {
-  constructor({ params = new URLSearchParams(typeof location === 'undefined' ? '' : location.search), persist = true } = {}) {
+  constructor({ params = new URLSearchParams(typeof location === 'undefined' ? '' : location.search), persist = true, now = () => Date.now(), host = true } = {}) {
     this.persist = persist;
+    this._now = now;
+    this._host = host;
+    this._catchListeners = new Set();
+    this._pendingCatchUp = null;
+    this._hiddenAt = null;
+    this.away = null;
     this.speed = 1;
     this.locked = params.has('daylock');
     this._listeners = new Set();
@@ -67,12 +85,25 @@ export class DayNight {
     this._ease = 0;                 // replica: hours still to add to the local clock to meet the host's
     if (persist && NEW_GAME) clearSave(TIME_KEY);
     const saved = persist && !NEW_GAME ? loadSave(TIME_KEY) : null;
-    let hour = saved?.v === 1 && Number.isFinite(saved.hour) && saved.hour >= 0 && saved.hour < 24 ? saved.hour : 8;
+    let hour = (saved?.v === 1 || saved?.v === 2) && Number.isFinite(saved.hour) && saved.hour >= 0 && saved.hour < 24 ? saved.hour : 8;
     const flag = params.get('time');
+    let timeFlag = false;
     if (flag !== null && flag.trim() !== '') {
       const aliases = { dawn: 6, noon: 12, dusk: 18.5, night: 0 };
       const value = aliases[flag] ?? Number(flag);
-      if (Number.isFinite(value)) hour = wrap(value);
+      if (Number.isFinite(value)) { hour = wrap(value); timeFlag = true; }
+    }
+    if (host && !this.locked && !timeFlag) {                  // the load catch-up (see the header): the host's clock only
+      const awayFlag = params.get('away');
+      let seconds = 0;
+      if (awayFlag !== null && awayFlag.trim() !== '' && Number.isFinite(Number(awayFlag))) seconds = Math.min(Math.max(0, Number(awayFlag)), OFFLINE.maxAway);
+      else if (persist && !NEW_GAME && saved?.v === 2) { seconds = awaySeconds(saved.savedAt, now()); if (seconds < OFFLINE.minGap) seconds = 0; }     // (a quick reload counts nothing, like a tab flick)
+      if (seconds > 0) {
+        const r = advanceClock(hour, seconds);
+        hour = r.hour;
+        this.away = { seconds, entered: r.entered };
+        this._pendingCatchUp = { seconds, entered: { ...r.entered }, live: false };
+      }
     }
     this.hour = hour;
     this.elapsedHours = 0; // monotonic simulated time; clock edits do not age timed world events
@@ -86,7 +117,7 @@ export class DayNight {
     this._save();
     if (persist && typeof window !== 'undefined') {
       this._onHide = () => this._save();
-      this._onVisibility = () => { if (document.hidden) this._save(); };
+      this._onVisibility = () => this.setHidden(!!document.hidden);
       window.addEventListener('pagehide', this._onHide);
       document.addEventListener('visibilitychange', this._onVisibility);
     }
@@ -96,6 +127,48 @@ export class DayNight {
     if (type !== 'phase') return () => {};
     this._listeners.add(fn);
     return () => this._listeners.delete(fn);
+  }
+
+  // ---- offline time (see the header)
+  onCatchUp(fn) {
+    this._catchListeners.add(fn);
+    return () => this._catchListeners.delete(fn);
+  }
+  _fireCatchUp(detail) {
+    for (const fn of [...this._catchListeners]) { try { fn(detail); } catch (e) { console.error(e); } }
+  }
+  /** Fire the queued LOAD catch-up to the listeners (main.js, once, after the domains exist). Returns the detail or null. */
+  flushCatchUp() {
+    const d = this._pendingCatchUp;
+    this._pendingCatchUp = null;
+    if (d) this._fireCatchUp(d);
+    return d;
+  }
+  /** Move the clock on by `seconds` of real time that passed while nothing ran (host only). Returns { seconds, entered, live: true } or null when nothing happened. */
+  catchUp(seconds) {
+    if (!this._host || (this._sync && this._sync.isReplica) || this.locked || !Number.isFinite(seconds) || !(seconds > 0)) return null;
+    const s = Math.min(seconds, OFFLINE.maxAway);
+    const r = advanceClock(this.hour, s * (Number.isFinite(this.speed) && this.speed > 0 ? this.speed : 1));
+    this.hour = r.hour;
+    this.phase = DAY_PHASES[phaseAt(this.hour)].name;           // silently: no 'phase' event (the garden counts nothing), elapsedHours does not jump
+    this._sample();
+    this._save();
+    this._emitTime();
+    const detail = { seconds: s, entered: r.entered, live: true };
+    this._fireCatchUp(detail);
+    return detail;
+  }
+  /** The tab hid / showed (visibilitychange): remember when it hid, and catch up by the hidden time when it shows again after OFFLINE.minGap s or more. */
+  setHidden(hidden) {
+    if (hidden) {
+      this._save();
+      if (this._hiddenAt === null) this._hiddenAt = this._now();
+      return null;
+    }
+    if (this._hiddenAt === null) return null;
+    const gap = (this._now() - this._hiddenAt) / 1000;
+    this._hiddenAt = null;
+    return gap >= OFFLINE.minGap ? this.catchUp(gap) : null;
   }
 
   _phase() {
@@ -217,7 +290,7 @@ export class DayNight {
     this.lightIntensity = this.look.lightIntensity * smooth(crossing / 0.5);
   }
 
-  _save() { if (this.persist) writeSave(TIME_KEY, { v: 1, hour: this.hour }); }
+  _save() { if (this.persist) writeSave(TIME_KEY, { v: 2, hour: this.hour, savedAt: this._now() }); }
   summary() { return { hour: this.hour, phase: this.phase, daylight: this.daylight, nightness: this.nightness, speed: this.speed, locked: this.locked, light: this.isMoon ? 'moon' : 'sun', intensity: this.lightIntensity }; }
   dispose() {
     this._save();
@@ -226,5 +299,6 @@ export class DayNight {
       document.removeEventListener('visibilitychange', this._onVisibility);
     }
     this._listeners.clear();
+    this._catchListeners.clear();
   }
 }
