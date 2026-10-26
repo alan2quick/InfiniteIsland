@@ -210,7 +210,8 @@ Keep PLAN.md and CLAUDE.md short: long text goes to the topic file, the changelo
 | 71 | Set sail to Duskcrown | done (0.71.0) | [plan/71-set-sail.md](plan/71-set-sail.md) |
 | 72 | Fishing in the Glowcap Marsh | done (0.72.1) | [plan/72-fishing.md](plan/72-fishing.md) |
 | 73 | Capray, the first pet | done (0.73.1) | [plan/73-capray.md](plan/73-capray.md) |
-| 74–79 | (numbers not used) | | |
+| 74 | Home and Frostpine pets (caterpillar → cocoon → butterfly; grey / arctic wolf) | 74a done (models + `__game.petLab`, 0.85.4); **74b–d to design** | [plan/74-home-frost-pets.md](plan/74-home-frost-pets.md) |
+| 75–79 | (numbers not used) | | |
 | 80–84 | Party Games | 80a–e done (80e committed at 0.85.0) | [plan/80-party-games.md](plan/80-party-games.md) |
 | 81 | Party Games II | done (0.81.1) | [plan/81-party-games-2.md](plan/81-party-games-2.md) |
 | 82 | Party Glade living pass | done (0.82.4) | [plan/82-living-pass.md](plan/82-living-pass.md) |
@@ -218,6 +219,7 @@ Keep PLAN.md and CLAUDE.md short: long text goes to the topic file, the changelo
 
 ### Open steps
 
+- [ ] Step 74b–d — Home / Frostpine pet quests and ground-pet following (to design) — [plan/74-home-frost-pets.md](plan/74-home-frost-pets.md)
 - [ ] Step 68f — Playtest fixes, star chart — [plan/68-boat.md](plan/68-boat.md)
 - [ ] Step 68g — Playtest fixes, repair and story — [plan/68-boat.md](plan/68-boat.md)
 - [ ] Step 53b — Wildroot Ramparts and bosses (storybook) — [plan/47-53-storybook.md](plan/47-53-storybook.md)

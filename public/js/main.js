@@ -123,6 +123,7 @@ import { createBoatParts } from './world/boatParts.js';
 import { createTdoongz } from './world/tdoongz.js';
 import { createPetsDomain } from './game/petsDomain.js';
 import { createPets } from './world/pets.js';
+import { createPetLab } from './world/petLab.js';
 import { createCapray } from './game/capray.js';                  // Step 73b: Capray's quest line "The Little Lantern" (the `capray` domain), its world side and the pet stable at the marsh hearth
 import { createCaprayWorld } from './world/caprayWorld.js';
 import { createPetStable } from './world/petStable.js';
@@ -486,6 +487,7 @@ const pets = createPets({
   scene, players, avatars, sync, domain: petsDomain, clock: dayNight, atmosphere, storybook, dungeon, cinematic, particles, sfx, heightAt: getHeight,
   duskItems: () => worldVis.visuals.duskcrown?.data?.dusk?.placement.items || null, isSailing: () => boatSailScene.active,
 });
+const petLab = createPetLab({ scene, players, heightAt: getHeight, camera });   // Step 74a: the debug viewer for the work-in-progress pet models (__game.petLab); free until something is shown
 // ---- Capray's quest line (Step 73b): the `capray` domain (host-saved in infinite-island.duskcrown.v1), the wild ray / shade moss / befriend scene (world/caprayWorld.js) and the pet stable by the marsh hearth
 const caprayPlan = duskCaprayPlan();
 const capray = createCapray({
@@ -899,6 +901,7 @@ function tick(realDt) {
   boatVoyageScene.update(dt);
   boatSailScene.update(dt); duskDock.update(dt);       // Step 71: the crossing (it owns the camera while it runs) and Duskcrown's dock
   pets.update(dt);                            // Step 73a: the pets follow their owners (after the crossing placed the crew's visuals)
+  petLab.update(dt);                          // Step 74a: the debug pet lab (does nothing while empty)
   capray.update(); caprayWorld.update(dt); petStable.update(dt);   // Step 73b: the host's befriend-scene timing, the wild ray / moss / scene (it owns the camera while the scene runs) and the pet stable
   fishing.update(dt); fishingPlay.update(dt, simTime); fishingSpots.update(dt, simTime);   // Step 72a: the host's spot schedule, this screen's anglers (after players / items), the spot rings
   boatLookouts.update(dt);
@@ -1309,7 +1312,7 @@ const tdoongzDebug = {
 const partyDebug = party;
 
 window.__game = {
-  version: VERSION, party: partyDebug, dusk: duskDebug, boat: boatDebug, tdoongz: tdoongzDebug, hats, tails, pets: petsDebug, capray: caprayDebug, petStable, garlands: {
+  version: VERSION, party: partyDebug, dusk: duskDebug, boat: boatDebug, tdoongz: tdoongzDebug, hats, tails, pets: petsDebug, petLab, capray: caprayDebug, petStable, garlands: {
     list: GARLANDS.map((g) => g.name), set: (p, i) => garlandStand.wear(typeof p === "number" ? players.list.find((a) => a.index === p) : p, i),
     cycle: (p = players.p1) => garlandStand.cycle(p), get unlocked() { return garlandStand.unlocked; },
     preview: (i) => players.p1.wearGarland(i), evaluate: () => garlandStand.evaluate(), api: garlandStand,

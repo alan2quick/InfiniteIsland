@@ -2,7 +2,7 @@
 
 // Game version, shown on the title card. The client can't read package.json (only public/ is deployed), so this is
 // the source of truth: bump it together with "version" in package.json. Minor = last completed PLAN.md step.
-export const VERSION = '0.85.3';
+export const VERSION = '0.85.4';
 
 // Held-mouse direction: world-unit dead bands, optional pooled ground ring.
 export const MOUSE_STEER = { dead: 0.6, sideDead: 0.4, ring: true };

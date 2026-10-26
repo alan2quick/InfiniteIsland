@@ -136,7 +136,8 @@ Everything goes through `tick(dt)` in [public/js/main.js](public/js/main.js), in
 
 ## Current state
 
-- **Version 0.85.3** (committed with Steps 85b-d; Step 80e was committed at 0.85.0): Steps 85b-d complete Step 85, the Crownlands (sunlit lighting, water, falls, floating islands, acacia and baobab trees). 1435 tests pass (`npm test`; if it fails with spawn EPERM in a sandbox, run files one by one with `node --test --test-isolation=none`).
+- **Version 0.85.4**: Step 74a (below) on top of 0.85.3, where Steps 85b-d complete Step 85, the Crownlands (sunlit lighting, water, falls, floating islands, acacia and baobab trees). 1435 tests pass (`npm test`; if it fails with spawn EPERM in a sandbox, run files one by one with `node --test --test-isolation=none`).
+- **Step 74a** (0.85.4): WIP pet models (caterpillar / cocoon / butterfly `carle`, wolf `snowsong`) in `npc/pets{Kit,Home,Frost,Wip}.js`, debug viewer `__game.petLab`; NOT in `PET_IDS`. 74b-d (quests, ground following) still to design.
 - **Next:** Crownlands tuning noted in the 85a-d changelog entries (wading depth, lavender patches, river width, island colours); other open steps are in PLAN.md.
 - **Never verified by anyone:** any audio by ear, real phones (touch, "Play on this phone" over a real network), real-device GPU cost, a real standard gamepad, kids' feel and balance of the party games. Each step's own gaps are in its changelog entry.
 - Backlog / known rough edges: PLAN.md "Backlog and known rough edges".

@@ -39,7 +39,7 @@ import { Avatars } from '../public/js/net/avatars.js';
 
 installDom();
 
-test('the version is 0.85.3', () => { assert.equal(VERSION, '0.85.3'); });
+test('the version is 0.85.4', () => { assert.equal(VERSION, '0.85.4'); });
 
 // ============================================================================================ the pocket
 test('the Party Glade pocket is clear of every island rectangle, the page lane, the combat-area pockets and the test yard; its stages sit inside it', () => {
