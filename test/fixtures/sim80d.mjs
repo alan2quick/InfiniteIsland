@@ -43,7 +43,7 @@ export function playFeast(seed, difficulty, seat = 0) {
     }
     for (const r of F.step(g, {}, 1/60, t)) F.apply(g, r);
   }
-  return { win: F.placing(g).find(r => r.slot === seat).place === 1, scores: g.scores, walking };
+  return { win: seat >= 0 && F.placing(g).find(r => r.slot === seat).place === 1, scores: g.scores, walking, g, t: S.duration, placing: F.placing(g) };      // (Step 80e: seat -1 = four bots, no kid; the soak reads g / placing)
 }
 export function feastRate(difficulty, n=40) { let wins=0; for(let seed=1;seed<=n;seed++) wins+=playFeast(seed,difficulty,seed%4).win; return wins/n; }
 if (process.argv[1]?.endsWith('sim80d.mjs')) for (const d of PARTY.difficulties) console.log(d, feastRate(d));

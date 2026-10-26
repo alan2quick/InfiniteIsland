@@ -789,6 +789,10 @@ export const PARTY = {
     hard:   { react: 0.20, noise: 0.045, miss: 0.015, ready: [1, 3.5], walk: 1, fool: 0.05, shell: { lead: 0.27, after: 0.12 }, reel: 7.5 },
   },
   kiosk: { exitHold: 3 },
+  // ---- Step 80e: a bonus star per game for its feat; the trophy ceremony after the last round of a party; the kiosk's attract mode (`?party&kiosk`, or `?attract`)
+  bonusStars: 1,
+  ceremony: { length: 18, rise: 1.3, confetti: 1.5, skipArm: 0.8 },        // seconds of the cut on the lobby podium (host-timed); the trophy rises at `rise`; a confetti burst every `confetti` s; the skip hint arms after `skipArm` s
+  attract: { idle: 120, duck: 0.5, touch: 1 },                              // seconds without any human input before the bots play on their own; the music's level meanwhile; how often (s) a joined screen tells the host somebody is playing
   slack: 0.35,                                  // the host accepts a REMOTE press stamped this much (s) in its past (latency); anything older is clamped
   tick: 0.2,                                    // the host's clock beat for replicas (s)
   vineskip: {

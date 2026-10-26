@@ -20,7 +20,7 @@ export function init(seed, roster) {
     balls[s] = { x: Math.cos(a) * r, z: Math.sin(a) * r, vx: 0, vz: 0, mass: S.mass, hopAt: -9, outAt: null, facing: Math.atan2(-Math.cos(a), -Math.sin(a)), gait: 0, bumpX: 0, bumpZ: 0, roll: [0, 0, 0, 1] };
     alive[s] = true; inputs[s] = { x: 0, z: 0 };
   });
-  return { seed: seed >>> 0, slots, balls, alive, inputs, outAt: {}, simT: 0, bumps: 0, done: false, endAt: null };
+  return { seed: seed >>> 0, slots, balls, alive, inputs, outAt: {}, simT: 0, bumps: 0, hits: {}, done: false, endAt: null };
 }
 
 /** Roll around the world axis perpendicular to actual centre travel. Left multiplication preserves direction changes; no rendered-frame clock is involved. */
@@ -69,6 +69,7 @@ export function step(g, ctx, dt, t) {
   // A slice displaces the fastest approaching pair by <= .15 u, far less than the 2 u diameter: no tunnelling at maximum speed.
   const end = Math.min(t, S.duration), slices = Math.max(1, Math.ceil((end - g.simT) * 120)), h = (end - g.simT) / slices;
   let bumps = g.bumps;
+  const hits = { ...(g.hits || {}) };
   for (let k = 0; k < slices; k++) {
     const at = g.simT + (k + 1) * h, previous = {};
     for (const s of g.slots) {
@@ -89,7 +90,7 @@ export function step(g, ctx, dt, t) {
       if (alive[a] && alive[b]) {
         const va = { x: balls[a].vx, z: balls[a].vz }, vb = { x: balls[b].vx, z: balls[b].vz };
         if (collide(balls[a], balls[b])) {
-          bumps++;
+          bumps++; hits[a] = (hits[a] || 0) + 1; hits[b] = (hits[b] || 0) + 1;
           balls[a].bumpX = clamp(balls[a].bumpX + (balls[a].vx - va.x) * 0.045, -0.32, 0.32);
           balls[a].bumpZ = clamp(balls[a].bumpZ + (balls[a].vz - va.z) * 0.045, -0.32, 0.32);
           balls[b].bumpX = clamp(balls[b].bumpX + (balls[b].vx - vb.x) * 0.045, -0.32, 0.32);
@@ -103,7 +104,7 @@ export function step(g, ctx, dt, t) {
     for (const s of g.slots) if (alive[s] && offCap(balls[s], at)) { alive[s] = false; outAt[s] = at; balls[s].outAt = at; }
   }
   const done = (g.slots.length > 1 && g.slots.filter((s) => alive[s]).length <= 1) || end >= S.duration;
-  return [{ k: 'motion', balls, alive, outAt, bumps, t: end, done }];
+  return [{ k: 'motion', balls, alive, outAt, bumps, hits, t: end, done }];
 }
 
 export function apply(g, rec) {
@@ -111,7 +112,7 @@ export function apply(g, rec) {
     g.inputs[rec.slot] = { x: rec.x, z: rec.z };
     if (rec.jump) g.balls[rec.slot].hopAt = rec.t;
   } else if (rec.k === 'motion') {
-    g.balls = rec.balls; g.alive = rec.alive; g.outAt = rec.outAt; g.bumps = rec.bumps; g.simT = rec.t;
+    g.balls = rec.balls; g.alive = rec.alive; g.outAt = rec.outAt; g.bumps = rec.bumps; g.simT = rec.t; if (rec.hits) g.hits = rec.hits;      // (hits: Step 80e's bonus feat, "Most bumps")
     g.done = rec.done; if (rec.done) g.endAt = rec.t;
   } else if (rec.k === 'end') { g.done = true; g.endAt = rec.t;
   } else if (rec.k === 'out' && g.alive[rec.slot]) {

@@ -351,7 +351,7 @@ players.on('leave', (p) => {
 // ---- Pairing panel (freezes everybody while open) + link events
 const pairPanel = new PairPanel(hudRoot, {
   controllerOnly: !!joinCode,                // a joined screen's phones can only be controllers of THIS screen
-  canOpen: () => !dialog.isOpen && !cinematic.busy && !bagPanel.isOpen,
+  canOpen: () => !dialog.isOpen && !cinematic.busy && !bagPanel.isOpen && !party.kiosk,      // (Step 80e: no pair panel in a kiosk)
   onOpen: () => { players.frozenAll = true; keyboard.releaseMouse(); touch?.widget.reset(); },
   onClose: () => { players.frozenAll = false; },
 });
@@ -470,7 +470,7 @@ const boatSailScene = createBoatSailScene({ scene, sail: boatSail, boat, cove, c
   onArrive: () => { players.update(0); worldVis.snap(); atmosphere.snap(); followCam.regionBlend = atmosphere.duskWeight; followCam.snap(); followCam.update(0, players.focus); } });
 sailRegion = () => boatSailScene.region();
 // ---- Party Games (Step 80a): `__game.party.open()` or ?party moves the whole roster to the Party Glade for short minigames (bots fill empty seats); refused while a cutscene / feast / combat run / storybook page / crossing runs
-const party = createParty({ scene, camera, followCam, players, avatars, table: slotTable, sync, hud, hudRoot, dialog, particles, sfx, music, items, world: worldVis, water, params, outfits: { hats: hatRack, tails: tailStump, garlands: garlandStand },
+const party = createParty({ scene, camera, followCam, players, avatars, table: slotTable, sync, hud, hudRoot, dialog, particles, sfx, music, items, world: worldVis, water, params, cinematic, outfits: { hats: hatRack, tails: tailStump, garlands: garlandStand },
   busy: () => (dungeon.state.active ? 'combat' : storybook.state.active ? 'storybook' : boatSailScene.active ? 'crossing' : feast.busy ? 'feast' : cinematic.busy ? 'cinematic' : boatLookouts.active ? 'lookout' : null) });
 let autoParty = params.has('party') && !joinCode ? party.optsFromParams(params) : null;
 boatVoyageScene.setSail((to, p) => boatSailScene.ask(to, p));
@@ -579,7 +579,7 @@ window.addEventListener('keydown', (e) => {
 });
 // ---- Music (Step 16): N toggles the music only (M still mutes everything); a music-note button sits next to the speaker
 const musicButton = createMusicButton(hudRoot, music, sfx);
-const optionsMenu = createOptionsMenu(hudRoot, { musicButton, muteButton, pairPanel, hud, touch, juice: dungeon.juice, onFriends: () => (party.active ? hud.toast('Not during the party!', { icon: 'sparkle', duration: 1800 }) : travel.showFriends()), onJournal: () => bagPanel.journal() });
+const optionsMenu = createOptionsMenu(hudRoot, { musicButton, muteButton, pairPanel, hud, touch, locked: party.kiosk, juice: dungeon.juice, onFriends: () => (party.active ? hud.toast('Not during the party!', { icon: 'sparkle', duration: 1800 }) : travel.showFriends()), onJournal: () => bagPanel.journal() });
 const bagPanel = createBagPanel(hudRoot, {
   inventory, islands: ISLANDS, collection, dungeon, players, storybook,
   unlocked: (id) => id === 'home' || !!bridges.entry(id)?.built, region: questRegion,
@@ -602,10 +602,11 @@ window.addEventListener('keydown', (e) => {
 });
 const timeDial = createTimeDial(hudRoot, { clock: dayNight });
 hud.joinButton.addEventListener('click', () => { pairPanel.open(); hud.joinButton.blur(); });
+if (party.kiosk) hud.joinButton.style.display = 'none';                                                // Step 80e: ?party&kiosk has no Join button
 // The keyboard player's roster chip has a leave button in local multiplayer (any key rejoins; see PlayerManager.leaveLocal)
 hud.onLeave = () => { if (!cinematic.busy && !pairPanel.isOpen) players.leaveLocal(); };
 // A controller that took over P1 shares it with the keyboard; J (or the chip's split button) gives the keyboard its own player (splitLocal)
-const splitLocal = () => { if (!cinematic.busy && !pairPanel.isOpen && !bagPanel.isOpen) players.splitLocal(); };
+const splitLocal = () => { if (!party.kiosk && !cinematic.busy && !pairPanel.isOpen && !bagPanel.isOpen) players.splitLocal(); };
 hud.onSplit = splitLocal;
 window.addEventListener('keydown', (e) => {
   if (e.code !== 'KeyJ' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -625,8 +626,9 @@ window.addEventListener('keydown', (e) => {
 });
 music.start();
 const title = new TitleCard(hudRoot, { duration: 2.6 });
+if (party.kiosk) title.skip();                                                                        // Step 80e: ?party&kiosk starts on the Glade with no title card
 // Phones / tablets: offer a one-tap fullscreen (or an Add-to-Home-Screen tip on iPhone) once the title card is gone.
-if (touch) createFullscreenPrompt(hudRoot, { hud, delay: 3 });
+if (touch && !party.kiosk) createFullscreenPrompt(hudRoot, { hud, delay: 3 });
 window.addEventListener('pointerdown', () => title.dismiss(), { passive: true });
 
 let controls = null;

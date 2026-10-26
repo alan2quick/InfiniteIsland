@@ -24,5 +24,5 @@ export function pair({ positionOf = () => null, delayMs = 0 } = {}) {
   const equal = (msg = '') => assert.equal(hSync.hash(), rSync.hash(), `hashes equal ${msg}`);
   const run = (secs, dt = 1 / 30, each = null) => { for (let t = 0; t < secs - 1e-9; t += dt) { clock.ms += dt * 1000; host.update(dt); flush(); if (each && each() === false) return; } };
   const rActor = () => ({ screen: rSync.screenId, index: rSlot, pos: { x: 0, y: 0, z: 0 } });
-  return { clock, hSync, rSync, host, replica, flush, equal, run, rActor, rSlot };
+  return { clock, hSync, rSync, host, replica, flush, equal, run, rActor, rSlot, hTable };
 }

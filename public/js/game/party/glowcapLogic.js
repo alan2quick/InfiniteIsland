@@ -146,7 +146,7 @@ export function roundAt(plan, t) {
 export function init(seed, roster) {
   const slots = roster.map((p) => p.slot), alive = {}, outR = {};
   for (const s of slots) alive[s] = true;
-  return { seed: seed >>> 0, slots, alive, outR, round: 0, done: false, endAt: null };
+  return { seed: seed >>> 0, slots, alive, outR, ctr: {}, ctn: {}, round: 0, done: false, endAt: null };
 }
 const aliveSlots = (g) => g.slots.filter((s) => g.alive[s]);
 
@@ -154,12 +154,13 @@ export function step(g, ctx, dt, t) {
   if (g.done) return [];
   const recs = [], plan = buildPlan(g.seed), R = plan.rounds[g.round];
   if (!R || t < R.sinkAt) return recs;
-  const out = [], c = capCentre(R.call);
+  const out = [], d = {}, c = capCentre(R.call);
   for (const s of aliveSlots(g)) {
     const p = ctx.pos ? ctx.pos(s) : null;
     if (p && Math.hypot(p.x - c.x, p.z - c.z) > G.capR) out.push(s);              // (a body whose position is unknown is never splashed)
+    else if (p) d[s] = r2(Math.hypot(p.x - c.x, p.z - c.z));                      // (Step 80e: how close to the cap's heart a dry body stood, for the "Bullseye feet" bonus)
   }
-  recs.push({ k: 'sink', r: R.r, t: R.sinkAt, out });
+  recs.push({ k: 'sink', r: R.r, t: R.sinkAt, out, d });
   const left = aliveSlots(g).length - out.length;
   if (R.r >= plan.rounds.length - 1) recs.push({ k: 'end', t: r2(t), why: 'rounds' });
   else if (g.slots.length > 1 ? left <= 1 : left === 0) recs.push({ k: 'end', t: r2(t), why: 'last' });
@@ -173,6 +174,7 @@ export function apply(g, rec) {
   if (rec.k === 'sink') {
     for (const s of rec.out) if (g.alive[s]) { g.alive[s] = false; g.outR[s] = rec.r; }
     g.round = Math.max(g.round, rec.r + 1);
+    if (rec.d) { g.ctr ||= {}; g.ctn ||= {}; for (const s in rec.d) { g.ctr[s] = (g.ctr[s] || 0) + rec.d[s]; g.ctn[s] = (g.ctn[s] || 0) + 1; } }
   } else if (rec.k === 'zap') { if (g.alive[rec.slot]) { g.alive[rec.slot] = false; g.outR[rec.slot] = g.round; } }      // (debug only)
   else if (rec.k === 'end') { g.done = true; g.endAt = rec.t; }
   return g;

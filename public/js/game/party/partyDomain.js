@@ -9,15 +9,19 @@
 //   party.toggle(id, on) / enabled() / games()      the Game Board (the last enabled game cannot be switched off); setMode(...) / playNext(id) / skip() / setReady(actor, on)
 //   party.act(actor, t, extra)   a press of the game's button (Jump in Vine Skip, Interact in Timber Trim, a flag colour in Marlo Says via extra { flag }, a hold start / end via extra { on } in Pinecone Huddle): `t` = the presser's game-clock estimate, re-judged on the host with PARTY.slack
 //   party.debug                  host-only: win(slot), end(), seed(n), play(id)
+//   (Step 80e) results.bonus = { label, text, slots } (the game's feat, bonusLogic.js; its winners earn PARTY.bonusStars). After the LAST round of a party (mode 'party') the lobby opens with `ceremony: { places }` (the trophy cut: 1st / 2nd / 3rd,
+//   ties share a place): the host ends it after PARTY.ceremony.length s, or on skipCeremony (any screen: the shared hold-Cancel skip), and a FRESH party starts (round 0, no stars). `attract` (host request, bots only: the kiosk's idle
+//   demo) leaves the human seats out of the roster so the bots play on their own; setAttract(false) / any human input brings a fresh lobby back. `touch` (any screen) tells the host somebody is playing (it only counts: `touches`).
 //
 // State (JSON, snapshot = hashView minus the timers): { v, active, serial, mode, rounds, difficulty, bots, enabled, phase, round, bag, last, next, game, seed, roster: [{ slot, bot, name, ready }], stars: { slot: n }, g, results, seenHowto: [gameId],
 //   t (phase seconds), gt (game seconds), startAt (host wall ms of Go!) }.  Events: state { s } (every phase / roster / board change) and rec { r, gt } (one game record, applied with the game's apply()).
 // The host also sends a beat event tick { gt } every PARTY.tick s while a game counts down / plays (never hashed): a replica's game clock is the synced wall clock plus a smoothed correction from it.
-// Requests: open | close | toggle | mode | next | skip | ready | act | debugWin | debugEnd | debugSeed | debugPlay. Open / close / board changes are host-screen only.
+// Requests: open | close | toggle | mode | next | skip | ready | act | skipCeremony | touch | attract | debugWin | debugEnd | debugSeed | debugPlay. Open / close / board changes are host-screen only.
 import { PARTY } from '../../config.js';
 import { mulberry32 } from '../../utils/rng.js';
 import { GAMES, GAME_IDS, getGame } from './registry.js';
-import { newFlow, goTo, flowTick, drawGame, toggleGame, normalisePrefs, awardStars, parseBots } from './flowLogic.js';
+import { newFlow, goTo, flowTick, drawGame, toggleGame, normalisePrefs, awardStars, awardBonus, finalPlaces, parseBots } from './flowLogic.js';
+import { bonusFor } from './bonusLogic.js';
 
 const r2 = (v) => Math.round(v * 100) / 100;
 const TIMER_KEYS = ['t', 'gt', 'startAt'];
@@ -27,7 +31,7 @@ export function freshState(prefs) {
     v: 1, active: false, serial: 0,
     mode: prefs.mode, rounds: prefs.rounds, difficulty: prefs.difficulty, bots: prefs.bots, enabled: prefs.enabled.slice(),
     phase: 'lobby', round: 0, bag: [], last: null, next: null, game: null, seed: 0,
-    roster: [], stars: {}, g: null, results: null, seenHowto: [],
+    roster: [], stars: {}, g: null, results: null, seenHowto: [], ceremony: null, attract: false,
     t: 0, gt: 0, startAt: 0,
   };
 }
@@ -57,6 +61,9 @@ export function normaliseState(raw, prefs) {
   s.stars = raw.stars && typeof raw.stars === 'object' ? Object.fromEntries(Object.entries(raw.stars).filter(([k, v]) => /^[0-3]$/.test(k) && Number.isInteger(v) && v >= 0)) : {};
   s.g = s.game && raw.g && typeof raw.g === 'object' ? raw.g : null;
   s.results = raw.results && typeof raw.results === 'object' && Array.isArray(raw.results.ranks) ? raw.results : null;
+  s.attract = !!raw.attract;
+  s.ceremony = raw.ceremony && typeof raw.ceremony === 'object' && Array.isArray(raw.ceremony.places)
+    ? { places: raw.ceremony.places.filter((p) => p && Number.isInteger(p.slot) && p.slot >= 0 && p.slot < 4 && Number.isInteger(p.place) && p.place >= 1).map((p) => ({ slot: p.slot, place: p.place, stars: Number.isInteger(p.stars) ? p.stars : 0 })) } : null;
   for (const k of TIMER_KEYS) s[k] = Number.isFinite(raw[k]) ? raw[k] : 0;
   return s;
 }
@@ -73,7 +80,7 @@ export function createPartyDomain({ sync, table, prefs = { read: () => null, wri
   const flow = newFlow();
   const listeners = [];
   const seedRng = mulberry32(((rng() * 0x7fffffff) | 0) ^ 0x9a3c1);
-  let doneFor = 0, tickAcc = 0, skew = 0;                    // skew (replica): host game seconds minus the wall-clock estimate, corrected by the host's beat (a slow host tab drifts from wall time)
+  let doneFor = 0, tickAcc = 0, skew = 0, touches = 0;                    // skew (replica): host game seconds minus the wall-clock estimate, corrected by the host's beat (a slow host tab drifts from wall time)
   let lastView = { active: false, phase: 'lobby', game: null, serial: 0 };
   const fire = (kind, data) => {
     if (kind === 'state') {                                   // every listener gets what changed: prev = the previous { active, phase, game, serial }
@@ -103,7 +110,7 @@ export function createPartyDomain({ sync, table, prefs = { read: () => null, wri
     const old = new Map(state.roster.map((r) => [r.slot, r]));
     const out = [];
     table.slots.forEach((e, slot) => {
-      if (!e) return;
+      if (!e || (state.attract && !e.bot)) return;                       // (the kiosk's attract mode: only the bots play)
       out.push({ slot, bot: !!e.bot, name: e.bot ? String(e.name || `Bot${slot + 1}`).slice(0, 24) : `P${slot + 1}`, ready: !!(old.get(slot) && old.get(slot).ready) });
     });
     return out;
@@ -116,14 +123,18 @@ export function createPartyDomain({ sync, table, prefs = { read: () => null, wri
     return true;
   }
 
-  function enter(phase) {
+  function enter(phase, opts = {}) {
     goTo(flow, phase);
     state.phase = phase; state.t = 0;
     if (phase === 'lobby') {
       for (const r of state.roster) r.ready = false;
       refreshRoster();
       state.g = null; state.game = null; doneFor = 0;
-      if (state.results && state.results.partyOver) { state.round = 0; state.stars = {}; state.results = null; }
+      if (opts.ceremony) state.ceremony = { places: finalPlaces(state.stars, state.roster) };                         // (Step 80e: the trophy cut keeps the stars until it ends)
+      else {
+        state.ceremony = null;
+        if (state.results && state.results.partyOver) { state.round = 0; state.stars = {}; state.results = null; }
+      }
     } else if (phase === 'pick') {
       refreshRoster();
       const d = drawGame({ bag: state.bag, enabled: state.enabled, last: state.last, rng, forced: state.next });
@@ -142,11 +153,32 @@ export function createPartyDomain({ sync, table, prefs = { read: () => null, wri
     } else if (phase === 'results') {
       const ranks = game().placing(state.g);
       const winners = ranks.filter((r) => r.place === 1).map((r) => r.slot);
+      const bonus = bonusFor(state.game, state.g);
       state.stars = awardStars(state.stars, ranks);
+      if (bonus) state.stars = awardBonus(state.stars, bonus.slots);
       const partyOver = state.mode === 'party' && state.round >= state.rounds;
-      state.results = { game: state.game, ranks, winners, partyOver, round: state.round };
+      state.results = { game: state.game, ranks, winners, partyOver, round: state.round, bonus: bonus || null };
     }
     publish();
+  }
+
+  /** The trophy cut is over (it ran out, or somebody held Cancel): a FRESH party starts in the lobby. */
+  function endCeremony() {
+    state.ceremony = null; state.round = 0; state.stars = {}; state.results = null;
+    flow.first = true;
+    enter('lobby');
+  }
+  /** The kiosk's attract mode: the bots play without the (idle) humans; off = a fresh lobby. */
+  function doAttract(on) {
+    if (!state.active) return { reject: 'closed' };
+    on = !!on;
+    if (on === state.attract) return true;
+    if (on && table.slots.filter((e) => e && e.bot).length < 2) return { reject: 'no-bots' };
+    state.attract = on;
+    state.round = 0; state.stars = {}; state.results = null; state.ceremony = null;
+    flow.first = true;
+    enter('lobby');
+    return true;
   }
 
   function hostOnly(screen) { return screen === 'host'; }
@@ -214,6 +246,8 @@ export function createPartyDomain({ sync, table, prefs = { read: () => null, wri
         case 'open': return hostOnly(screen) ? doOpen(d) : { reject: 'host-only' };
         case 'close': return hostOnly(screen) ? doClose() : { reject: 'host-only' };
         case 'act': return doAct(actor, screen, d);
+        case 'skipCeremony': { if (!state.active || !state.ceremony) return { reject: 'not-now' }; endCeremony(); return true; }
+        case 'touch': touches++; return true;
         case 'ready': {
           const slot = slotOf(actor, screen), r = state.roster.find((x) => x.slot === slot);
           if (!state.active || state.phase !== 'howto' || !r || r.bot) return { reject: 'not-now' };
@@ -240,7 +274,8 @@ export function createPartyDomain({ sync, table, prefs = { read: () => null, wri
           state.next = state.next === d.id ? null : d.id; publish();
           return true;
         }
-        case 'skip': { if (!state.active) return { reject: 'closed' }; const order = ['lobby', 'pick', 'howto', 'countdown', 'play', 'results']; enter(state.phase === 'pick' && state.seenHowto.includes(state.game) ? 'countdown' : order[(order.indexOf(state.phase) + 1) % order.length]); return true; }
+        case 'attract': return doAttract(d.on);
+        case 'skip': { if (!state.active) return { reject: 'closed' }; if (state.ceremony) { endCeremony(); return true; } const order = ['lobby', 'pick', 'howto', 'countdown', 'play', 'results']; enter(state.phase === 'pick' && state.seenHowto.includes(state.game) ? 'countdown' : order[(order.indexOf(state.phase) + 1) % order.length]); return true; }
         case 'debugPlay': {
           if (!state.active || !GAME_IDS.includes(d.id)) return { reject: 'unknown-game' };
           state.next = d.id; if (!state.enabled.includes(d.id)) state.enabled = [...state.enabled, d.id];
@@ -276,6 +311,10 @@ export function createPartyDomain({ sync, table, prefs = { read: () => null, wri
     setMode: (o) => sync.request('party', 'mode', o || {}, null),
     playNext: (id) => sync.request('party', 'next', { id }, null),
     skip: () => sync.request('party', 'skip', {}, null),
+    skipCeremony: () => sync.request('party', 'skipCeremony', {}, null),
+    touch: () => sync.request('party', 'touch', {}, null),
+    setAttract: (on) => sync.request('party', 'attract', { on: !!on }, null),
+    get touches() { return touches; },
     setReady: (actor, on) => sync.request('party', 'ready', { on: !!on }, actor),
     act: (actor, t, extra) => sync.request('party', 'act', { ...(extra && typeof extra === 'object' ? extra : {}), t }, actor),
     /** The game clock (seconds; negative before Go!). The host runs it; a replica derives it from `startAt` and the synced wall clock. */
@@ -288,6 +327,7 @@ export function createPartyDomain({ sync, table, prefs = { read: () => null, wri
     update(dt) {
       if (!sync.isHost || !state.active) return;
       state.t += dt;
+      if (state.phase === 'lobby' && state.ceremony && state.t >= PARTY.ceremony.length) { endCeremony(); return; }
       if (state.phase === 'lobby' || state.phase === 'results' || state.phase === 'pick') {
         if (refreshRoster()) publish();
       }
@@ -303,15 +343,15 @@ export function createPartyDomain({ sync, table, prefs = { read: () => null, wri
       const to = flowTick(flow, dt, {
         humans: humans.length, allReady: humans.length > 0 && humans.every((r) => r.ready), mode: state.mode, pickChosen: !!state.next,
         gameDone: !!(state.g && state.g.done), doneFor, tail: g && g.tail !== undefined ? g.tail : 1.4, gameCap: g ? g.duration + 4 : 90,
-        lastRound: !!(state.results && state.results.partyOver), howtoSeen: state.seenHowto.includes(state.game),
+        lastRound: !!(state.results && state.results.partyOver), howtoSeen: state.seenHowto.includes(state.game), ceremony: !!state.ceremony,
       });
-      if (to) enter(to);
+      if (to) enter(to, { ceremony: to === 'lobby' && state.phase === 'results' && !!(state.results && state.results.partyOver) });
     },
     summary() {
       return {
         active: state.active, serial: state.serial, phase: state.phase, t: r2(state.t), gt: r2(state.gt), mode: state.mode, rounds: state.rounds, round: state.round, difficulty: state.difficulty, bots: state.bots,
         enabled: state.enabled.slice(), bag: state.bag.slice(), seenHowto: state.seenHowto.slice(), game: state.game, last: state.last, next: state.next, seed: state.seed, roster: state.roster.map((r) => ({ ...r })), stars: { ...state.stars },
-        results: state.results, hash: sync.hash ? sync.hash() : null,
+        results: state.results, ceremony: state.ceremony, attract: state.attract, touches, hash: sync.hash ? sync.hash() : null,
       };
     },
     debug: {

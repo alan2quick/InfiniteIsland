@@ -4,7 +4,9 @@ import * as MS from '../../public/js/game/party/marlosaysLogic.js';
 import * as HU from '../../public/js/game/party/huddleLogic.js';
 export const KID = { react: 0.55, noise: 0.12, miss: 0.06, fool: 0.15, shell: { lead: 0.33, after: 0.28 } };
 // one whole game on the real rules; skills[slot]; returns placing
-export function play(G, seed, skills, rngSeed = 1) {
+export function play(G, seed, skills, rngSeed = 1) { return playFull(G, seed, skills, rngSeed).placing; }
+// (Step 80e: the soak also wants the final state and the time the game ended)
+export function playFull(G, seed, skills, rngSeed = 1) {
   const roster = skills.map((_, i) => ({ slot: i, bot: true, name: 'b' + i }));
   const g = G.init(seed, roster), rng = mulberry32(rngSeed), mems = skills.map(() => ({}));
   const hold = skills.map(() => false), dt = 1 / 60, mem = {}; let t = 0;
@@ -25,7 +27,7 @@ export function play(G, seed, skills, rngSeed = 1) {
       }
     });
   }
-  return G.placing(g);
+  return { g, t, placing: G.placing(g) };
 }
 export const rate = (G, mine, others, n = 200) => { let win = 0; for (let i = 0; i < n; i++) { const p = play(G, 1000 + i * 7919, [mine, ...others], i + 1); if (p.find((r) => r.slot === 0).place === 1) win++; } return win / n; };
 if (process.argv[1].endsWith('sim80b.mjs')) {

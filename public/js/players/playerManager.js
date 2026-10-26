@@ -188,6 +188,7 @@ export class PlayerManager {
     this.localKind = localKind;
     this.frozenAll = false;
     this.activity = false;            // any device gave real input this frame
+    this.queueing = false;            // Step 80e: the party (host) sets it: a device that found the island full keeps asking for a seat by itself
     this.gamepadPressed = false;      // a gamepad button went down this frame (audio unlock)
     this.focus = new THREE.Vector3(); // centroid of the active players (camera target)
     this.extent = { x: 0, z: 0, half: 0, near: 0, far: 0 };   // x / z = 2 x max distance of a player from the centroid along each axis;
@@ -403,7 +404,10 @@ export class PlayerManager {
     }
     for (const d of this.devices.values()) {
       if (d.id === 'local' || !d.connected || !d.act || d.bot) continue;                     // (a party bot is seated by spawnBot, never by its own input)
-      if (!hasInput(d.act)) continue;
+      if (!hasInput(d.act)) {
+        if (this.queueing && d.queued && d.playerIndex < 0 && !d.claiming) this._claimSlot(d, false);            // Step 80e: a person the party found full stays queued for the seat a bot gives up (no more presses needed)
+        continue;
+      }
       this.activity = true;
       if (d.kind === 'gamepad' && (d.act.interactPressed || d.act.cancelPressed || d.act.jumpPressed || d.act.charmPressed)) this.gamepadPressed = true;
       if (d.playerIndex >= 0 || d.claiming) continue;
@@ -500,13 +504,15 @@ export class PlayerManager {
     d.claiming = false;
     if (!this.devices.has(d.id)) { if (r.ok) this._releaseSlot(d.id); return; }       // the device went away while we waited
     if (!r.ok) {
-      d.retryAt = this._time + (r.reason === 'full' ? (byInput ? 0.3 : 2) : 1.5);
+      d.retryAt = this._time + (r.reason === 'full' ? (byInput || this.queueing ? 0.3 : 2) : 1.5);
+      if (r.reason === 'full' && !d.bot) d.queued = true;
       if (r.reason === 'full' && byInput && this._time - this._lastFullToast > FULL_TOAST_GAP) {
         this._lastFullToast = this._time;
         this.hud.toast(`Island is full (${MAX_PLAYERS} players)`, { icon: 'sparkle' });
       }
       return;
     }
+    d.queued = false;
     const slot = r.result.slot;
     const at = r.result.spawn || null;
     if (d.playerIndex >= 0 && this.players[d.playerIndex]) return;                    // (already bound: an idempotent re-claim)

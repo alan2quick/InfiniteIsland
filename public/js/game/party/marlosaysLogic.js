@@ -57,7 +57,7 @@ export function flagFromInput(a) {
 export function init(seed, roster) {
   const slots = roster.map((p) => p.slot), alive = {}, ok = {};
   for (const s of slots) { alive[s] = true; ok[s] = -1; }
-  return { seed: seed >>> 0, slots, alive, ok, outCall: {}, outAt: {}, resolved: 0, done: false, endAt: null };
+  return { seed: seed >>> 0, slots, alive, ok, outCall: {}, outAt: {}, fast: {}, resolved: 0, done: false, endAt: null };
 }
 
 const aliveSlots = (g) => g.slots.filter((s) => g.alive[s]);
@@ -92,7 +92,12 @@ export function request(g, slot, req, ctx) {
 
 export function apply(g, rec) {
   if (!rec) return g;
-  if (rec.k === 'ok') { if (g.alive[rec.slot]) g.ok[rec.slot] = rec.i; }
+  if (rec.k === 'ok') {
+    if (g.alive[rec.slot]) {
+      g.ok[rec.slot] = rec.i;
+      if (Number.isFinite(rec.rt)) { g.fast ||= {}; g.fast[rec.slot] = g.fast[rec.slot] === undefined ? rec.rt : Math.min(g.fast[rec.slot], rec.rt); }      // (Step 80e's bonus feat, "Quickest flag")
+    }
+  }
   else if (rec.k === 'out') { if (g.alive[rec.slot]) { g.alive[rec.slot] = false; g.outCall[rec.slot] = rec.i; g.outAt[rec.slot] = rec.t; } }
   else if (rec.k === 'res') g.resolved = Math.max(g.resolved, rec.i + 1);
   else if (rec.k === 'end') { g.done = true; g.endAt = rec.t; }

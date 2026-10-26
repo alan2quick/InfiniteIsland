@@ -56,6 +56,12 @@ export class TitleCard {
     root.appendChild(el);
   }
 
+  /** Step 80e (?party&kiosk): never shown at all (no fade, no timer). */
+  skip() {
+    this.done = true;
+    this.el.remove();
+  }
+
   dismiss() {
     if (this.done) return;
     this.done = true;

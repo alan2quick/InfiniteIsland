@@ -1,6 +1,12 @@
 // Reuse the sound/pair buttons in a compact popover on touch hosts and narrow screens.
 import { enterFullscreen } from './fullscreenPrompt.js';
-export function createOptionsMenu(root, { musicButton, muteButton, pairPanel, hud, touch, juice = null, onFriends = () => {}, onJournal = () => {} }) {
+/** Step 80e (?party&kiosk): everything in the options panel except the sound buttons (`keep`) is hidden: no pairing, fullscreen, combat feedback, friends or journal. Returns how many were hidden. */
+export function lockOptions(children, keep) {
+  let hidden = 0;
+  for (const child of children) if (!keep.includes(child)) { child.style.display = 'none'; hidden++; }
+  return hidden;
+}
+export function createOptionsMenu(root, { musicButton, muteButton, pairPanel, hud, touch, juice = null, onFriends = () => {}, onJournal = () => {}, locked = false }) {
   const el = document.createElement('div');
   el.className = 'hud-options';
   el.innerHTML = `<button type="button" class="hud-more-btn" aria-label="Options" aria-expanded="false" aria-controls="hud-options-panel">
@@ -48,6 +54,8 @@ export function createOptionsMenu(root, { musicButton, muteButton, pairPanel, hu
     button.innerHTML = `<svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true"><path d="${path}" stroke="currentColor" fill="none" stroke-width="2" stroke-linejoin="round"/></svg>`;
     button.addEventListener('click', () => { close(); action(); button.blur(); }); panel.appendChild(button);
   }
+  // Step 80e (?party&kiosk): the menu is locked down to the sound (music + mute): no pairing, fullscreen, combat feedback, friends or journal
+  if (locked) lockOptions([...panel.children], [musicButton, muteButton]);
   root.appendChild(el);
   const narrow = window.matchMedia('(max-width: 519px)');
   let open = false;

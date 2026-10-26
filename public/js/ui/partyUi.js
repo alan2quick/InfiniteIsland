@@ -7,7 +7,8 @@
 //   ui.banner(text, { ms, tone })                 a big centred word that pops in and fades (ms = how long it stays; 0 = until the next banner / hideBanner)       ui.hideBanner()
 //   ui.roulette({ ids, names, pos })              the game picker: tiles in a row, `pos` = which one is lit (a float: the highlight slides)       ui.hideCard()
 //   ui.howto({ id, name, host, line, pitch, devices, left, rows })    the how-to card: devices = [{ kind: 'keyboard' | 'gamepad' | 'phone', buttons: [{ btn, verb }] }], left = seconds of practice, rows = [{ name, color, ready, bot }]
-//   ui.results({ id, name, ranks, partyOver, hold })              the results card: ranks = [{ name, color, place, score, stars, bot, winner }]
+//   ui.results({ id, name, ranks, partyOver, round, bonus })      the results card: ranks = [{ name, color, place, score, stars, bot, winner }]; bonus = { label, text, names } (Step 80e: the game's feat and who did it best, or null)
+//   ui.podium(rows | null)                        (Step 80e) the trophy cut's standings strip: rows = [{ place, ord, name, color, stars, bot }] already revealed, 1st first (null = hidden)
 //   ui.pill(text | null)                          "Next game in 4"       ui.exit(frac | null, text)   the kiosk exit ring (null = hidden)
 import { ICONS, keyCap, padButton, STICK_SVG } from './icons.js';
 
@@ -25,13 +26,13 @@ export function createPartyUi(root) {
   const el = document.createElement('div');
   el.className = 'party-ui';
   el.hidden = true;
-  el.innerHTML = '<div class="pu-board"></div><div class="pu-banner" hidden></div><div class="pu-card" hidden></div><div class="pu-pill" hidden></div><div class="pu-exit" hidden><svg viewBox="0 0 36 36" width="1em" height="1em"><circle class="pu-track" cx="18" cy="18" r="14"/><circle class="pu-fill" cx="18" cy="18" r="14"/></svg><span></span></div>';
+  el.innerHTML = '<div class="pu-board"></div><div class="pu-banner" hidden></div><div class="pu-card" hidden></div><div class="pu-pill" hidden></div><div class="pu-podium" hidden></div><div class="pu-exit" hidden><svg viewBox="0 0 36 36" width="1em" height="1em"><circle class="pu-track" cx="18" cy="18" r="14"/><circle class="pu-fill" cx="18" cy="18" r="14"/></svg><span></span></div>';
   root.appendChild(el);
-  const boardEl = el.querySelector('.pu-board'), bannerEl = el.querySelector('.pu-banner'), cardEl = el.querySelector('.pu-card'), pillEl = el.querySelector('.pu-pill'), exitEl = el.querySelector('.pu-exit');
+  const boardEl = el.querySelector('.pu-board'), bannerEl = el.querySelector('.pu-banner'), cardEl = el.querySelector('.pu-card'), pillEl = el.querySelector('.pu-pill'), podiumEl = el.querySelector('.pu-podium'), exitEl = el.querySelector('.pu-exit');
   const fillEl = exitEl.querySelector('.pu-fill'), exitText = exitEl.querySelector('span');
   const CIRC = 2 * Math.PI * 14;
   fillEl.style.strokeDasharray = `${CIRC}`;
-  let boardKey = '', cardKey = '', bannerTimer = 0, pillKey = '';
+  let boardKey = '', cardKey = '', bannerTimer = 0, pillKey = '', podiumKey = '';
 
   return {
     el,
@@ -75,14 +76,21 @@ export function createPartyUi(root) {
         <p class="pu-hint">Practice now! Hold ${buttonIcon('interact', devices[0] ? devices[0].kind : 'keyboard')} to be <b>Ready</b> <small>(${Math.max(0, Math.ceil(left))})</small></p>`;
       cardEl.hidden = false;
     },
-    results({ id, name, ranks, partyOver, round }) {
-      const key = `x|${id}|${JSON.stringify(ranks)}|${partyOver}`;
+    results({ id, name, ranks, partyOver, round, bonus = null }) {
+      const key = `x|${id}|${JSON.stringify(ranks)}|${partyOver}|${JSON.stringify(bonus)}`;
       if (key === cardKey) return;
       cardKey = key;
       cardEl.className = 'pu-card results';
       cardEl.innerHTML = `<div class="pu-head"><i>${partyOver ? ICONS.trophy : ICONS['party-' + id] || ''}</i><div><h2>${partyOver ? 'Party over!' : esc(name)}</h2><small>${partyOver ? 'Final stars' : `Round ${round | 0}`}</small></div></div>
-        <ol class="pu-rank">${ranks.map((r) => `<li class="${r.winner ? 'win' : ''}" style="--pc:${esc(r.color)}"><b>${r.place}</b><span class="pu-n">${r.bot ? `<i class="pu-bot">${ICONS.bot}</i>` : ''}${esc(r.name)}</span><span class="pu-s">${esc(r.score)}</span><span class="pu-st">${ICONS.star}${r.stars | 0}</span>${r.winner ? `<i class="pu-pop">${ICONS.popper}</i>` : ''}</li>`).join('')}</ol>`;
+        <ol class="pu-rank">${ranks.map((r) => `<li class="${r.winner ? 'win' : ''}" style="--pc:${esc(r.color)}"><b>${r.place}</b><span class="pu-n">${r.bot ? `<i class="pu-bot">${ICONS.bot}</i>` : ''}${esc(r.name)}</span><span class="pu-s">${esc(r.score)}</span><span class="pu-st">${ICONS.star}${r.stars | 0}</span>${r.winner ? `<i class="pu-pop">${ICONS.popper}</i>` : ''}</li>`).join('')}</ol>${bonus ? `<p class="pu-bonus">${ICONS.star}<b>Bonus star: ${esc(bonus.label)}</b> <span>${esc(bonus.names.join(' & '))} (${esc(bonus.text)})</span></p>` : ''}`;
       cardEl.hidden = false;
+    },
+    podium(rows) {
+      const key = rows ? JSON.stringify(rows) : '';
+      if (key === podiumKey) return;
+      podiumKey = key;
+      podiumEl.hidden = !rows || !rows.length;
+      if (!podiumEl.hidden) podiumEl.innerHTML = rows.map((r) => `<div class="pu-pod p${r.place | 0}" style="--pc:${esc(r.color)}"><b>${esc(r.ord)}</b><span class="pu-n">${r.bot ? `<i class="pu-bot">${ICONS.bot}</i>` : ''}${esc(r.name)}</span><span class="pu-st">${ICONS.star}${r.stars | 0}</span></div>`).join('');
     },
     hideCard() { cardKey = ''; cardEl.hidden = true; },
     pill(text) {
@@ -97,6 +105,6 @@ export function createPartyUi(root) {
       fillEl.style.strokeDashoffset = `${CIRC * (1 - Math.min(1, Math.max(0, frac)))}`;
       exitText.textContent = text;
     },
-    summary: () => ({ hidden: el.hidden, card: cardEl.hidden ? null : cardEl.className, banner: bannerEl.hidden ? null : bannerEl.textContent, chips: boardEl.children.length, pill: pillEl.hidden ? null : pillEl.textContent }),
+    summary: () => ({ hidden: el.hidden, podium: podiumEl.hidden ? null : podiumEl.children.length, card: cardEl.hidden ? null : cardEl.className, banner: bannerEl.hidden ? null : bannerEl.textContent, chips: boardEl.children.length, pill: pillEl.hidden ? null : pillEl.textContent }),
   };
 }

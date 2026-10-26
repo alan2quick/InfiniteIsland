@@ -14,6 +14,8 @@
 //   toggleGame(enabled, id, on, allIds) -> { ok, enabled, reason? }    the last enabled game cannot be switched off
 //   normalisePrefs(raw, allIds) -> { enabled, mode, rounds, bots, difficulty }      the per-host-screen preferences (infiniteIsland.party)
 //   awardStars(stars, ranks) -> stars          every winner (place 1) earns a star; ties share
+//   awardBonus(stars, slots) -> stars          (Step 80e) the bonus feat's winners earn PARTY.bonusStars more (game/party/bonusLogic.js)
+//   finalPlaces(stars, roster) -> [{ slot, place, stars }]      (Step 80e) the party's standings for the trophy ceremony: most stars first, ties share a place (1, 1, 3, ...)
 //   countdownLabel(t) -> '3' | '2' | '1' for t in the 3 s countdown ('Go!' is the first 0.8 s of the play phase: goLabel(gt))
 import { PARTY } from '../../config.js';
 
@@ -34,6 +36,7 @@ export function flowTick(f, dt, c = {}) {
   f.t += dt;
   switch (f.phase) {
     case 'lobby': {
+      if (c.ceremony) return null;                                                                              // (Step 80e: the trophy ceremony is timed by the domain, which then starts a fresh party)
       const wait = f.first ? F.lobbyFirst : F.lobby;
       if (c.mode === 'pick' && !c.pickChosen) return f.t >= Math.max(wait, F.pickWait) ? 'pick' : null;           // pick mode: the board decides, but never stalls
       return f.t >= wait ? 'pick' : null;
@@ -118,6 +121,18 @@ export function awardStars(stars, ranks) {
   const out = { ...stars };
   for (const r of ranks) if (r.place === 1) out[r.slot] = (out[r.slot] || 0) + PARTY.stars;
   return out;
+}
+
+export function awardBonus(stars, slots) {
+  const out = { ...stars };
+  for (const s of slots || []) out[s] = (out[s] || 0) + PARTY.bonusStars;
+  return out;
+}
+
+export function finalPlaces(stars, roster) {
+  const rows = roster.map((r) => ({ slot: r.slot, stars: (stars && stars[r.slot]) || 0 })).sort((a, b) => b.stars - a.stars || a.slot - b.slot);
+  let place = 1;
+  return rows.map((r, i) => { if (i > 0 && r.stars !== rows[i - 1].stars) place = i + 1; return { slot: r.slot, place, stars: r.stars }; });
 }
 
 /** How many bots a roster needs: 'fill' keeps the table at 4, a number is a fixed count, never beyond the free seats. */

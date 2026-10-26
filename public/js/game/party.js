@@ -12,6 +12,10 @@
 //   (Step 80b) Marlo Says and Pinecone Huddle add two input styles here: marloInput (Cancel / B = red, Interact / A = green; the stick only walks) and holdInput (the shell is a HOLD: act({ on }) at the start / end).
 //   (Step 80c) Sizzle Seed and Egg Scramble are stick-only: nothing in drive(); the holder of the seed runs `boost` x faster (speedScale, set on this screen's bodies), and the stage gets who(slot) / lanePlayers to draw the seed and the head stacks on the real bodies.
 //   party.open(opts) / close() / toggle(id, on) / enabled() / games() / bots(n | 'fill', difficulty) / play(id) / next() / skip() / summary()   (also __game.party)
+//   (Step 80e) The trophy ceremony: after the last round of a party the host's lobby state carries `ceremony: { places }`; every screen then runs ONE cut through game/cinematic.js (letterbox, hold Cancel on any screen skips it for everybody):
+//   its seats' bodies on the lobby podium (1st / 2nd / 3rd, ties share), a gold Tdoong trophy rising, all nine Tdoongz cheering (world/party/ceremony.js), the trophy jingle and confetti; the host ends it and a fresh party starts.
+//   Kiosk (`?party&kiosk`, party.kiosk): main.js skips the title card and locks Options (volume only), the Join button, the pair panel; the 3 s keyboard exit stays the only way out. Attract mode (kiosk, or `?attract`, party.config.attract): after
+//   PARTY.attract.idle s without any human input the host asks for `attract` (only the bots play, the music at half volume, "Press any button"); any human input (a joined screen sends "touch") brings a fresh lobby back.
 //
 // What a party does to the rest of the game: the whole roster is moved to the Glade behind a confetti curtain (each screen moves ITS players and remembers where they stood); the islands and the sea are hidden;
 // the follow camera, the tether, regroup, travel, the Bag, the quest tracker and every world interaction are off; held tools are tucked away; leaving (party.close(), or the kiosk exit: hold Cancel + Interact on
@@ -35,6 +39,7 @@ import { inParty, stageCentre, stageSpawns, spectatorSpot, lobbySpot, bumpersObs
 import * as SIZ from './party/sizzleLogic.js';
 const sizzleObstacles = SIZ.worldObstacles;
 import { createGlade, CAMERAS, LOOKS } from '../world/party/glade.js';
+import { createCeremony, podiumSpots, cameraShot } from '../world/party/ceremony.js';
 import { setHopSpeed } from '../player/player.js';
 import { createVineSkipWorld } from '../world/party/vineskip.js';
 import { createTimberWorld } from '../world/party/timber.js';
@@ -61,7 +66,7 @@ const STAGE_FACTORIES = { vineskip: createVineSkipWorld, timber: createTimberWor
 const _v = new THREE.Vector3();
 const AMBIENT_LAYERS = ['butterfly-wings', 'butterfly-bodies', 'drifting-petals', 'ocean-glints', 'fireflies'];
 
-export function createParty({ scene, camera, followCam, players, avatars, table, sync, hud, hudRoot, dialog, particles, sfx, music, items, world, water, outfits = {}, busy = () => null, params = new URLSearchParams() }) {
+export function createParty({ scene, camera, followCam, players, avatars, table, sync, hud, hudRoot, dialog, particles, sfx, music, items, world, water, outfits = {}, cinematic = null, busy = () => null, params = new URLSearchParams() }) {
   const ui = createPartyUi(hudRoot);
   const curtain = createPartyCurtain(hudRoot, { sfx });
   const labels = floatLabels(hudRoot);
@@ -110,7 +115,14 @@ export function createParty({ scene, camera, followCam, players, avatars, table,
   const landedBodies = new Map(), partyProbes = new Map();
   const readyHold = new Map(), readyRings = new Map();
   const botMind = new Map();                                // slot -> { mem, rng }
-  let botTimer = 0, yieldUntil = -1, exitHold = 0, resultsHopT = 0, lastTempo = 1;
+  let lastFullToast = -99;
+  let botTimer = 0, yieldUntil = -1, seatWaitUntil = -1, lastHumans = 0, exitHold = 0, resultsHopT = 0, lastTempo = 1;
+  // Step 80e: kiosk + attract mode, the trophy ceremony
+  const kiosk = params.has('party') && params.has('kiosk');
+  const config = { kiosk, attract: kiosk || params.has('attract') };
+  let idleT = 0, touchT = 0, seenTouches = 0, attractSeen = false;
+  let ceremony = null, cerOn = false, cerCin = false, cerT = 0, cerSkipSent = false, cerSpots = [], cerOrder = [], cerHopT = 0, cerFrom = null, cerLabels = 0, cerBurst = 0, cerRose = false, cerBannerOut = false;
+  const cerProbes = new Map();
   const focus = new THREE.Vector3();
 
   const later = (secs, fn) => timers.push({ at: pt + secs, fn });
@@ -206,6 +218,7 @@ export function createParty({ scene, camera, followCam, players, avatars, table,
     if (on) { getGlade().setVisible(true); followCam.regionBlend = 0; }
     else {
       clearBumperBodies(); setGlowcapSunk([]); setTiltyTilts(null);
+      stopCeremony(); ceremony?.dispose(); ceremony = null;
       glade?.dispose(); glade = null;
       for (const id in stages) {
         stages[id]?.setVisible(false);
@@ -498,6 +511,113 @@ export function createParty({ scene, camera, followCam, players, avatars, table,
     rods.delete(p);
   }
 
+  // ================================================================== kiosk: the attract mode (Step 80e)
+  /** Host: counts the seconds nobody human touched anything; after PARTY.attract.idle (kiosk / ?attract, in a lobby) the bots play on their own; any human input (or a joined screen's "touch") brings a fresh lobby back. A joined screen tells the host it is being played. */
+  function updateAttract(dt, s) {
+    const poked = domain.touches !== seenTouches;
+    seenTouches = domain.touches;
+    if (!s.active) { idleT = 0; return; }
+    if (!sync.isHost) {
+      touchT -= dt;
+      if (players.activity && touchT <= 0) { touchT = PARTY.attract.touch; domain.touch(); }
+      return;
+    }
+    if (players.activity || poked) {
+      idleT = 0;
+      if (s.attract) domain.setAttract(false);
+      return;
+    }
+    idleT += dt;
+    if (config.attract && !s.attract && s.phase === 'lobby' && !s.ceremony && !curtain.running && idleT >= PARTY.attract.idle) domain.setAttract(true);
+  }
+
+  // ================================================================== the trophy ceremony (Step 80e)
+  const ORD = ['', '1st', '2nd', '3rd'], ordinal = (n) => ORD[n] || n + 'th';
+  const _look = new THREE.Vector3();
+  /** The cut begins on every screen at once (the host's lobby state carries the places): letterbox, the camera, the podium, the trophy, the crowd of nine. */
+  function startCeremony(s) {
+    if (cerOn || !s.ceremony) return;
+    cerOn = true; cerT = 0; cerSkipSent = false; cerHopT = 0; cerLabels = 0; cerBurst = 0; cerRose = false; cerBannerOut = false;
+    const g = getGlade();
+    ceremony ||= createCeremony({ parent: g.root });
+    ceremony.show();
+    g.setCheerers([]);                                       // the usual trio steps aside: all nine cheer on the stage now
+    g.cheer(true);
+    ui.hideCard(); ui.hideBanner(); ui.pill(null);
+    cerFrom = { pos: [camera.position.x - O.x, camera.position.y - O.y, camera.position.z - O.z], look: [followCam.focus.x - O.x, followCam.focus.y - O.y, followCam.focus.z - O.z] };
+    cerCin = !!(cinematic && cinematic.begin('party', { duck: 0.4, avatarsCinematic: false }));
+    cerSpots = podiumSpots(s.ceremony.places);
+    cerOrder = cerSpots.slice().sort((a, b) => b.place - a.place || a.slot - b.slot);        // the reveal goes from last place up to the winner
+    for (const sp of cerSpots) {
+      const p = players.get(sp.slot);
+      if (!p) continue;
+      poof(p); p.teleport(sp.x, sp.z); p.facing = 0; p.root.rotation.y = 0; p._faceTo = null; p.velocity.x = p.velocity.z = 0;
+    }
+    sfx.play('trophy');
+    if (cerCin) {
+      const winners = s.ceremony.places.filter((p) => p.place === 1).map((p) => nameOf(p.slot));
+      cinematic.showBanner([{ text: 'Party over!', cls: 'fb-title' }, { text: winners.length ? winners.join(' & ') + (winners.length > 1 ? ' share the trophy' : ' wins the trophy') + '!' : 'What a party!', cls: 'fb-name' }]);
+    }
+    celebrate();
+  }
+  function updateCeremony(dt, s) {
+    cerT += dt;
+    if (cerCin) cinematic.freezeAll(); else for (const p of localPlayers()) p.frozen = true;
+    ceremony.update(dt, cerT);
+    const C = PARTY.ceremony, L = PARTY.lobby;
+    if (cerCin && !cerBannerOut && cerT >= 3.6) { cerBannerOut = true; cinematic.dismissBanner(); }
+    if (!cerRose && cerT >= C.rise) {
+      cerRose = true;
+      particles.burst('sparkle', { x: O.x, y: O.y + 3.2, z: O.z + L.stage.z + 3.7 }, { count: 24, radius: 1.6, height: 1.6, color: '#ffe27a' });
+      sfx.play('roundWon', { vol: 0.8 });
+    }
+    if (cerT >= cerBurst) {                                   // confetti keeps coming over the stage, the podium and the crowd
+      const k = Math.round(cerBurst / C.confetti); cerBurst += C.confetti;
+      const x = [-5, 5, 0, L.podium.x, -L.podium.x][k % 5];
+      particles.burst('confetti', { x: O.x + x, y: O.y + 6.5, z: O.z + L.stage.z + 1 + (k % 2) * 3.5 }, { count: 40, radius: 3.5, height: 1 });
+    }
+    while (cerLabels < cerOrder.length && cerT >= 3.6 + cerLabels * 1.3) {            // the places appear one by one, last place first
+      const sp = cerOrder[cerLabels++];
+      sfx.play(sp.place === 1 ? 'fanfare' : 'chime', { pitch: sp.place === 1 ? 1 : 1.1 });
+      particles.burst('sparkle', { x: sp.x, y: sp.y + 1.8, z: sp.z }, { count: 10, radius: 0.7, color: '#ffe27a' });
+    }
+    cerHopT += dt;
+    if (cerHopT >= 0.8) { cerHopT = 0; for (const sp of cerSpots) players.get(sp.slot)?.hop(); }
+    ui.podium(cerOrder.slice(0, cerLabels).map((sp) => ({ place: sp.place, ord: ordinal(sp.place), name: nameOf(sp.slot), color: colorOf(sp.slot), bot: !!s.roster.find((r) => r.slot === sp.slot && r.bot), stars: (s.ceremony.places.find((p) => p.slot === sp.slot) || {}).stars | 0 })).sort((a, b) => a.place - b.place));
+    if (cerCin && !cerSkipSent && cinematic.pollSkip(dt, cerT, { arm: C.skipArm })) { cerSkipSent = true; domain.skipCeremony(); }       // (hold Cancel on ANY screen: the host ends the cut for everybody)
+  }
+  function stopCeremony() {
+    if (!cerOn) return;
+    cerOn = false;
+    ceremony?.hide();
+    ui.podium(null);
+    for (const [p, probe] of cerProbes) p.groundProbe = probe;
+    cerProbes.clear();
+    if (cerCin) { cinematic.end({ unduck: 1.4 }); cinematic.releaseAll(); cerCin = false; }
+    else for (const p of localPlayers()) p.frozen = false;
+    if (state().attract) music.duck?.(PARTY.attract.duck, 0.8);
+    appliedKey = '';                                          // (the fresh lobby is applied again: everybody back on the lobby spots, the usual trio on the stage)
+  }
+  /** Seats' bodies stay exactly on their podium steps (all screens: local bodies and remote avatars alike). */
+  function podiumHold() {
+    for (const sp of cerSpots) {
+      const p = who(sp.slot);
+      if (!p) continue;
+      p.position.set(sp.x, sp.y, sp.z);
+      if (p.velocity) p.velocity.x = p.velocity.z = 0;
+      p.root.rotation.y = 0;
+      if (!cerProbes.has(p)) cerProbes.set(p, p.groundProbe);
+      p.groundProbe = () => sp.y;
+      if (p.parts?.blob) p.parts.blob.position.y = 0.06 + sp.y - p.position.y;
+    }
+  }
+  function ceremonyCamera() {
+    const sh = cameraShot(cerT, cerFrom), asp = camera.aspect > 0 ? camera.aspect : 16 / 9, pull = 1 + Math.max(0, 16 / 9 / asp - 1) * 0.7;      // (a narrow screen pulls back to keep the podium and the trophy in)
+    _look.set(O.x + sh.look[0], O.y + sh.look[1], O.z + sh.look[2]);
+    camera.position.set(_look.x + (sh.pos[0] - sh.look[0]) * pull, _look.y + (sh.pos[1] - sh.look[1]) * pull, _look.z + (sh.pos[2] - sh.look[2]) * pull);
+    if (cinematic) cinematic.look(_look); else camera.lookAt(_look);
+  }
+
   // ================================================================== bots (host)
   function takenNames() { return table.snapshot().filter((e) => e && e.bot).map((e) => e.name); }
   function syncBots(dt) {
@@ -509,7 +629,9 @@ export function createParty({ scene, camera, followCam, players, avatars, table,
     const humans = table.snapshot().filter((e) => e && !e.bot).length;
     const have = players.bots.filter((p) => !p.leaving);
     let want = botsWanted(humans, s.bots);
-    if (pt < yieldUntil && humans + have.length >= 4) want = Math.max(0, want - 1);          // a human is waiting for a seat: a bot gives its up
+    if (humans > lastHumans) { seatWaitUntil = -1; yieldUntil = -1; }                          // (the waiting person got in: no second bot gives its seat up)
+    lastHumans = humans;
+    if ((pt < yieldUntil || pt < seatWaitUntil) && humans + have.length >= 4) want = Math.max(0, want - 1);          // a human is waiting for a seat: a bot gives its up (and the person is queued: they claim it by themselves)
     if (have.length < want && table.count < 4) {
       const b = botOrder(takenNames())[0];
       const p = players.spawnBot({ name: b.name, colors: { ...b.colors, name: b.name }, ears: b.ears });
@@ -701,7 +823,7 @@ export function createParty({ scene, camera, followCam, players, avatars, table,
   // ================================================================== the Game Board
   const MODE_NAME = { random: 'Random', party: 'Party', pick: 'Pick' };
   function openBoard(p) {
-    if (!partyMode || state().phase !== 'lobby' || dialog.isOpen) return;
+    if (!partyMode || state().phase !== 'lobby' || state().ceremony || dialog.isOpen) return;
     const refresh = (r) => Promise.resolve(r).then((x) => { dialog.refresh?.(); return x; });
     const denied = (r) => { if (r && r.ok === false && r.reason === 'host-only') hud.toast('The host screen changes the Game Board.', { icon: 'sparkle', duration: 2200 }); else if (r && r.ok === false && r.reason === 'last') hud.toast('At least one game stays on!', { icon: 'sparkle', duration: 2200 }); };
     const gameMenu = (g) => ({
@@ -742,6 +864,7 @@ export function createParty({ scene, camera, followCam, players, avatars, table,
     camera.aspect = aspect;
     const z = Math.max(0.8, followCam.zoomForExtent(c.extent.w, c.extent.d, 0.4, false));
     followCam.update(dt, focus, z);
+    if (cerOn) ceremonyCamera();                              // (the trophy cut owns the view; followCam keeps tracking the light)
   }
   const LOOK_CACHE = {};
   function light(sky, renderer) {
@@ -780,6 +903,7 @@ export function createParty({ scene, camera, followCam, players, avatars, table,
   // Pose buffers and local soft separation run after update. Reapply host-owned poses after both, on every screen.
   function sharedBodies() {
     if (!partyMode || curtain.running) return;
+    if (cerOn) { podiumHold(); return; }
     const s = state(), gt = domain.gameTime();
     if (['feastround', 'bumpers'].includes(s.game) && ['howto', 'countdown', 'play', 'results'].includes(s.phase)) {
       const c = stageCentre(s.game);
@@ -839,10 +963,19 @@ export function createParty({ scene, camera, followCam, players, avatars, table,
     const s = state();
     reconcile();
     if (!s.active && !partyMode && sync.isHost && players.bots.length && !curtain.running) removeAllBots();
+    players.queueing = sync.isHost && s.active;                       // Step 80e: a person who found the island full stays queued for the seat a bot gives up
+    if (cerOn && (!partyMode || !s.active || !s.ceremony)) stopCeremony();
+    updateAttract(dt, s);
+    if (!!s.attract !== attractSeen) {                                // the attract mode: the music sits at half volume on every screen meanwhile
+      attractSeen = !!s.attract;
+      if (attractSeen) music.duck?.(PARTY.attract.duck, 1.2); else if (!cerOn) music.unduck?.(1.2);
+    }
     if (!partyMode || curtain.running) return;
     const key = phaseKey(s);
     if (key !== appliedKey) { appliedKey = key; applyPhase(s); }
     phaseLocalT += dt;
+    if (s.ceremony && s.phase === 'lobby' && !cerOn) startCeremony(s);
+    if (cerOn) updateCeremony(dt, s);
     const gt = domain.gameTime(), g = s.game ? getGame(s.game) : null, st = s.game ? stages[s.game] : null;
     glade?.update(dt, pt, [...players.list, ...avatars.list]);
     sharedBodies();
@@ -865,11 +998,12 @@ export function createParty({ scene, camera, followCam, players, avatars, table,
     labels.update(dt, camera);
     ui.setBoard(boardRows());
     // --- the HUD of each phase
-    if (s.phase === 'lobby') {
+    if (s.phase === 'lobby' && !s.ceremony) {
       const wait = s.round === 0 && !s.results ? PARTY.flow.lobbyFirst : PARTY.flow.lobby, total = s.mode === 'pick' && !s.next ? PARTY.flow.pickWait : wait;
       const left = Math.max(0, Math.ceil(total - (sync.isHost ? s.t : phaseLocalT)));
       ui.pill(s.mode === 'pick' && !s.next ? `Pick a game at the Game Board! (${left})` : `Next game in ${left}   ·   ${s.mode === 'party' ? `Round ${Math.min(s.round + 1, s.rounds)} of ${s.rounds}` : MODE_NAME[s.mode]}`);
     } else ui.pill(null);
+    if (s.attract) ui.pill('Press any button to play!');
     if (s.phase === 'pick') {
       const ids = s.enabled, n = ids.length, target = Math.max(0, ids.indexOf(s.game));
       const u = Math.min(1, phaseLocalT / PARTY.flow.roulette), pos = (1 - Math.pow(1 - u, 3)) * (n * 3 + target);
@@ -893,6 +1027,7 @@ export function createParty({ scene, camera, followCam, players, avatars, table,
       const R = s.results, g2 = getGame(R.game);
       ui.results({
         id: R.game, name: g2 ? g2.name : '', partyOver: R.partyOver, round: R.round,
+        bonus: R.bonus ? { label: R.bonus.label, text: R.bonus.text, names: R.bonus.slots.map(nameOf) } : null,
         ranks: R.ranks.map((r) => ({ name: nameOf(r.slot), bot: !!s.roster.find((x) => x.slot === r.slot && x.bot), color: colorOf(r.slot), place: r.place, score: resultScore(R.game, r), stars: s.stars[r.slot] || 0, winner: r.place === 1 })),
       });
       resultsHopT += dt;
@@ -944,7 +1079,11 @@ export function createParty({ scene, camera, followCam, players, avatars, table,
       const rec = items.heldBy(p); if (rec) tucked.set(p, rec);
     }
   });
-  players.onFull = () => { if (state().active) yieldUntil = pt + 15; };
+  players.onFull = () => {
+    if (!state().active) return;
+    yieldUntil = pt + 15; seatWaitUntil = pt + 150;                  // Step 80e: the waiting person stays queued across games (150 s), a bot gives its seat at the next lobby / pick and the joiner plays from that pick
+    if (pt - lastFullToast > 6) { lastFullToast = pt; hud.toast('You are next! A bot is giving up its seat.', { icon: 'sparkle', duration: 2600 }); }
+  };
 
   // ================================================================== API
   function optsFromParams(q) {
@@ -957,12 +1096,14 @@ export function createParty({ scene, camera, followCam, players, avatars, table,
     return o;
   }
   const api = {
-    domain, ui, curtain, labels, optsFromParams,
+    domain, ui, curtain, labels, optsFromParams, config,
+    get kiosk() { return kiosk; },
+    get ceremonyOn() { return cerOn; },
     get active() { return state().active; },
     get pageMode() { return partyMode; },
     get place() { return place; },
     contains: (p) => partyMode && inPocket(p),
-    allowsTarget: (it) => (it.type === 'partyboard' || it.type === 'partydress' ? partyMode && state().phase === 'lobby' && !curtain.running : !partyMode),
+    allowsTarget: (it) => (it.type === 'partyboard' || it.type === 'partydress' ? partyMode && state().phase === 'lobby' && !state().ceremony && !curtain.running : !partyMode),
     preInput, update, drive, updateCamera, light, afterItems, afterAvatars: sharedBodies,
     open: (opts) => domain.open(opts),
     close,
@@ -976,10 +1117,10 @@ export function createParty({ scene, camera, followCam, players, avatars, table,
     get state() { return state(); },
     debug: {
       win: (slot = 0) => domain.debug.win(slot), end: () => domain.debug.end(), seed: (n) => domain.debug.seed(n),
-      glade: () => getGlade(), stage: (id) => getStage(id), timers, memory, tucked, botMind, camera: camCfg,
+      glade: () => getGlade(), stage: (id) => getStage(id), timers, memory, tucked, botMind, camera: camCfg, ceremony: () => ceremony, idle: () => idleT, skipCeremony: () => domain.skipCeremony(),
     },
     summary() {
-      return { ...domain.summary(), partyMode, place, curtain: curtain.summary(), ui: ui.summary(), bots: players.bots.map((p) => ({ slot: p.index, name: p.colors.name, x: +p.position.x.toFixed(1), z: +p.position.z.toFixed(1) })), glade: glade ? glade.summary() : null, stages: Object.fromEntries(Object.entries(stages).map(([k, v]) => [k, v.summary()])), tucked: tucked.size, music: music.partyTrack ?? null };
+      return { ...domain.summary(), partyMode, place, ceremonyOn: cerOn, idle: +idleT.toFixed(1), curtain: curtain.summary(), ui: ui.summary(), bots: players.bots.map((p) => ({ slot: p.index, name: p.colors.name, x: +p.position.x.toFixed(1), z: +p.position.z.toFixed(1) })), glade: glade ? glade.summary() : null, stages: Object.fromEntries(Object.entries(stages).map(([k, v]) => [k, v.summary()])), tucked: tucked.size, music: music.partyTrack ?? null };
     },
   };
   function close() { return domain.close(); }

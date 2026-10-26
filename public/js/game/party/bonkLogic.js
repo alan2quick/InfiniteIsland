@@ -103,13 +103,14 @@ export function step(g, ctx, dt, t) {
   for (let i = g.next; i < plan.slams.length; i++) {
     const s = plan.slams[i];
     if (t < s.T + B.lag) break;
-    const out = [];
+    const out = [], near = {}, c = stageCentre(ID);
     for (const slot of g.slots) {
       if (!g.alive[slot] || dead.has(slot)) continue;
       const smp = mem[slot] ? nearestSample(mem[slot], s.T) : null;                // (an unknown position is never squashed)
       if (smp && squashed(s, smp.x, smp.z, airborne(g, slot, s.T))) { out.push(slot); dead.add(slot); }
+      else if (smp) { const margin = r2(Math.hypot(smp.x - c.x - s.x, smp.z - c.z - s.z) - B.hitR); if (margin < 1.2) near[slot] = margin; }      // (how narrowly a survivor missed this slam; a hop that saved them is negative)
     }
-    recs.push({ k: 'bonk', i, t: s.T, out });
+    recs.push({ k: 'bonk', i, t: s.T, out, ...(Object.keys(near).length ? { near } : {}) });
   }
   const left = g.slots.filter((s) => g.alive[s] && !dead.has(s)).length;
   if (g.slots.length > 1 ? left <= 1 : left === 0) recs.push({ k: 'end', t: r2(t), why: 'last' });
@@ -135,6 +136,7 @@ export function apply(g, rec) {
   else if (rec.k === 'bonk') {
     for (const s of rec.out) if (g.alive[s]) { g.alive[s] = false; g.outAt[s] = rec.t; }
     g.next = Math.max(g.next, rec.i + 1);
+    if (rec.near) { g.close ||= {}; for (const s in rec.near) g.close[s] = g.close[s] === undefined ? rec.near[s] : Math.min(g.close[s], rec.near[s]); }      // (Step 80e's bonus feat, "Closest call")
   } else if (rec.k === 'out') { if (g.alive[rec.slot]) { g.alive[rec.slot] = false; g.outAt[rec.slot] = rec.t; } }
   else if (rec.k === 'end') { g.done = true; g.endAt = rec.t; }
   return g;

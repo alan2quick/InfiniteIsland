@@ -47,7 +47,7 @@ export function dishInFront(g, slot, t, actor) {
 }
 export function init(seed, roster) {
   const slots=roster.map((r)=>r.slot);
-  return { seed: seed>>>0, slots, dishes: buildDishes(seed), taken: {}, plates: Object.fromEntries(slots.map((s)=>[s,null])), scores: Object.fromEntries(slots.map((s)=>[s,0])), hotUntil: {}, done:false, endAt:null };
+  return { seed: seed>>>0, slots, dishes: buildDishes(seed), taken: {}, plates: Object.fromEntries(slots.map((s)=>[s,null])), scores: Object.fromEntries(slots.map((s)=>[s,0])), hotUntil: {}, eaten: {}, done:false, endAt:null };
 }
 export function step(g, ctx, dt, t) { return !g.done && t >= F.duration ? [{k:'end',t:F.duration}] : []; }
 export function request(g,slot,req,ctx) {
@@ -68,7 +68,7 @@ export function apply(g,r) {
     else g.plates[r.slot]={id:d.id,dish:d.dish,value:d.value,left:d.chews};
   } else if (r.k==='chew' && g.plates[r.slot]) {
     const p=g.plates[r.slot]; p.left--;
-    if (p.left<=0) {g.scores[r.slot]+=p.value; g.plates[r.slot]=null;}
+    if (p.left<=0) {g.scores[r.slot]+=p.value; g.plates[r.slot]=null; g.eaten ||= {}; g.eaten[r.slot]=(g.eaten[r.slot]||0)+1;}      // (eaten: Step 80e's bonus feat, "Most dishes")
   } else if (r.k==='score') g.scores[r.slot]=r.score;
   else if (r.k==='end') {g.done=true;g.endAt=r.t;}
   return g;

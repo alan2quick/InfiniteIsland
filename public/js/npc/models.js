@@ -26,10 +26,13 @@ import * as THREE from 'three';
 import { Baker, castMesh, makeToon, xf } from '../player/character.js';
 
 const EYE = '#241a33';
-export const sphere = () => new THREE.SphereGeometry(1, 16, 12);
-export const sphereLo = () => new THREE.SphereGeometry(1, 10, 8);
-export const cyl = (n = 10) => new THREE.CylinderGeometry(1, 1, 1, n);
-export const capsule = (r, l) => new THREE.CapsuleGeometry(r, l, 6, 12);
+// Step 80e: setLowDetail(true) makes the next models built (createTdoongModel) with fewer segments, about 45% of the triangles: the trophy ceremony's crowd of nine is baked that way (world/party/ceremony.js). Default OFF.
+let low = false;
+export const setLowDetail = (on) => { low = !!on; };
+export const sphere = () => (low ? new THREE.SphereGeometry(1, 10, 8) : new THREE.SphereGeometry(1, 16, 12));
+export const sphereLo = () => (low ? new THREE.SphereGeometry(1, 8, 6) : new THREE.SphereGeometry(1, 10, 8));
+export const cyl = (n = 10) => new THREE.CylinderGeometry(1, 1, 1, low ? Math.min(n, 8) : n);
+export const capsule = (r, l) => (low ? new THREE.CapsuleGeometry(r, l, 3, 8) : new THREE.CapsuleGeometry(r, l, 6, 12));
 
 /** Matrix that places something on an ellipsoid head (semi-axes a, b, c) at (x, y): z follows the surface, +Z along its normal. */
 export function surf(a, b, c, x, y, lift = 0) {

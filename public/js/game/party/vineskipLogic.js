@@ -113,7 +113,7 @@ export function init(seed, roster) {
   const slots = roster.map((p) => p.slot);
   const alive = {};
   for (const s of slots) alive[s] = true;
-  return { seed: seed >>> 0, slots, alive, outAt: {}, jumps: {}, done: false, endAt: null, hits: 0 };
+  return { seed: seed >>> 0, slots, alive, outAt: {}, jumps: {}, hopN: {}, done: false, endAt: null, hits: 0 };
 }
 
 const aliveSlots = (g) => g.slots.filter((s) => g.alive[s]);
@@ -160,7 +160,7 @@ export function request(g, slot, req, ctx) {
 
 export function apply(g, rec) {
   if (!rec) return g;
-  if (rec.k === 'jump') g.jumps[rec.slot] = rec.at;
+  if (rec.k === 'jump') { g.jumps[rec.slot] = rec.at; g.hopN ||= {}; g.hopN[rec.slot] = (g.hopN[rec.slot] || 0) + 1; }      // (hopN: Step 80e's bonus feat, "Most hops")
   else if (rec.k === 'out') { if (g.alive[rec.slot]) { g.alive[rec.slot] = false; g.outAt[rec.slot] = rec.t; g.hits++; } }
   else if (rec.k === 'end') { g.done = true; g.endAt = rec.t; }
   return g;

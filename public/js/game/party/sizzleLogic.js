@@ -54,7 +54,7 @@ export function init(seed, roster) {
   const slots = roster.map((p) => p.slot), alive = {};
   for (const s of slots) alive[s] = true;
   return {
-    seed: seed >>> 0, slots, alive, holder: null, from: null, t0: 0, passAt: -9, passes: 0, round: 0, rounds: roundsFor(slots.length), popped: [], outAt: {},
+    seed: seed >>> 0, slots, alive, holder: null, from: null, t0: 0, passAt: -9, passes: 0, gave: {}, round: 0, rounds: roundsFor(slots.length), popped: [], outAt: {},
     resumeAt: S.first, done: false, endAt: null,
   };
 }
@@ -111,7 +111,7 @@ export function request() { return { ignore: true }; }      // (no presses: the 
 export function apply(g, rec) {
   if (!rec) return g;
   if (rec.k === 'give') { g.holder = rec.slot; g.from = null; g.t0 = rec.t; g.passAt = rec.t; g.round += 1; }
-  else if (rec.k === 'pass') { g.holder = rec.to; g.from = rec.from; g.passAt = rec.t; g.passes += 1; }
+  else if (rec.k === 'pass') { g.holder = rec.to; g.from = rec.from; g.passAt = rec.t; g.passes += 1; g.gave ||= {}; g.gave[rec.from] = (g.gave[rec.from] || 0) + 1; }      // (gave: Step 80e's bonus feat, "Most passes")
   else if (rec.k === 'pop') {
     if (g.alive[rec.slot]) { g.alive[rec.slot] = false; g.outAt[rec.slot] = rec.t; g.popped.push(rec.slot); }
     g.holder = null; g.from = null; g.resumeAt = r2(rec.t + S.pause);

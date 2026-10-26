@@ -83,6 +83,7 @@ export function apply(g, rec) {
   if (!rec) return g;
   if (rec.k === 'motion') {
     g.boards = rec.b.map((b) => ({ ...b })); g.simT = rec.t;
+    if (rec.t >= 10) for (const b of g.boards) if (b.e === undefined) b.e = b.n;      // (Step 80e's bonus feat, "Fast starter": the tiles each frame had uncovered by 10 s, set once)
     if (rec.done) { g.done = true; g.endAt = rec.t; }
   } else if (rec.k === 'zap') {
     const i = g.slots.indexOf(rec.slot);
