@@ -33,7 +33,7 @@ const { duskFlora } = await import('../public/js/world/islands/duskVisuals.js');
 const island = ISLANDS.find((i) => i.id === 'duskcrown'), mod = getIslandModule('duskcrown');
 const plan = duskCaprayPlan();
 
-test('the version is 0.85.0', () => { assert.equal(VERSION, '0.85.0'); });
+test('the version is 0.85.3', () => { assert.equal(VERSION, '0.85.3'); });
 
 // ---- pure rules --------------------------------------------------------------------------------------------------------------------------------------------------------------
 test('the stage machine runs in order: sight, three Glimmerfin, hits, showers, the favourite, the Lanternkoi', () => {

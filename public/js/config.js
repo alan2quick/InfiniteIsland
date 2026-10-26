@@ -2,7 +2,7 @@
 
 // Game version, shown on the title card. The client can't read package.json (only public/ is deployed), so this is
 // the source of truth: bump it together with "version" in package.json. Minor = last completed PLAN.md step.
-export const VERSION = '0.85.0';
+export const VERSION = '0.85.3';
 
 // Held-mouse direction: world-unit dead bands, optional pooled ground ring.
 export const MOUSE_STEER = { dead: 0.6, sideDead: 0.4, ring: true };
@@ -692,6 +692,32 @@ export const DUSK_LIGHT = {
   spores: 240, sporeOpacity: 0.48, sporeDensity: 0.30, sporeBox: [42, 12, 36],
   palette: ['#6fcfe6', '#9b6cf0', '#ffd98a'],
   lidHeight: 48, lidClear: 1.0, lidCell: 3, lidMargin: 8, lidWave: 0.55, lidSpeed: 0.035,
+};
+
+// The Crownlands' sunlit grade (Step 85b), blended in by the crown weight `cw` (fx/atmosphere.js) on top of the ordinary day/night clock; the marsh dusk mix is cut by (1 - cw) so up top the clock shows.
+// Tints scale with daylight (1 - nightness) so sunsets and night keep their own palettes; the fog is lighter and farther everywhere, so the plains feel open. Subtle on purpose.
+export const CROWN_LIGHT = {
+  sun: '#ffe9b8', sunMix: 0.35, sunBoost: 1.06, hemiBoost: 1.05,           // slightly warmer, higher-key sun / sky light
+  horizon: '#d8ccff', horizonMix: 0.30, fogTint: '#e4dcfb', fogMix: 0.22,   // clear sky with a faint lavender horizon (the alien hint)
+  fogNearScale: 1.35, fogFarScale: 1.4,                                      // lighter, farther fog
+};
+
+// Step 85c: the Crownlands' elevated water, falls and floating islands (world/islands/crownWater.js, crownSky.js, crownVisuals.js).
+export const CROWN_WATER = {
+  shallow: '#4fd8e8', deep: '#2a8fd0', glint: '#f2ffff',        // the plateau's still water: brighter and clearer than the marsh's
+  lift: 0.012, chunk: 96, shoreSlack: 1.8,                       // the surface sits this far over the planned height (no coplanar overlap); the chunk size; how far past a river's width the shore is searched
+  fall: { color: '#f4fbff', mist: '#d2e8ff', width: [0.6, 1.4], tail: 12, mist3: [[2.6, 0.18], [1.7, 0.55], [1.0, 0.9]], sea: 0.9 },   // sky / sea falls: full width range (u), the bottom fade length, the foot mist discs (radius, lift), the sea falls' width
+  sky: { hull: 0.3, vines: 7, sectors: 22, farSectors: 8, rockSectors: 10 },                  // floating islands: outline thickness, vine strands per big island, ring sectors (full / far / small rocks)
+};
+
+// Step 85d: the Crownlands' alien acacias and baobabs (world/islands/crownPlacement.js, crownTreeAssets.js, crownTreeVisuals.js). Colours are the spec's family table: canopy / tuft top + rim, trunk.
+// Canopy family index (instance attribute): 0 magenta, 1 teal, 2 violet, 3 tangerine. Bark index: 0..3 = the acacia trunk of the same family, 4 = baobab dusty rose, 5 = baobab lavender.
+export const CROWN_TREES = {
+  chunk: 80, outline: 0.085, fadeRate: 4, fadeMargin: 0.7,                    // chunk size (u) of the instanced layers; hull thickness; canopy fade (shares duskFade.js rules)
+  families: [{ name: 'magenta', top: '#ff5fa8', rim: '#ffb3d9' }, { name: 'teal', top: '#36d6c3', rim: '#a8f5e6' }, { name: 'violet', top: '#9a6cff', rim: '#d4bfff' }, { name: 'tangerine', top: '#ffa23b', rim: '#ffe08a' }],
+  barks: ['#c7b8e8', '#6f84c8', '#efe3cf', '#7a5aa8', '#e3a3a0', '#a99ad6'],  // lilac-grey, slate blue, bone, dusky violet (acacia, by family), dusty rose, lavender (baobab)
+  plainsMix: [0.23, 0.19, 0.29, 0.29], riverMix: [0.16, 0.36, 0.36, 0.12],     // family weights on the plains / along the rivers (about 45 % of acacias end up magenta or teal)
+  sway: { amp: 0.05, speed: 0.9 }, speckle: { cell: 0.34, density: 0.2, strength: 0.9 },   // gentle canopy sway (world units at the canopy); night speckles: cell size (u), share of rim cells that glow, emissive strength
 };
 
 // Marsh-only music transitions and offline tail; older tracks keep their original buses and impulse.

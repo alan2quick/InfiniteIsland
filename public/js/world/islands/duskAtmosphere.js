@@ -7,10 +7,11 @@ import * as THREE from 'three';
 import { DUSK_LIGHT } from '../../config.js';
 import { createDuskLayout } from './duskLayout.js';
 import { getCrownLayout } from './crownLayout.js';
+import { crownLayers } from './crownLayers.js';
 import { createNoise2D } from '../../utils/noise.js';
 import { mulberry32 } from '../../utils/rng.js';
 
-export const duskUniforms = { uGlow: { value: DUSK_LIGHT.glow } };
+export const duskUniforms = { uGlow: { value: DUSK_LIGHT.glow }, uCrownNight: { value: 0 } };   // uCrownNight (Step 85b): crown weight x nightness, for the Crownlands' faint night speckles
 
 /** March the cliff/coast signed fields, preserving the horseshoe's concavity.
  * The contour lies within the steep wall: the top is covered with room for oblique
@@ -137,7 +138,7 @@ export function createDuskAtmosphere({ scene, island }) {
   spores.name = 'dusk-spores'; spores.frustumCulled = false; spores.visible = false; scene.add(spores);
   return {
     mesh, spores,
-    lid(on = true) { mesh.visible = !!on; return mesh.visible; },
+    lid(on = true) { mesh.visible = !!on; crownLayers.setLid(mesh.visible); return mesh.visible; },       // (Step 85c: the Crownlands' water, sky falls and floating islands are drawn only while the lid is off)
     update(t, w, v, height, camera, px, fogColor) {
       mat.uniforms.uTime.value = t;
       if (fogColor) mat.uniforms.uColor.value.copy(fogColor);

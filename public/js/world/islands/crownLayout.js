@@ -234,6 +234,16 @@ export function createCrownLayout(island, L) {
       const s = dd / p.r;
       if (bowls && s < 1.25) h = Math.min(h, poolBed(s, p.surf, p.depth));
     }
+    // (Step 85c) a pool owns the ground round it: a lower pool nearby (or a stream valley) must not drag its bank below its own water, which would leave the water disc hanging over a slope
+    for (let i = 0; i < pools.length; i++) {
+      const p = pools[i], zone = p.r * 1.3 + 14;
+      if (Math.abs(lx - p.x) > zone * 1.1 || Math.abs(lz - p.z) > zone * 1.1) continue;
+      const dd = Math.hypot(lx - p.x, lz - p.z) / (1 + 0.08 * nWarp(lx * 0.2 + p.x * 1.3, lz * 0.2 + p.z * 1.7));
+      if (dd >= zone) continue;
+      const own = bowls && dd / p.r < 1.25 ? Math.min(p.surf + CROWN.bank, poolBed(dd / p.r, p.surf, p.depth)) : p.surf + CROWN.bank;
+      const raised = lerp(h, Math.min(own, relief), 1 - sstep(p.r * 1.3, zone, dd));
+      if (raised > h) h = raised;                                          // (it only ever raises: the lowering aprons above stay as they were)
+    }
     return h;
   }
   const nearD = new Float64Array(rivers.length).fill(Infinity), nearU = new Float64Array(rivers.length), nearList = new Int32Array(rivers.length), nearSeg = new Array(rivers.length);

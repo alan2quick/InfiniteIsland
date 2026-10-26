@@ -214,11 +214,10 @@ Keep PLAN.md and CLAUDE.md short: long text goes to the topic file, the changelo
 | 80–84 | Party Games | 80a–e done (80e committed at 0.85.0) | [plan/80-party-games.md](plan/80-party-games.md) |
 | 81 | Party Games II | done (0.81.1) | [plan/81-party-games-2.md](plan/81-party-games-2.md) |
 | 82 | Party Glade living pass | done (0.82.4) | [plan/82-living-pass.md](plan/82-living-pass.md) |
-| 85 | The Crownlands (Duskcrown's sunlit plateau, floating islands) | 85a done (0.85.0); **85b–d open** | [plan/85-crownlands.md](plan/85-crownlands.md) |
+| 85 | The Crownlands (Duskcrown's sunlit plateau, floating islands) | done (0.85.3) | [plan/85-crownlands.md](plan/85-crownlands.md) |
 
 ### Open steps
 
-- [ ] Step 85b–d — The Crownlands: sunlit lighting, water / falls / floating islands, acacia and baobab trees — [plan/85-crownlands.md](plan/85-crownlands.md)
 - [ ] Step 68f — Playtest fixes, star chart — [plan/68-boat.md](plan/68-boat.md)
 - [ ] Step 68g — Playtest fixes, repair and story — [plan/68-boat.md](plan/68-boat.md)
 - [ ] Step 53b — Wildroot Ramparts and bosses (storybook) — [plan/47-53-storybook.md](plan/47-53-storybook.md)

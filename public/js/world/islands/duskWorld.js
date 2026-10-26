@@ -1,4 +1,5 @@
 // Duskcrown gameplay data (69c/d, 72a), registered ONCE per island at load on every screen: mushroom stems and ambient stump / log / rock colliders, and (72a) one 'pond' interactable per fishable water body.
+// Step 85d: registerCrownTreeGameplay(island) does the same for the Crownlands' acacia and baobab trunks (crownPlacement.js): one circle collider per tree, registered once, canopies never block.
 // Visuals (duskVisuals.js) may be rebuilt as often as they like; nothing here is ever registered twice. Players walk round the stems; caps are never obstacles.
 //
 //   const d = registerDuskGameplay(island) -> { placement, colliders (stems), flora, floraColliders, ponds, pondTargets, summary() }     (cached; calling it again returns the same object)
@@ -9,6 +10,7 @@ import { addCollider } from '../colliders.js';
 import { addInteractable } from '../interactables.js';
 import { getIslandModule } from './registry.js';
 import { buildDuskPlacement } from './duskPlacement.js';
+import { buildCrownPlacement } from './crownPlacement.js';
 import { buildDuskFlora } from './duskFlora.js';
 import { duskFishPonds } from './duskHearth.js';
 
@@ -33,5 +35,16 @@ export function registerDuskGameplay(island) {
   });
   const data = { placement, colliders, flora, floraColliders, ponds, pondTargets, summary: () => ({ colliders: colliders.length, floraColliders: floraColliders.length, totalColliders: colliders.length + floraColliders.length, ponds: pondTargets.length, ...placement.summary() }) };
   _data.set(island.id, data);
+  return data;
+}
+
+const _trees = new Map();
+/** Step 85d: the Crownlands' trunk colliders (acacia 0.5 u thin trunks, baobab bellies), registered ONCE per island on every screen. A visual rebuild (world.rebuild) never calls this again. */
+export function registerCrownTreeGameplay(island) {
+  if (_trees.has(island.id)) return _trees.get(island.id);
+  const placement = buildCrownPlacement(island, getIslandModule(island.id));
+  const colliders = placement.items.map((it) => addCollider({ x: it.x, z: it.z, r: it.trunkR, owner: it.id }));
+  const data = { placement, colliders, summary: () => ({ colliders: colliders.length, ...placement.summary() }) };
+  _trees.set(island.id, data);
   return data;
 }

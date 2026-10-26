@@ -12,10 +12,11 @@
 //   atmosphere.snap()                                  // teleports: jump the weight to its target at once
 //   atmosphere.weight / duskWeight / summary()          // debug
 //   atmosphere.light(on) / duskFx.lid(on)                // Duskcrown comparison / plateau inspection
+// Step 85b: the crown weight `cw` (eased like `w`) cuts the dusk mix to 0.92 * dw * (1 - cw) and blends CROWN_LIGHT in: up on the Crownlands the day / night clock shows. atmosphere.duskWeight is dw * (1 - cw).
 // Duskcrown uses a rectangular region gap, 92% fixed canopy light, an opaque full/far lid and day-independent spores / glow.
 // Called AFTER sky.setTimeOfDay: the saved clock and all other islands keep their own looks.
 import * as THREE from 'three';
-import { ISLANDS, DUSK_LIGHT } from '../config.js';
+import { ISLANDS, DUSK_LIGHT, CROWN_LIGHT } from '../config.js';
 import { EMBER_FEATURES } from '../world/islands/ember.js';
 import { emberUniforms } from '../world/islands/emberVisuals.js';
 import { iceUniforms } from '../world/islands/frostVisuals.js';
@@ -23,6 +24,7 @@ import { trailUniforms } from '../world/islands/frostCampVisuals.js';
 
 import { islandGap } from '../world/islands/extent.js';
 import { createDuskAtmosphere, duskUniforms } from '../world/islands/duskAtmosphere.js';
+import { getIslandModule } from '../world/islands/registry.js';
 
 const N_FLAKES = 800;
 const BOX = { x: 46, y: 22, z: 38 };
@@ -69,7 +71,9 @@ void main() {
   #include <colorspace_fragment>
 }`;
 
-export function createAtmosphere({ scene, camera, sky, clock, getHeight, view }) {
+// Step 85b: `focus` (optional, () => {x, y, z}) is the camera target (players.focus): the crown weight reads it, since the view centre is a ground-plane hit at y = 0 and lies far
+// ahead of the camera up on the plateau. `locals` (optional, () => [{ position }]) are THIS screen's players: the cloud lid is drawn unless one of them is on the Crownlands (or `crownFlag`).
+export function createAtmosphere({ scene, camera, sky, clock, getHeight, view, focus = null, locals = null, crownFlag = false }) {
   const frost = ISLANDS.find((i) => i.biome === 'alpine');
   const ember = ISLANDS.find((i) => i.biome === 'volcanic');
   const dusk = ISLANDS.find((i) => i.id === 'duskcrown');
@@ -78,7 +82,9 @@ export function createAtmosphere({ scene, camera, sky, clock, getHeight, view })
   const duskDir = new THREE.Vector3(...DUSK_LIGHT.direction).normalize().multiplyScalar(Math.hypot(48, 70, 34));
   const baseFog = { near: scene.fog.near, far: scene.fog.far };
   const baseShadow = { intensity: sky.sun.shadow.intensity, radius: sky.sun.shadow.radius };
-  let dw = 0, duskLight = true;
+  const duskMod = dusk ? getIslandModule('duskcrown') : null, crown = duskMod && duskMod.crown;
+  const crownColors = { sun: new THREE.Color(CROWN_LIGHT.sun), horizon: new THREE.Color(CROWN_LIGHT.horizon), fog: new THREE.Color(CROWN_LIGHT.fogTint) };
+  let dw = 0, cw = 0, duskLight = true, lidForce = null, lidOn = true, upTop = false;
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N_FLAKES * 3), 3));   // (unused: the shader places every flake)
   const seed = new Float32Array(N_FLAKES * 4);
@@ -116,6 +122,20 @@ export function createAtmosphere({ scene, camera, sky, clock, getHeight, view })
     return 1 - sstep(FADE_IN, FADE_OUT, gap);
   }
 
+  /** Crown weight target (Step 85b): 1 when the camera focus stands on the plateau top, 0 elsewhere (the marsh, every other island). */
+  function crownTarget() {
+    if (!crown) return 0;
+    const f = focus && focus(), v = f || view();
+    return crown.topWeight(v.x - dusk.x, v.z - dusk.z, f && f.y !== undefined ? f.y : getHeight(v.x, v.z));
+  }
+  /** The cloud lid is drawn unless a local player of this screen is on the Crownlands (or ?crown): each screen decides alone, nothing is synced. */
+  function lidWanted() {
+    if (lidForce !== null) return lidForce;
+    if (crownFlag) return false;
+    if (crown && locals) for (const p of locals()) { const q = p.position; if (crown.topWeight(q.x - dusk.x, q.z - dusk.z, q.y) > 0.5) return false; }
+    return true;
+  }
+
   /** Multiply a colour a little towards blue: less red, a hair less green, a touch more blue (never above 1 unless it already was). */
   function cool(c, k) {
     if (!c) return;
@@ -130,6 +150,13 @@ export function createAtmosphere({ scene, camera, sky, clock, getHeight, view })
     const duskTarget = targetWeight(v, dusk);
     dw = !started ? duskTarget : dw + (duskTarget - dw) * (1 - Math.exp(-dt / EASE));
     if (Math.abs(duskTarget - dw) < 0.002) dw = duskTarget;
+    const cwTarget = crownTarget();
+    cw = !started ? cwTarget : cw + (cwTarget - cw) * (1 - Math.exp(-dt / EASE));
+    if (Math.abs(cwTarget - cw) < 0.002) cw = cwTarget;
+    upTop = cwTarget > 0.5;
+    const eff = duskLight ? dw * (1 - cw) : 0;                  // the marsh weight: the dusk mix is cut by (1 - cw), up top the ordinary clock shows
+    const kc = duskLight ? cw : 0;                              // the Crownlands' grade
+    duskFx.lid(lidOn = lidWanted());
     ew = !started ? emberTarget : ew + (emberTarget - ew) * (1 - Math.exp(-dt / EASE));
     emberUniforms.uNight.value = clock.nightness;
     // Nearby clouds catch a faint lava glow from below, even while viewed from home.
@@ -172,8 +199,16 @@ export function createAtmosphere({ scene, camera, sky, clock, getHeight, view })
     }
 
     // Reset numeric properties every tick too: walking out must restore the ordinary sky.
-    const k = duskLight ? DUSK_LIGHT.mix * dw : 0;
+    const k = DUSK_LIGHT.mix * eff;
     const uSky = sky.dome.material.uniforms;
+    if (kc > 0) {                                               // Step 85b: CROWN_LIGHT on top of the fresh clock palette (tints scale with daylight; dawn / dusk / night keep their own)
+      const day = 1 - clock.nightness, tint = kc * day;
+      uSky.uHorizon.value.lerp(crownColors.horizon, CROWN_LIGHT.horizonMix * tint);
+      for (const c of [scene.background, scene.fog?.color]) if (c) c.lerp(crownColors.fog, CROWN_LIGHT.fogMix * tint);
+      sky.sun.color.lerp(crownColors.sun, CROWN_LIGHT.sunMix * tint);
+      sky.sun.intensity *= 1 + (CROWN_LIGHT.sunBoost - 1) * tint;
+      sky.hemi.intensity *= 1 + (CROWN_LIGHT.hemiBoost - 1) * tint;
+    }
     for (const [c, key] of [[uSky.uTop.value, 'top'], [uSky.uHorizon.value, 'horizon'],
       [scene.background, 'fog'], [scene.fog?.color, 'fog'], [sky.hemi.color, 'hemiSky'],
       [sky.hemi.groundColor, 'hemiGround'], [sky.sun.color, 'light']]) if (c) c.lerp(duskColors[key], k);
@@ -182,17 +217,18 @@ export function createAtmosphere({ scene, camera, sky, clock, getHeight, view })
     sky.sun.shadow.intensity = THREE.MathUtils.lerp(baseShadow.intensity, DUSK_LIGHT.shadowIntensity, k);
     sky.sun.shadow.radius = THREE.MathUtils.lerp(baseShadow.radius, DUSK_LIGHT.shadowRadius, k);
     if (scene.fog) {
-      scene.fog.near = THREE.MathUtils.lerp(baseFog.near, DUSK_LIGHT.fogNear, k);
-      scene.fog.far = THREE.MathUtils.lerp(baseFog.far, DUSK_LIGHT.fogFar, k);
+      scene.fog.near = THREE.MathUtils.lerp(baseFog.near * (1 + (CROWN_LIGHT.fogNearScale - 1) * kc), DUSK_LIGHT.fogNear, k);
+      scene.fog.far = THREE.MathUtils.lerp(baseFog.far * (1 + (CROWN_LIGHT.fogFarScale - 1) * kc), DUSK_LIGHT.fogFar, k);
     }
     // The canopy completely hides celestial discs/stars at full weight, rather than leaving an 8% star leak.
-    const canopy = duskLight ? dw : 0;
+    const canopy = eff;
     uSky.uSunVisible.value *= 1 - canopy; uSky.uMoonVisible.value *= 1 - canopy;
     uSky.uWarmth.value *= 1 - canopy;
     sky.stars.material.uniforms.uNight.value *= 1 - canopy;
     if (k > 0) sky.sun.position.sub(sky.sun.target.position).lerp(duskDir, k).add(sky.sun.target.position);
-    duskUniforms.uGlow.value = DUSK_LIGHT.glow + DUSK_LIGHT.breathe * Math.sin(t * DUSK_LIGHT.breatheRate);
-    duskFx.update(t, dw, v, getHeight, camera, viewportHeightPx, scene.fog?.color);
+    duskUniforms.uGlow.value = (DUSK_LIGHT.glow + DUSK_LIGHT.breathe * Math.sin(t * DUSK_LIGHT.breatheRate)) * (1 - cw);
+    duskUniforms.uCrownNight.value = cw * clock.nightness;     // the Crownlands' own night glow (Step 85d speckles): 0 in the marsh and by day
+    duskFx.update(t, eff, v, getHeight, camera, viewportHeightPx, scene.fog?.color);
 
     // snowfall
     const gy = Math.max(getHeight(v.x, v.z), 0);
@@ -213,16 +249,23 @@ export function createAtmosphere({ scene, camera, sky, clock, getHeight, view })
 
   return {
     update,
-    snap() { const v = view(); w = targetWeight(v); ew = targetWeight(v, ember); dw = targetWeight(v, dusk); started = true; groundY = Math.max(getHeight(v.x, v.z), 0); groundInit = true; },
+    snap() { const v = view(); w = targetWeight(v); ew = targetWeight(v, ember); dw = targetWeight(v, dusk); cw = crownTarget(); started = true; groundY = Math.max(getHeight(v.x, v.z), 0); groundInit = true; },
     duskFx,
     light(on = true) { duskLight = !!on; return duskLight; },
-    get duskWeight() { return dw; },
-    get waterWeight() { return duskLight ? dw : 0; },
+    /** The marsh look weight (0 up on the Crownlands and anywhere off the island): drives the dusk camera, the water tint, the ambient fireflies and the pets' mood. */
+    get duskWeight() { return dw * (1 - cw); },
+    get regionWeight() { return dw; },                      // the plain rectangular island weight (cw not applied)
+    get crownWeight() { return cw; },
+    get upTop() { return upTop; },
+    get waterWeight() { return duskLight ? dw * (1 - cw) : 0; },
+    /** Debug: force the cloud lid (true = drawn, false = hidden); null returns to the per-screen rule. */
+    lidForce(on = null) { lidForce = on === null ? null : !!on; duskFx.lid(lidOn = lidWanted()); return lidOn; },
+    lidRule: () => lidWanted(),
     get weight() { return w; },
     /** True while the view is well inside Frostpine (ambient fireflies stay out). */
     get calm() { return w > 0.5; },
     points,
-    summary: () => ({ weight: +w.toFixed(3), emberWeight: +ew.toFixed(3), duskWeight: +dw.toFixed(3), duskLight, flakes: Math.round(N_FLAKES * Math.min(1, w * (0.5 + 0.5 * sstep(0.4, 7.8, groundY)))), groundY: +groundY.toFixed(2), visible: points.visible }),
+    summary: () => ({ weight: +w.toFixed(3), emberWeight: +ew.toFixed(3), duskWeight: +(dw * (1 - cw)).toFixed(3), regionWeight: +dw.toFixed(3), cw: +cw.toFixed(3), upTop, lid: lidOn, duskLight, flakes: Math.round(N_FLAKES * Math.min(1, w * (0.5 + 0.5 * sstep(0.4, 7.8, groundY)))), groundY: +groundY.toFixed(2), visible: points.visible }),
     dispose() { duskFx.dispose(); points.removeFromParent(); motes.removeFromParent(); geo.dispose(); mat.dispose(); moteMat.dispose(); },
   };
 }

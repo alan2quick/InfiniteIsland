@@ -87,6 +87,8 @@ import { createAtmosphere } from './fx/atmosphere.js';
 import { duskFlora } from './world/islands/duskVisuals.js';
 import { buildDuskPlacement } from './world/islands/duskPlacement.js';
 import { buildDuskFlora } from './world/islands/duskFlora.js';
+import { crownTreeFade } from './world/islands/crownTreeVisuals.js';   // Step 85d: the Crownlands' tree canopy fade
+import { crownLayers } from './world/islands/crownLayers.js';       // Step 85c: which Crownlands layers are drawn (the cloud lid decides)
 import { HATS } from './player/hats.js';
 import { TAILS } from './player/tails.js';
 import { GARLANDS } from './player/garlands.js';
@@ -184,7 +186,7 @@ const worldVis = createWorldVisuals({ scene, camera, homeProps: props });
 const terrain = worldVis.root;
 const ambient = createAmbient({ scene, props, getHeight, clock: dayNight, campfire: CAMPFIRE });   // butterflies (day), fireflies (night), drifting petals, ocean glints
 // Region atmosphere (Step 29a): snowfall + a cooler look while the view is on Frostpine, eased in / out across the bridge
-const atmosphere = createAtmosphere({ scene, camera, sky, clock: dayNight, getHeight, view: () => worldVis.viewCentre() });
+const atmosphere = createAtmosphere({ scene, camera, sky, clock: dayNight, getHeight, view: () => worldVis.viewCentre(), focus: () => players.focus, locals: () => players.list, crownFlag: params.has('crown') });   // (Step 85b: the crown weight reads the camera focus, the per-screen cloud lid reads this screen's players)
 const sfx = new Sfx();                                        // WebAudio blips; wakes up on the first user gesture
 const music = new Music(sfx);                                 // cycling procedural background tracks (starts after the first gesture)
 // Impact duck stays on this screen and respects the music's current cinematic level.
@@ -949,6 +951,7 @@ function tick(realDt) {
     _fadePts.length = 0;
     for (const p of players.list) { const q = _fadePool[_fadePts.length] || (_fadePool[_fadePts.length] = { x: 0, y: 0, z: 0 }); q.x = p.position.x; q.y = p.position.y + 1.1; q.z = p.position.z; _fadePts.push(q); }
     duskFlora.update(dt, camera.position, _fadePts);
+    crownTreeFade.update(dt, camera.position, _fadePts);       // Step 85d: the same for the Crownlands' acacia / baobab canopies (nothing runs while the cloud lid hides them)
   }
   for (const p of players.list) {
     if (getGroundType(p.position.x, p.position.z) !== 'hotspring') { p.userDataSpringAt = 0; continue; }
@@ -1092,10 +1095,8 @@ function islandSpot(id) {
   }
   return { x: br.bx, z: br.bz };
 }
-// Step 85a: ?crown reveals the Crownlands (the cloud lid stays off, and the players start at the crown landing); a goto to a crown spot hides the lid too (the per-screen rule is Step 85b)
+// Step 85a/b: ?crown reveals the Crownlands (the cloud lid stays off, and the players start at the crown landing). The lid is otherwise a per-screen rule (atmosphere.lidRule): drawn unless a LOCAL player stands on the plateau top.
 const CROWN_FLAG = params.has('crown');
-const CROWN_SPOTS = ['duskCrown', 'crownRock', 'crownFalls'];
-if (CROWN_FLAG) atmosphere.duskFx.lid(false);
 const world = {
   islands: ISLANDS, regionOf, setBridgeOpen, isBridgeOpen,
   regions: worldVis.regions, visuals: worldVis.visuals, summary: () => worldVis.summary(),
@@ -1107,7 +1108,6 @@ const world = {
     const spot = islandSpot(id);
     if (!spot) return false;
     players.list.forEach((p, i) => p.teleport(spot.x + (i % 2) * 1.6, spot.z + Math.floor(i / 2) * 1.6));
-    atmosphere.duskFx.lid(!(CROWN_FLAG || CROWN_SPOTS.includes(id)));
     if (typeof id === 'string' && (id.startsWith('dusk') || id.startsWith('crown'))) for (const p of players.list) { p.facing = Math.PI; p.root.rotation.y = Math.PI; }   // (Step 69a: face north, up the marsh, at the cliff)
     followCam.snap();
     followCam.update(0, players.focus);
@@ -1131,7 +1131,7 @@ const world = {
 const getDuskData = () => worldVis.visuals.duskcrown?.data?.dusk;
 const duskDebug = {
   light(on = true) { return atmosphere.light(on); },
-  lid(on = true) { return atmosphere.duskFx.lid(on); },
+  lid(on = true) { return atmosphere.lidForce(on); },                 // a debug override of the cloud lid (atmosphere.lidForce(null) restores the per-screen rule)
   get layout() { return getIslandModule('duskcrown').layout; },
   get ponds() { return getIslandModule('duskcrown').ponds; },
   noclip(on = true) { setNoclip(on ? 'duskcrown' : null); return getNoclip() !== null; },
@@ -1148,10 +1148,19 @@ const DUSK_FLAG = params.has('duskcrown');
 // Step 85a: __game.dusk.crown = { summary(), layout, rivers(), skyIslands(), reveal(on) }: the Crownlands' plan (pools, rivers, kopjes, floating-island data), reveal(true) hides the cloud lid, reveal(false) puts it back. Goto: 'duskCrown' | 'crownRock' | 'crownFalls'.
 duskDebug.crown = {
   get layout() { return getIslandModule('duskcrown').crown; },
-  summary() { return { ...getIslandModule('duskcrown').crown.summary(), lid: atmosphere.duskFx.mesh.visible, flag: CROWN_FLAG, spots: getIslandModule('duskcrown').spots() }; },
+  summary() { const a = atmosphere.summary(); return { ...getIslandModule('duskcrown').crown.summary(), cw: a.cw, upTop: a.upTop, lid: atmosphere.duskFx.mesh.visible, lidRule: atmosphere.lidRule(), flag: CROWN_FLAG, spots: getIslandModule('duskcrown').spots() }; },
   rivers() { return getIslandModule('duskcrown').crown.rivers.map((r) => ({ id: r.id, kind: r.kind, pool: r.pool, length: r.length, outlet: r.outlet, surfaceFrom: r.surf[0], surfaceTo: r.surf[r.surf.length - 1] })); },
   skyIslands() { return getIslandModule('duskcrown').crown.skyIslands.map(({ topHeight, walkable, edgeR, ...data }) => data); },
-  reveal(on = true) { atmosphere.duskFx.lid(!on); return !atmosphere.duskFx.mesh.visible; },
+  reveal(on = true) { if (on === null) atmosphere.lidForce(null); else atmosphere.lidForce(!on); return !atmosphere.duskFx.mesh.visible; },   // reveal(null) returns to the per-screen rule
+  // Step 85c: water() = the elevated water (pools, ribbons, riffles, meshes, triangles), falls() = the sky / rim / sea falls (counts, triangles, the plan), layers(on) = pin the secret layers (water, sky falls, floating islands) on / off for
+  // comparison (true / false), layers(null) returns to the lid rule, layers() just reads { visible, lid, forced }; the cliff falls (rim, sea) are always drawn.
+  water() { const v = worldVis.visuals.duskcrown?.crown, s = v?.summary(); return s ? { ...s.water, plan: v.plan.summary(), layers: s.layers, visible: s.visible } : null; },
+  falls() { const v = worldVis.visuals.duskcrown?.crown, s = v?.summary(); return s ? { ...s.falls, cliff: s.cliff, sky: v.plan.skyFalls, rim: v.plan.rimFalls, sea: v.plan.seaFalls.map((f) => ({ id: f.id, width: f.width, top: f.path[0], foot: f.foot })) } : null; },
+  // Step 85d: trees() = the acacias / baobabs (counts by type / variant / family / zone, hash, colliders, draw calls, triangles, fade state, safe stand points), treeFade(on) = canopy fade on / off, treeSettle() = jump to the final fade (screenshots).
+  trees() { const d = getIslandModule('duskcrown') && worldVis.visuals.duskcrown?.data?.crownTrees, v = worldVis.visuals.duskcrown?.crownTrees; return d ? { ...d.summary(), visuals: v?.summary(), fade: crownTreeFade.enabled, items: d.placement.items } : null; },
+  treeFade(on = true) { crownTreeFade.enabled = !!on; return crownTreeFade.enabled; },
+  treeSettle() { const pts = players.list.map((p) => ({ x: p.position.x, y: p.position.y + 1.1, z: p.position.z })); return crownTreeFade.settle(camera.position, pts); },
+  layers(on) { if (on !== undefined) crownLayers.force(on); return { visible: crownLayers.visible, lid: crownLayers.lid, forced: crownLayers.forced, summary: worldVis.visuals.duskcrown?.crown?.summary() }; },
 };
 
 // Debug (Step 33b): __game.paths.summary() = every trail (length, samples), get(id) = the built path (island-local samples), markers(id) = its lantern posts

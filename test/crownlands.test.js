@@ -27,7 +27,7 @@ test('the crown plan is deterministic and hash-pinned; another seed makes anothe
   assert.equal(a.hash(), C.hash());
   assert.equal(getCrownLayout(island, L), C, 'cached per island');
   assert.equal(createCrownLayout({ ...island, seed: island.seed + 1 }, createDuskLayout({ ...island, seed: island.seed + 1 })).hash() === a.hash(), false);
-  assert.equal(C.hash(), '454a657d');                                 // pinned: the plan of 85a (update on purpose when the plateau is redesigned)
+  assert.equal(C.hash(), '5e575684');                                 // pinned: the plan of 85a, re-pinned in 85c when the pools were given their own bank (poolGroundD keeps a lower neighbour's apron from dragging a pool's bank under its water; update on purpose when the plateau is redesigned)
   assert.equal(L.hash(), '732b82e4');                                       // the marsh layout is untouched
   for (const [x, z] of [[880, 300], [850, 320], [900, 330], [760, 380]]) assert.equal(createDuskIsland(island).height(x, z), mod.height(x, z));
   const s = C.summary();

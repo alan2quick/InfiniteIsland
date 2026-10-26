@@ -10,6 +10,8 @@ import { buildRibbonGeometry, waterUniforms } from '../water.js';
 import { duskUniforms } from './duskAtmosphere.js';
 import { materials } from './duskVisuals.js';
 import { getSmallAsset } from './duskSmallAssets.js';
+import { getIslandModule } from './registry.js';
+import { rimPrefix } from './crownWater.js';
 
 let fallMat;
 export function duskFallMaterial() {
@@ -90,11 +92,14 @@ export function buildDuskSmallVisuals(island, plan) {
   const reflection = new THREE.InstancedMesh(reflectionGeo, reflectionMat, 1); reflection.setMatrixAt(0, m.identity()); reflection.name = 'dusk-lily-reflections'; reflection.renderOrder = 3;
   group.add(reflection); meshes.push(reflection); geos.push(reflectionGeo);
   const ribbons = [];
+  const crownMod = getIslandModule(island.id);
   for (const fall of plan.falls) {
-    const geo = buildRibbonGeometry(fall.path, DUSK_WATER.fallWidth, { fall: () => 0 });
+    // Step 85c: the plateau river above this fall extends the SAME mesh upward to the river's lip (its width tapers into the fall's); the marsh fall's own points are untouched
+    const rim = crownMod?.crown ? rimPrefix(island, crownMod, fall.id) : null, path = rim ? [...rim.prefix, ...fall.path] : fall.path, lead = rim ? rim.prefix.length : 0;
+    const geo = buildRibbonGeometry(path, rim ? (i) => (i < lead ? rim.hw[i] : DUSK_WATER.fallWidth) : DUSK_WATER.fallWidth, { fall: () => 0 });
     // The helper's distance is horizontal; falling ribbons need vertical distance for moving glints.
     const uv = geo.attributes.uv; let distance = 0;
-    fall.path.forEach((pt, i) => { if (i) { const prev = fall.path[i - 1]; distance += Math.hypot(pt.x - prev.x, pt.y - prev.y, pt.z - prev.z); } uv.setY(i * 2, distance); uv.setY(i * 2 + 1, distance); });
+    path.forEach((pt, i) => { if (i) { const prev = path[i - 1]; distance += Math.hypot(pt.x - prev.x, pt.y - prev.y, pt.z - prev.z); } uv.setY(i * 2, distance); uv.setY(i * 2 + 1, distance); });
     ribbons.push(geo);
     for (const [radius, height] of [[2.6, 0.18], [1.7, 0.55], [1.0, 0.9]]) {
       const mist = new THREE.PlaneGeometry(radius * 2, radius * 2); mist.rotateX(-Math.PI / 2); mist.translate(fall.foot.x, fall.foot.y + height, fall.foot.z);

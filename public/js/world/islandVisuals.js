@@ -37,9 +37,12 @@ import { registerFrostGameplay } from './islands/frostWorld.js';
 import { buildFrostVisuals } from './islands/frostVisuals.js';
 import { registerStoryGameplay } from './islands/storyWorld.js';
 import { buildStoryVisuals } from './islands/storyVisuals.js';
-import { registerDuskGameplay } from './islands/duskWorld.js';
+import { registerDuskGameplay, registerCrownTreeGameplay } from './islands/duskWorld.js';
 import { buildDuskVisuals } from './islands/duskVisuals.js';
 import { buildDuskSmallVisuals } from './islands/duskSmallVisuals.js';
+import { buildCrownVisuals } from './islands/crownVisuals.js';
+import { buildCrownTreeVisuals } from './islands/crownTreeVisuals.js';
+import { getIslandModule } from './islands/registry.js';
 import { toonMat } from '../render/toon.js';
 import { part } from './props.js';
 
@@ -55,7 +58,7 @@ export function buildIslandData(island) {
   if (island.id === 'home') data.stubColliders = registerStubColliders();   // home-side bridge posts
   if (island.biome === 'alpine') data.frost = registerFrostGameplay(island);   // Step 29a: Frostpine's colliders, interactables, harvest proxies
   if (island.biome === 'storybook') data.story = registerStoryGameplay(island);   // Step 48: Storybook Cay's colliders, sign, book stand(s)
-  if (island.biome === 'fungal') data.dusk = registerDuskGameplay(island);   // Step 69c: Duskcrown's mushroom stem colliders
+  if (island.biome === 'fungal') { data.dusk = registerDuskGameplay(island); data.crownTrees = registerCrownTreeGameplay(island); }   // Step 69c: Duskcrown's mushroom stem colliders; Step 85d: the Crownlands' trunk colliders
   _data.set(island.id, data);
   return data;
 }
@@ -101,7 +104,7 @@ export function buildIslandVisuals(island, ctx) {
   const farTerrain = buildFarTerrain(island);
   far.add(farTerrain.mesh); disposers.push(() => farTerrain.dispose());
 
-  let ember = null, frost = null, story = null, dusk = null, smallDusk = null;
+  let ember = null, frost = null, story = null, dusk = null, smallDusk = null, crown = null, crownTrees = null;
   if (island.id === 'home') {
     full.add(ctx.homeProps.group);                         // wrapped as is (never disposed here: its colliders / interactables live on)
     const blobs = homeFarBlobs(ctx.homeProps);
@@ -128,6 +131,12 @@ export function buildIslandVisuals(island, ctx) {
       disposers.push(() => dusk.dispose());
       smallDusk = buildDuskSmallVisuals(island, data.dusk.flora);
       full.add(smallDusk.group); disposers.push(() => smallDusk.dispose());
+      crown = buildCrownVisuals(island, getIslandModule(island.id));     // Step 85c: the Crownlands' water, falls and floating islands (the secret layers follow the cloud lid; the sea-cliff falls are always drawn)
+      full.add(crown.group, crown.fixed); far.add(crown.far, crown.farFixed);
+      disposers.push(() => crown.dispose());
+      crownTrees = buildCrownTreeVisuals(island, data.crownTrees.placement);   // Step 85d: the plateau's acacias and baobabs (drawn only while the cloud lid is off; trunk colliders are registered once in buildIslandData)
+      full.add(crownTrees.group); far.add(crownTrees.far);
+      disposers.push(() => crownTrees.dispose());
     }
   }
   for (const b of BRIDGES) {                               // broken bridge stubs at every landing on this island (until Step 28)
@@ -139,14 +148,14 @@ export function buildIslandVisuals(island, ctx) {
   }
 
   return {
-    id: island.id, root, full, far, always, data,
+    id: island.id, root, full, far, always, data, get crown() { return crown; }, get crownTrees() { return crownTrees; },
     update(t) { ember?.update(t); frost?.update(t); story?.update(t); },
     setFull(on) { full.visible = on; far.visible = !on; },
     dispose() {
       for (const d of disposers) d();
       root.removeFromParent();
     },
-    summary() { return { ember: ember ? ember.summary() : null, frost: frost ? frost.summary() : null, story: story ? story.summary() : null, dusk: dusk ? dusk.summary() : null, duskSmall: smallDusk ? smallDusk.summary() : null }; },
+    summary() { return { ember: ember ? ember.summary() : null, frost: frost ? frost.summary() : null, story: story ? story.summary() : null, dusk: dusk ? dusk.summary() : null, duskSmall: smallDusk ? smallDusk.summary() : null, crown: crown ? crown.summary() : null, crownTrees: crownTrees ? crownTrees.summary() : null }; },
   };
 }
 
