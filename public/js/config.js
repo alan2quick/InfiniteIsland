@@ -856,6 +856,7 @@ export const PARTY = {
   },
   // ---- Step 80c: Sizzle Seed (run round the campfire, bump a friend to pass the sizzling seed) and Egg Scramble (run in your lane, stack eggs on your head). Stage-local lengths in u, times in s.
   sizzle: {
+    wander: { pace: 0.45, every: [2.5, 5], pause: [0.4, 1.4] },                    // an idle bot strolls to a new spot (away from the seed) at this stick, every few s, resting a moment there
     arenaR: 9.2, spawnR: 6.9, spectatorZ: 11.6, fireR: 1.35,                       // the walkable clearing round the fire, where the players start, the cheering spots, the fire pit
     benches: { r: 5.1, half: 1.7, cr: 0.55, angles: [0, 90, 180, 270] },            // four log benches round the fire (obstacles): radius, half length, collider radius of each of the three circles that make one
     touchR: 1.5, lock: 0.6, cool: 0.35,                                             // a touch is two players this close (u); the new holder cannot pass BACK for `lock` s (and until the two have parted); nobody passes again within `cool` s
@@ -897,11 +898,12 @@ export const PARTY = {
     frames: [{ x: -6.6, z: -5.35 }, { x: 6.6, z: -5.35 }, { x: -6.6, z: 5.35 }, { x: 6.6, z: 5.35 }],      // the four frame centres (seat k uses frame k), a 2 x 2 layout in one fixed shot
     hx: 5.2, hz: 4.25, rim: 0.45, pivotY: 1.3, cols: 5, rows: 4, tile: 1.9,                                 // outer half extents (x, z), the raised wooden rim, the pivot height above the lawn, the 5 x 4 tile grid (tile = side; the grid fills the inside exactly)
     maxTilt: 0.21, turnRate: 0.3, reach: 0.85, ease: 3,                                                     // a tip of about 12 degrees at most; the board turns at most turnRate rad/s; full tilt needs 85% of the way to the edge
-    gravity: 8, rollK: 5 / 7, damp: 0.8, friction: 0.01, rimE: 0.55, obstacleE: 0.6, maxSpeed: 12, ballR: 0.55,   // the coconut's physics (gravity is scaled up so a 12 degree slope still rolls briskly)
+    gravity: 11, rollK: 5 / 7, damp: 0.7, friction: 0.01, rimE: 0.6, obstacleE: 0.6, maxSpeed: 14, ballR: 0.55,   // the coconut's physics (gravity is scaled up so a 12 degree slope rolls briskly). Playtest 2026-10-26: faster with more carry (was gravity 8, damp 0.8, rimE 0.55, maxSpeed 12); much lower damping made it luck over skill (easy bots beat the scripted kid)
     spawn: { x: 0, z: 2.8 }, ball: { x: 0, z: 0 }, walkPad: 0.35,                                           // where a player starts on its frame, where the coconut starts, how far inside the rim a player may walk
     duration: 30, tail: 1.8, benchZ: 11.4, benchR: 1.0, botMiss: 0.5,
   },
   bonk: {
+    wander: { pace: 0.45, every: [2.5, 5], pause: [0.4, 1.4] },                    // an idle bot strolls to a new spot (clear of hills and seen shadows) at this stick, every few s, resting a moment there
     meadowR: 10, patches: [{ x: -9.6, z: 9.6 }, { x: 9.6, z: 9.6 }], patchR: 2.0, spawnR: 5.2,                // the round meadow, the two little spectator islets across the stream, the ring the players start on
     hills: [{ x: -6.2, z: -2.8, r: 0.95 }, { x: 5.2, z: -5.2, r: 0.9 }, { x: 6.4, z: 3.0, r: 1.0 }, { x: -2.6, z: 7.2, r: 0.9 }, { x: 0.2, z: -0.8, r: 0.85 }, { x: -7.2, z: 1.8, r: 0.8 }],     // the molehills (they block walking)
     hitR: 2.5, core: 0.55, hopSpeed: 7.2, airFrom: 0.06, airTo: 0.5, cool: 0.55, lag: 0.2,                   // a slam's circle; inside `core` x hitR you are always squashed, a hop at the landing saves you only in the outer ring; the hop's air window; a second hop waits `cool` s

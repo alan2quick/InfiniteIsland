@@ -163,12 +163,13 @@ test('judging uses the DRAWN shadows and mallets: the ring is hitR, the red ring
 test('bots: they notice a shadow after react s, walk to the nearest clear spot (off the hills, on the meadow), hop when they cannot get out in time and stand in the outer ring, sometimes miss a shadow on easy, and fallen ones do nothing', () => {
   const plan = buildPlan(8), s0 = plan.slams[0], g = init(8, roster(1)), rng = mulberry32(1);
   const inside = at(s0, 0.5, 0), me = (mem) => ({ slot: 0, ...inside, mem });
-  assert.deepEqual(bot(view(g, s0.t0 + 0.02), me({}), PARTY.bots.easy, mulberry32(2)), { x: 0, y: 0 }, 'not yet: it has not noticed');
+  const stroll = (o) => Math.hypot(o.x, o.y) <= B.wander.pace + 1e-9;
+  assert.ok(stroll(bot(view(g, s0.t0 + 0.02), me({}), PARTY.bots.easy, mulberry32(2))), 'not yet: it has not noticed (at most an idle stroll, never a run)');
   const out = bot(view(g, s0.t0 + 1.0), me({}), PARTY.bots.hard, rng); assert.ok(Math.hypot(out.x, out.y) > 0.9, 'a hard bot runs');
   // it runs AWAY from the circle's centre
   const dx = (inside.x - c.x - s0.x), dz = (inside.z - c.z - s0.z); assert.ok(out.x * dx + (-out.y) * dz > 0, 'away from the middle');
   assert.ok(Math.hypot(...Object.values(bot(view(g, s0.t0 + 1.0), me({}), PARTY.bots.easy, mulberry32(3)))) <= Math.hypot(out.x, out.y) + 1e-9, 'an easy bot is not faster');
-  assert.deepEqual(bot(view(g, s0.t0 + 1.0), { slot: 0, ...at({ x: 0, z: 0 }, 99, 99), mem: {} }, PARTY.bots.hard, rng), { x: 0, y: 0 }, 'nothing near it: it stands');
+  assert.ok(stroll(bot(view(g, s0.t0 + 1.0), { slot: 0, ...at({ x: 0, z: 0 }, 99, 99), mem: {} }, PARTY.bots.hard, rng)), 'nothing near it: it only strolls');
   g.alive[0] = false; assert.deepEqual(bot(view(g, s0.t0 + 1.0), me({}), PARTY.bots.hard, rng), { x: 0, y: 0 }, 'squashed'); g.alive[0] = true;
   // it never steers into a hill: the chosen goal is clear of every molehill and inside the meadow
   for (let k = 0; k < 40; k++) { const sl = { ...s0, x: HILLS[k % 6].x + 1, z: HILLS[k % 6].z }; const v = view(g, 3); v.slams = [{ ...sl, phase: 'warn', t0: 1, T: 3.4, u: 0.5 }]; const o = bot(v, { slot: 0, ...at(sl, -0.2, 0.2), mem: {} }, PARTY.bots.hard, mulberry32(k)); assert.ok(Math.hypot(o.x, o.y) <= 1 + 1e-9); }
@@ -300,4 +301,18 @@ test('track 32 Mallet March: a cartoon oompah march at 120 bpm, pinned; the olde
   for (const nme of names) assert.doesNotThrow(() => sfx.play(nme, { pitch: 1.2, vol: 0.5 }), nme); sfx.ctx = fakeCtx; sfx.master = { connect() {} };
   for (const nme of names) assert.doesNotThrow(() => sfx.play(nme, { pitch: 1.4 }), nme);
   assert.ok(ICONS['party-bonk'] && ICONS['party-bonk'].startsWith('<svg') && ICONS['party-bonk'].endsWith('</svg>')); assert.doesNotMatch(ICONS['party-bonk'], /[\u{1F300}-\u{1FAFF}☀-➿]/u);
+});
+
+test('an idle bot strolls the meadow (playtest 2026-10-26): with no shadow over it, it walks to fresh spots at a stroll, pauses, never leaves the meadow and never stands on a molehill', () => {
+  const g = init(8, roster(1)), m = {}, rng = mulberry32(4); let x = c.x + 3, z = c.z + 3, moved = 0, still = 0;
+  for (let k = 0; k < 60 * 20; k++) {
+    const v = view(g, k / 60); v.slams = [];
+    const o = bot(v, { slot: 0, x, z, mem: m }, PARTY.bots.easy, rng), sp = Math.hypot(o.x, o.y);
+    assert.ok(sp <= B.wander.pace + 1e-9, 'a stroll, not a run');
+    if (sp < 1e-9) still++;
+    const nx = x + o.x * 3.5 / 60, nz = z - o.y * 3.5 / 60; moved += Math.hypot(nx - x, nz - z); x = nx; z = nz;
+    assert.ok(Math.hypot(x - c.x, z - c.z) < B.meadowR, 'inside the meadow');
+  }
+  assert.ok(moved > 6, `it walks about (${moved.toFixed(1)} u in 20 s)`); assert.ok(still > 20, 'and pauses now and then');
+  for (const h of HILLS) assert.ok(Math.hypot(m.wander.x - h.x, m.wander.z - h.z) > h.r, 'its goal is never on a molehill');
 });

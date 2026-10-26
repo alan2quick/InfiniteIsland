@@ -292,3 +292,19 @@ test('a host + replica pair play a whole Sizzle Seed with equal hashes; the repl
   const snap = JSON.stringify(w.host.state); assert.doesNotMatch(snap, /popAt|secret/);
   setSecretRng();
 });
+
+test('an idle bot strolls (playtest 2026-10-26): far from the seed it walks to fresh spots at a stroll, pauses, keeps away from the holder, stays in the clearing and out of the fire', () => {
+  const g = init(3, roster(2)), m = {}, rng = mulberry32(6); let x = c.x + 3, z = c.z, moved = 0, still = 0, goalsAway = 0, goals = 0, last = null;
+  const holder = { slot: 1, x: c.x - 7.4, z: c.z };
+  for (let k = 0; k < 60 * 20; k++) {
+    const v = view(g, 3 + k / 60); v.holder = 1; v.alive = { 0: true, 1: true }; v.done = false;
+    const o = bot(v, { slot: 0, x, z, mem: m, others: [holder] }, PARTY.bots.easy, rng), sp = Math.hypot(o.x, o.y);
+    if (Math.hypot(x - holder.x, z - holder.z) > 7.5) assert.ok(sp <= S.wander.pace + 1e-9, 'a stroll, not a run');
+    if (sp < 1e-9) still++;
+    const nx = x + o.x * 3.5 / 60, nz = z - o.y * 3.5 / 60; moved += Math.hypot(nx - x, nz - z); x = nx; z = nz;
+    const r = Math.hypot(x - c.x, z - c.z); assert.ok(r < S.arenaR && r > S.fireR, 'in the clearing, out of the fire');
+    if (m.wander && m.wander !== last) { last = m.wander; goals++; if (m.wander.x > c.x - 2) goalsAway++; }
+  }
+  assert.ok(moved > 6, `it walks about (${moved.toFixed(1)} u in 20 s)`); assert.ok(still > 20, 'and pauses now and then');
+  assert.ok(goals >= 3 && goalsAway / goals > 0.6, `its spots lean away from the holder (${goalsAway} / ${goals})`);
+});

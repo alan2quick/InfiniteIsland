@@ -179,10 +179,8 @@ export function bot(v, me, skill, rng) {
     }
     if (v.t >= k.at && !k.blind) known.push(s);
   }
-  if (!known.length) return out;
-  const clearOf = (x, z, margin) => known.every((s) => Math.hypot(x - s.x, z - s.z) > B.hitR + margin);
   const threats = known.filter((s) => Math.hypot(px - s.x, pz - s.z) <= B.hitR + 0.3);
-  if (!threats.length) return out;
+  if (!threats.length) return wander(v, m, px, pz, known, rng, out);            // nothing over its head: stroll about the meadow instead of standing still
   const hard = skill.react < 0.3, margin = hard ? 0.55 : 0.35, speed = PARTY_SPEED(skill);
   let goal = null, bestCost = Infinity, bestClear = -Infinity, fallback = null;
   for (let a = 0; a < 24; a++) {
@@ -203,6 +201,28 @@ export function bot(v, me, skill, rng) {
   if (!goal) return out;
   const dx = goal.x - px, dz = goal.z - pz, d = Math.hypot(dx, dz) || 1, mag = speedMag(skill);
   out.x = dx / d * mag; out.y = -dz / d * mag;
+  return out;
+}
+/**
+ * An idle bot strolls the meadow: a fresh spot every few seconds (clear of the molehills and of every shadow it has seen), walked to at
+ * `B.wander.pace` of a run, with a little pause at the spot. Real stick input; a shadow over the bot always wins (the dodge above).
+ */
+function wander(v, m, px, pz, known, rng, out) {
+  const W = B.wander, t = v.t, w = m.wander;
+  const ok = (x, z) => Math.hypot(x, z) <= B.meadowR - 1.6 && !HILLS.some((h) => Math.hypot(x - h.x, z - h.z) < h.r + 0.9) && known.every((s) => Math.hypot(x - s.x, z - s.z) > B.hitR + 0.8);
+  const at = w && Math.hypot(w.x - px, w.z - pz) < 0.7;
+  if (at && w.until === undefined) w.until = t + W.pause[0] + rng() * (W.pause[1] - W.pause[0]);
+  if (!w || (at && t >= w.until) || t >= w.giveUp || !ok(w.x, w.z)) {
+    for (let k = 0; k < 12; k++) {
+      const a = rng() * Math.PI * 2, r = 1.5 + rng() * (B.meadowR - 3.4), x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (ok(x, z)) { m.wander = { x, z, giveUp: t + W.every[0] + rng() * (W.every[1] - W.every[0]) }; break; }
+    }
+    if (!m.wander || m.wander === w) return out;
+  }
+  const g = m.wander;
+  if (Math.hypot(g.x - px, g.z - pz) < 0.7) return out;                       // resting at the spot for a moment
+  const dx = g.x - px, dz = g.z - pz, d = Math.hypot(dx, dz) || 1;
+  out.x = dx / d * W.pace; out.y = -dz / d * W.pace;
   return out;
 }
 const PARTY_SPEED = (skill) => (skill.walk <= 0.5 ? 3.5 * skill.walk / 0.5 : 3.5 + 3.5 * (skill.walk - 0.5) / 0.5);

@@ -184,14 +184,37 @@ export function bot(v, me, skill, rng) {
   if (v.holder === me.slot && m.aim) { dx = m.aim.x - me.x; dz = m.aim.z - me.z; }
   else if (m.flee) {
     const fx = me.x - m.flee.x, fz = me.z - m.flee.z, d = Math.hypot(fx, fz);
-    if (d > 7.5) return out;                                                         // far from the holder: stand and watch
+    if (d > 7.5) return wander(v, me, m, rng, out, m.flee);                          // far from the holder: stroll about (away from the seed), never stand like a post
     const ux = fx / (d || 1), uz = fz / (d || 1);
     dx = ux + -uz * m.flee.side * 0.7; dz = uz + ux * m.flee.side * 0.7;           // away, and round the fire
-  } else return out;
+  } else return wander(v, me, m, rng, out, null);
   const n = Math.hypot(dx, dz);
   if (n < 0.3) return out;
   const s = steer(me.x, me.z, dx / n, dz / n);
   out.x = s.x * mag; out.y = -s.z * mag;
+  return out;
+}
+
+/**
+ * An idle bot strolls: a fresh spot in the clearing every few seconds (of three random spots, the one farthest from the seed's holder), walked to at
+ * `S.wander.pace` of a run, with a little pause when it gets there. Cosmetic in spirit (it keeps bots looking alive), but it is real stick input.
+ */
+function wander(v, me, m, rng, out, holder) {
+  const W = S.wander, c = stageCentre(ID), t = v.t;
+  const at = m.wander && Math.hypot(m.wander.x - me.x, m.wander.z - me.z) < 0.8;
+  if (!m.wander || at && t >= (m.wander.until ?? 0) || t >= m.wander.giveUp) {
+    if (at && m.wander && m.wander.until === undefined) { m.wander.until = t + W.pause[0] + rng() * (W.pause[1] - W.pause[0]); return out; }
+    let best = null, bs = -Infinity;
+    for (let k = 0; k < 3; k++) {
+      const a = rng() * Math.PI * 2, r = S.fireR + 2.4 + rng() * (S.arenaR - S.fireR - 4.2);
+      const x = c.x + Math.cos(a) * r, z = c.z + Math.sin(a) * r, sc = holder ? Math.hypot(x - holder.x, z - holder.z) : rng();
+      if (sc > bs) { bs = sc; best = { x, z }; }
+    }
+    m.wander = { ...best, giveUp: t + W.every[0] + rng() * (W.every[1] - W.every[0]) };
+  }
+  if (at) return out;                                                              // resting at the spot for a moment
+  const dx = m.wander.x - me.x, dz = m.wander.z - me.z, n = Math.hypot(dx, dz) || 1, st = steer(me.x, me.z, dx / n, dz / n);
+  out.x = st.x * W.pace; out.y = -st.z * W.pace;
   return out;
 }
 
