@@ -1,8 +1,8 @@
-// The world side of Carle's quest line "The Very Hungry Visitor" (PLAN Step 74b): the caterpillar on its own small sapling near the home campfire, the first-sight beat, the hunger / full / tummy-ache bubbles, the feeding
-// menu, the munching beat with the item's own pickup model, growth, the tummy ache tint and its cure, and (placeholder) the cocoon hanging from the sapling's short branch after the seventh day. Everything here is COSMETIC
+// The world side of Carle's quest line "The Very Hungry Visitor" (PLAN Steps 74b-c): the caterpillar on its own small sapling near the home campfire, the first-sight beat, the hunger / full / tummy-ache bubbles, the feeding
+// menu, the munching beat with the item's own pickup model, growth, the tummy ache tint and its cure, and the cocoon hanging from the sapling's short branch after the seventh day. Everything here is COSMETIC
 // and per screen except what the `carle` domain (game/carle.js) decides: every screen derives what it shows from that synced state and its own players' positions.
 //
-//   const cw = createCarleWorld({ scene, players, world, sync, carle, plan, domain, inventory, thoughts, particles, sfx, hud, dialog, cinematic, floatText?, heightAt })
+//   const cw = createCarleWorld({ scene, players, world, sync, carle, plan, domain, inventory, thoughts, particles, sfx, hud, dialog, cinematic, camera, pets, floatText?, heightAt })
 //     carle = game/carle.js    plan = world/islands/homeCarle.js    domain = the `pets` unlock domain (a LIVE first unlock scales the sapling and the caterpillar in; a load / late join shows them silently)
 //   cw.update(dt)                       once per tick (any time after players.update)
 //   cw.interactables                    [the `carle` interactable at the sapling] (registered once)
@@ -15,8 +15,9 @@
 // hunger bubble). While hungry a bubble with the icon(s) of today's food shows now and then when someone is near; full: a "Zzz" bubble; the day-6 tummy ache: a green face, an "ugh" bubble and a slow roll until the mint.
 // Draw calls: the caterpillar 2, the sapling 2, a food piece 2 each (up to 3) during a beat; the cocoon 2 instead of the caterpillar. Visuals are built lazily. The popping in is a scale-in with a little overshoot (popIn.js works on
 // merged geometry, not skinned models). The interactable's prompt: "Hungry..." / "Offer" / "Look".
-// TODO 74c: the climb / spin cinematic, the cocoon day counting + "Listen", the hatch and Carle as a follower pet; here the cocoon simply replaces the caterpillar after the seventh day's beat.
+// Step 74c: carleScene.js owns the host-timed climb / silk and hatch, including temporary butterflies. Listen taps / zz marks, ready glow + toast, Watch and per-local-player invitations live here.
 import * as THREE from 'three';
+import { createCarleScene } from './carleScene.js';
 import { CARLE } from '../config.js';
 import { createWipPetModel } from '../npc/petsWip.js';
 import { createFoodModel } from './pickups.js';
@@ -59,7 +60,7 @@ export function saplingGeometry() {
 }
 
 export function createCarleWorld({
-  scene, players, world = null, sync, carle, plan, domain = null, inventory, thoughts = null, particles = null, sfx = null, hud = null, dialog, cinematic: cin = null, floatText = null, heightAt,
+  scene, players, world = null, sync, carle, plan, domain = null, inventory, thoughts = null, particles = null, sfx = null, hud = null, dialog, cinematic: cin = null, camera = null, pets = null, floatText = null, heightAt,
 }) {
   const snd = (name, opts) => { if (sfx) sfx.play(name, opts); };
   const here = () => !world || world.regions.isFull('home');
@@ -99,7 +100,7 @@ export function createCarleWorld({
   // ------------------------------------------------------------------ the interactable (registered ONCE, at the leaf)
   const iSap = anyPerch ? addInteractable({
     type: 'carle', object: null, position: new THREE.Vector3(perch.x, perch.y, perch.z), radius: 0.9, prompt: 'Look',
-    canInteract: () => visible() && st().stage >= 1,
+    canInteract: () => visible() && st().stage >= 1 && st().stage < 5 && !carle.scene && !cin?.busy,
     onInteract: (item_, by) => { openMenu(by || players.p1); },
   }) : null;
   const interactables = iSap ? [iSap] : [];
@@ -149,10 +150,13 @@ export function createCarleWorld({
     const s = st();
     const common = { name: 'Little Caterpillar', owner: p, tag: players.multi ? p.colors.name : '', color: p.colors.ui };
     p.faceToward(at.x, at.z);
-    if (s.stage >= 3) {                                          // TODO 74c: "Listen" (the tapping, how close the hatch is) and "Watch" when it is ready
-      dialog.open({ ...common, pages: ['Snug in its cocoon. Something is changing in there...'] });
+    if (s.stage === 4) { if (cin?.busy || carle.scene) return false; settle(carle.hatch(p)); return true; }
+    if (s.stage === 3) {
+      snd('thud', { pitch: 1.8, vol: 0.16 });
+      bubble('carle-listen', `<span>${'zz '.repeat(Math.min(3, s.cocoonDays + 1)).trim()}</span>`, 2.6);
       return true;
     }
+    if (s.stage === 5) return false;
     if (isFull(s)) {
       dialog.open({ ...common, pages: ['Zzz... Full! Come back tomorrow.'] });
       return true;
@@ -253,16 +257,18 @@ export function createCarleWorld({
   function stepHints(dt) {
     if (show.feedBeat || show.sightBeat || show.goodbye) return;
     const s = st();
-    if (s.stage < 1 || s.stage >= 3 || time.t - show.lastHint < HINT_EVERY) return;
+    if (s.stage < 1 || s.stage >= 5 || time.t - show.lastHint < HINT_EVERY) return;
     const n = nearestLocal();
     if (!n || n.d > HINT_RANGE) return;
     show.lastHint = time.t;
-    if (isFull(s)) bubble('carle-hint', ICONS['thought-zzz'], 2.6);
+    if (s.stage === 4) bubble('carle-hint', ICONS.sparkle, 2.8);
+    else if (s.stage === 3) return;
+    else if (isFull(s)) bubble('carle-hint', ICONS['thought-zzz'], 2.6);
     else if (ache(s)) bubble('carle-hint', ICONS['thought-ugh'], 2.8);
     else { const items = wantsOf(s); if (items) bubble('carle-hint', iconsOf(items), CARLE.beat.hunger); }
   }
 
-  // ------------------------------------------------------------------ the goodbye after day 7 (74c replaces it with the climb / spin cinematic)
+  // ------------------------------------------------------------------ the goodbye after day 7 (the host queues the climb after the mint cure)
   function stepGoodbye(dt) {
     const g = show.goodbye;
     if (!g) return;
@@ -281,6 +287,7 @@ export function createCarleWorld({
       else if (here()) { buildModels(); startFeed(d, st()); }
       return;
     }
+    if (kind === 'queued' || kind === 'start') return;
     if (kind === 'dawn') { show.lastHint = -99; return; }
     // set / reset / snapshot: jump straight to the state (no animation)
     endFeed(true); show.sightBeat = null; show.goodbye = null; show.cured = null;
@@ -288,7 +295,10 @@ export function createCarleWorld({
     show.ache = ache(st()) ? 1 : 0;
     if (cat) cat.setAche(show.ache);
   });
-  if (domain) domain.onUnlock((id, { live }) => { if (live) liveUnlockAt = time.t; });
+  if (domain) domain.onUnlock((id, { live }) => {
+    if (live && id === 'capray') liveUnlockAt = time.t;
+    if (live && id === 'carle') for (const p of players.list) if (!asks.includes(p)) asks.push(p);
+  });
 
   // ------------------------------------------------------------------ the sighting: somebody walks up to it
   let sightCooldown = 0;
@@ -299,11 +309,33 @@ export function createCarleWorld({
     if (n && n.d <= CARLE.sight) { sightCooldown = 3; settle(carle.sight(n.p)); }
   }
 
+  // A ready-on-load notification is sampled even when home is not drawn. One per ready episode on each screen.
+  let readyNotified = false, glowStage = -1;
+  function stepReady() {
+    if (st().stage === 4 && !readyNotified) { readyNotified = true; hud?.toast('The cocoon on the home island is wiggling!', { icon: 'sparkle', duration: 4200 }); }
+    if (st().stage < 4) readyNotified = false;
+    if (cocoon && glowStage !== st().stage) {
+      glowStage = st().stage;
+      const attr = cocoon.mesh.geometry.getAttribute('aGlow');
+      attr.array.fill(glowStage === 4 ? CARLE.readyGlow : 0); attr.needsUpdate = true;
+    }
+  }
+  const asks = [];
+  function stepAsks() {
+    if (!pets || !asks.length || dialog.isOpen || cin?.busy || carle.scene) return;
+    const p = asks.shift();
+    if (!players.list.includes(p) || p.away || pets.petOf(p) === 'carle') return;
+    const done = () => dialog.close();
+    dialog.open({ name: 'Carle', owner: p, tag: players.multi ? p.colors.name : '', color: p.colors.ui, menuId: 'carle-ask', text: 'Bring Carle along?',
+      choices: [{ label: 'Yes!', icon: ICONS['pet-carle'], onSelect: () => { done(); pets.set(p, 'carle', { fx: true }); } }, { label: 'Not now', onSelect: done }], onCancel: done });
+  }
+  const cut = createCarleScene({ scene, carle, plan, cinematic: cin, camera, models: () => ({ cat, cocoon }), particles, sfx });
+
   // ------------------------------------------------------------------ per frame
   function layout(dt) {
     const s = st();
     const catOn = show.visible && (s.stage < 3 || !!show.feedBeat || !!show.goodbye);
-    const cocoonOn = show.visible && s.stage >= 3 && !show.feedBeat && !show.goodbye;
+    const cocoonOn = show.visible && s.stage >= 3 && s.stage < 5 && !show.feedBeat && !show.goodbye;
     let propK = 1;                                              // the sapling scales in with the caterpillar
     if (cat) {
       cat.root.visible = !!catOn;
@@ -344,8 +376,8 @@ export function createCarleWorld({
       if (cocoonOn) {
         cocoon.root.position.set(hang.x, hang.y - 0.02, hang.z);             // its own twig lies along the sapling's short branch, touching it (the branch runs toward +X)
         cocoon.root.rotation.set(0, 0, 0);
-        cocoon.root.scale.setScalar(1);
-        cocoon.update(dt, time.t, { anim: 'idle' });                           // the sway; TODO 74c: wiggle more often as the hatch nears
+        cocoon.root.scale.setScalar(CARLE.cocoonScale);
+        cocoon.update(dt, time.t, { anim: s.stage === 4 || time.t % Math.max(1, 6 - s.cocoonDays * 1.8) < 0.7 ? 'wiggle' : 'idle' });                           // shorter pauses as the hatch nears
       }
     }
     show.cocoonOn = !!cocoonOn;
@@ -355,8 +387,11 @@ export function createCarleWorld({
   function update(dt) {
     dt = Math.min(dt, 0.1);
     time.t += dt;
+    stepReady();
+    if (!carle.scene && cut.active) cut.end();
+    stepAsks();
     const was = show.visible;
-    show.visible = wantVisible();
+    show.visible = wantVisible() || !!carle.scene;
     if (show.visible && !everBuilt) {
       buildModels();
       show.scale = growth(st());
@@ -381,14 +416,15 @@ export function createCarleWorld({
     stepGoodbye(dt);
     stepHints(dt);
     layout(dt);
+    cut.update(dt);
     // the prompts
     const s = st(), items = wantsOf(s);
-    const prompt = s.stage >= 3 ? 'Look' : isFull(s) ? 'Look' : items ? (haveAll(items) ? 'Offer' : 'Hungry...') : 'Look';
+    const prompt = s.stage === 4 ? 'Watch' : s.stage === 3 ? 'Listen' : isFull(s) ? 'Look' : items ? (haveAll(items) ? 'Offer' : 'Hungry...') : 'Look';
     for (const it of interactables) it.prompt = prompt;
   }
 
   return {
-    update, openMenu, interactables,
+    update, openMenu, interactables, cut,
     get shown() { return show.visible; },
     get where() { return { spot: at.spot, x: +at.x.toFixed(2), y: +at.y.toFixed(2), z: +at.z.toFixed(2), hopping: false }; },
     get beat() { return { sight: !!show.sightBeat, feed: show.feedBeat ? { t: +show.feedBeat.t.toFixed(2), day: show.feedBeat.day } : null, goodbye: !!show.goodbye, cured: !!show.cured }; },
@@ -398,12 +434,14 @@ export function createCarleWorld({
     get scale() { return show.scale; },
     get ache() { return show.ache; },
     summary() {
-      let calls = 0;
-      if (cat && cat.root.visible) calls += cat.drawCalls;
-      if (cocoon && cocoon.root.visible) calls += cocoon.drawCalls;
-      if (prop && prop.visible) calls += 2;
-      if (show.feedBeat) calls += 2 * show.feedBeat.pieces.length;
-      return { stage: st().stage, shown: show.visible, where: this.where, beat: this.beat, scale: +show.scale.toFixed(3), ache: +show.ache.toFixed(2), cocoon: show.cocoonOn, drawCalls: calls, interactables: interactables.length, plan: plan.summary() };
+      let calls = 0, triangles = 0, trianglesWithShadows = 0;
+      const roots = [cat?.root, cocoon?.root, prop, ...cut.extras.map((m) => m.root), ...(show.feedBeat?.pieces || []).map((p) => p.mesh)];
+      for (const root of roots) root?.traverseVisible((o) => {
+        if (!o.isMesh) return;
+        const n = (o.geometry.index?.count || o.geometry.attributes.position.count) / 3;
+        calls += o.castShadow ? 2 : 1; triangles += n; trianglesWithShadows += n * (o.castShadow ? 2 : 1);
+      });
+      return { stage: st().stage, shown: show.visible, where: this.where, beat: this.beat, scale: +show.scale.toFixed(3), ache: +show.ache.toFixed(2), cocoon: show.cocoonOn, drawCalls: calls, triangles, trianglesWithShadows, interactables: interactables.length, plan: plan.summary() };
     },
   };
 }

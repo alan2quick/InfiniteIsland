@@ -10,7 +10,8 @@
 // Lifecycle: ABSENT until the first pet unlock (no mesh, collider or interactable). A LIVE unlock (an `unlock` event while the game runs) pops it in through world/popIn.js (base, then the cap
 // roof, each squash-and-stretch with a poof and a thunk); a load / late join just has it standing there (silent). The colliders (four posts + the basin) and the interactable `stable`
 // ("Choose a pet") are registered ONCE per unlock and removed again only when the unlock list empties (debug reset). It only draws while Duskcrown is drawn in full detail.
-// The menu lists the unlocked pets, "No pet", and three locked silhouettes whose hints point at the other islands (game/caprayLogic.js LOCKED_PETS).
+// The menu lists the unlocked pets, "No pet", and the remaining locked silhouettes whose hints point at the other islands (game/caprayLogic.js LOCKED_PETS).
+// Unchosen Carle flutters around the basin (one skinned mesh + shadow); the home silhouette disappears once it is unlocked.
 // Unchosen Capray floats in the basin (the same model as the follower, 4 draw calls) whenever no player on any screen brings it.
 // Budget: the pavilion is ONE merged mesh + its outline + its shadow = 3 draw calls; with a resting Capray 7 in all. No lights.
 import * as THREE from 'three';
@@ -61,6 +62,7 @@ export function createPetStable({ scene, players, avatars = null, world = null, 
   const worldOf = (lx, ly, lz) => ({ x: S.x + lx * cosY + lz * sinY, y: ground + ly, z: S.z - lx * sinY + lz * cosY });
 
   let group = null, solid = null, roofMesh = null, popper = null, geos = null, model = null;
+  const resting = new Map();
   let built = false, popping = false, time = 0, bob = 0;
   const colliders = [];
   let interactable = null;
@@ -123,6 +125,8 @@ export function createPetStable({ scene, players, avatars = null, world = null, 
     if (popper) popper.clear();
     if (group) group.visible = false;
     if (model) { model.dispose(); model = null; }
+    for (const m of resting.values()) m.dispose();
+    resting.clear();
   }
 
   function refresh(live) {
@@ -139,14 +143,14 @@ export function createPetStable({ scene, players, avatars = null, world = null, 
       onSelect: () => choose(p, id),
     }));
     out.push({ label: 'No pet', icon: LEAVE_SVG, detail: cur ? 'Leave it here' : 'Chosen', onSelect: () => choose(p, null) });
-    for (const l of LOCKED_PETS) out.push({ label: '???', icon: ICONS['pet-locked'], detail: l.hint, disabled: true });
+    for (const l of LOCKED_PETS.filter((l) => l.id !== 'home' || !domain.has('carle'))) out.push({ label: '???', icon: ICONS['pet-locked'], detail: l.hint, disabled: true });
     return out;
   }
   function choose(p, id) {
     dialog.close();
     const got = pets.set(p, id, { fx: true });
     if (particles && p.position) particles.burst('sparkle', { x: p.position.x, y: p.position.y + 1.2, z: p.position.z }, { count: 6, radius: 0.5, height: 0.4 });
-    if (hud) hud.toast(got ? `${nameOf(got)} will come along!` : 'No pet this time.', { icon: got ? 'pet-capray' : 'sparkle', duration: 2400 });
+    if (hud) hud.toast(got ? `${nameOf(got)} will come along!` : 'No pet this time.', { icon: got ? `pet-${got}` : 'sparkle', duration: 2400 });
   }
   function open(p) {
     if (!p || dialog.isOpen || !built) return false;
@@ -187,6 +191,13 @@ export function createPetStable({ scene, players, avatars = null, world = null, 
     const visible = built && (!world || world.regions.isFull('duskcrown'));
     if (group) group.visible = visible;
     updateModel(dt, visible);
+    const wantCarle = visible && !popping && domain.has('carle') && ![...players.list, ...(avatars?.list || [])].some((p) => pets.petOf(p) === 'carle');
+    if (wantCarle && !resting.has('carle')) { const m = createPetModel('carle'); group.add(m.root); resting.set('carle', m); }
+    const m = resting.get('carle');
+    if (m) {
+      m.root.visible = wantCarle;
+      if (wantCarle) { m.root.position.set(Math.sin(time) * 0.85, 1.05 + Math.sin(time * 2) * 0.18, Math.cos(time) * 0.85); m.root.rotation.y = time + Math.PI / 2; m.update(dt, time, { anim: time % 3 < 0.8 ? 'flap' : 'glide' }); }
+    }
   }
 
   domain.onUnlock((id, { live }) => { if (live) refresh(true); });
@@ -200,6 +211,7 @@ export function createPetStable({ scene, players, avatars = null, world = null, 
     get shown() { return !!group && group.visible && built; },
     get group() { return group; },
     get restingModel() { return model && model.root.visible ? model : null; },
+    restingModelOf: (id) => id === 'capray' ? model : resting.get(id) || null,
     position,
     summary() {
       let calls = 0;

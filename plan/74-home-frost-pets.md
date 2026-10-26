@@ -211,6 +211,6 @@ days; the menu as in the table; the stable hint plus a first-time toast on the h
 
 - [x] Step 74a — Models: caterpillar, cocoon, Carle-style butterfly, grey / arctic wolf, and the `__game.petLab` viewer (0.85.4: one skinned mesh each, 2 draw calls, +1 shader program (skinned pet-toon); browser look not verified, see the changelog)
 - [x] Step 74b — Offline time (the clock catches up while closed / hidden) and Carle's hungry week: the caterpillar appears after Capray, seven days of feeding from the three islands (on its own sapling near the fire; stops at the placeholder cocoon after day 7; `clock.flushCatchUp()` fires the load catch-up; 45 new tests; browser look NOT verified, see the changelog)
-- [ ] Step 74c — Carle's cocoon days, the hatch, and Carle as a flying pet
+- [x] Step 74c — Carle's cocoon days, the hatch, and Carle as a flying pet (host-timed shared-skip scenes, three live/offline dawns, per-player invitations, stable, pose id 2; Node verified, browser visuals pending)
 - [ ] Step 74d — The Frostpine wolf quest, Snowsong (to design)
 - [ ] Step 74e — Ground-pet following (to design)

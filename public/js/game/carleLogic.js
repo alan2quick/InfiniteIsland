@@ -1,9 +1,9 @@
 // Pure rules of Carle's quest line "The Very Hungry Visitor" (PLAN Step 74b): the caterpillar on the home island that is fed one more thing each in-game DAY for a week, grows, gets a tummy ache from the feast and is cured
 // by a mint leaf. No three.js, no DOM, no network: Node-tested in test/carle.test.js. The host domain is game/carle.js, the world side (caterpillar, cocoon, bubbles, menu) world/carleWorld.js, the placement
-// world/islands/homeCarle.js. Step 74c adds the cocoon days, the hatch and Carle as a pet (TODO 74c markers below).
+// world/islands/homeCarle.js. Cocoon dawns reach ready; validateHatch checks the ready stage, reach and cinematic availability.
 //
 //   State          { stage 0..5, day 0..7, fedToday, cocoonDays, phase }
-//   STAGES         0 unseen, 1 sighted, 2 feeding, 3 cocoon, 4 ready, 5 hatched      (74b stops at stage 3 with a placeholder cocoon; 4 and 5 are 74c's)
+//   STAGES         0 unseen, 1 sighted, 2 feeding, 3 cocoon, 4 ready, 5 hatched      (the hatch stays ready until its scene finishes, then stage 5)
 //   day            how many feeding days are DONE (0..7): the next offering is CARLE.days[day]. It advances ONLY by feeding, so several dawns without a feeding never skip a day.
 //   fedToday       today's food is given: the caterpillar is full until the next counted DAWN (the host's clock: phase events, or the dawns of an offline / hidden-tab catch-up)
 //   phase          the HOST's private "last phase counted" (like the garden's): saved, never synced, left out of hashView
@@ -113,7 +113,7 @@ export function applySight(s) {
   return s.stage === 0 ? normaliseState({ ...s, stage: 1 }) : s;
 }
 
-/** One feeding: the next day is done (stage 2), full until the next dawn; the seventh ends the week (stage 3: the cocoon, a placeholder in 74b). */
+/** One feeding: the next day is done (stage 2), full until the next dawn; the seventh ends the week (stage 3: the cocoon). */
 export function applyFeed(s) {
   if (!isFeeding(s) || s.day >= DAY_COUNT) return s;
   const day = s.day + 1;
@@ -121,11 +121,22 @@ export function applyFeed(s) {
   return normaliseState({ ...s, stage: 2, day, fedToday: true });
 }
 
-/** `n` dawns counted: a full caterpillar is hungry again. Several dawns are the same as one (the day number advances only by feeding). TODO 74c: stage 3 also counts cocoonDays += n. */
+/** `n` dawns counted: a full caterpillar is hungry again. Several dawns are the same as one (the day number advances only by feeding). Stage 3 counts cocoonDays += n, capped at ready. */
 export function applyDawns(s, n = 1) {
+  if (s.stage === 3 && n > 0) return normaliseState({ ...s, cocoonDays: s.cocoonDays + Math.floor(n) });
   if (!(n > 0) || !isFeeding(s) || !s.fedToday) return s;
   return { ...s, fedToday: false };
 }
 
 /** How many DAWNS a forward walk from phase `from` to `to` crosses (0 when equal / unknown): the host's live count (reuses the garden's phasesEntered). */
 export const dawnsBetween = (from, to) => phasesEntered(from, to).filter((p) => p === 'dawn').length;
+
+/** Only a ready cocoon can hatch; the caller supplies authoritative reach and cinematic availability. */
+export function validateHatch({ state, open = true, busy = false, dist = null, range = CARLE.feedReach + CARLE.remoteSlack }) {
+  if (!state) return 'bad-request';
+  if (!open) return 'locked';
+  if (state.stage !== 4) return 'not-ready';
+  if (!dOk(dist, range)) return 'far';
+  if (busy) return 'busy';
+  return null;
+}

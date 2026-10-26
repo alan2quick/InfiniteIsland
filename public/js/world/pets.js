@@ -17,6 +17,9 @@
 // Choices are saved per screen under localStorage 'infiniteIsland.pets' = { slotIndex: petId } (hosts and replicas alike; a cosmetic preference, not game state), re-applied when a player (re)joins. A pet that is not unlocked
 // (e.g. after ?newgame) falls back to none, and the stale entry is forgotten once the real list is known.
 import * as THREE from 'three';
+import { stepCarleIdle, carleIdleDrive, nearestFlower } from '../game/carlePetLogic.js';
+import { getInteractables } from './interactables.js';
+import { islandAt } from './terrain.js';
 import { PET } from '../config.js';
 import {
   PET_IDS, petIndexOf, glideTarget, heelPoint, followStep, catchState, shouldPoof, poseStep, petMood, appearScale, createIdle, stepIdle, idleDrive,
@@ -37,7 +40,7 @@ function savePrefs(prefs) {
 
 export function createPets({
   scene, players, avatars = null, sync = null, domain, clock = null, atmosphere = null, storybook = null, dungeon = null, cinematic = null, particles = null, sfx = null,
-  heightAt = () => 0, duskItems = () => null, isSailing = () => false,
+  heightAt = () => 0, flowers = () => getInteractables().filter((it) => it.type === 'flower' && ['home', 'ember'].includes(islandAt(it.position.x, it.position.z)?.id)), duskItems = () => null, isSailing = () => false,
 }) {
   const prefs = loadPrefs();
   const actors = new Map();                   // owner Player -> actor
@@ -92,6 +95,7 @@ export function createPets({
   domain.onChange(() => applyPrefs());
   players.on('join', () => applyPrefs());
 
+  // Carle drives the model's glide/flap/rest animation; the Capray sway/rocking options are unchanged.
   // ---- actors
   function makeActor(owner, local) {
     const id = petOf(owner);
@@ -120,7 +124,8 @@ export function createPets({
   }
 
   function stepActor(a, dt) {
-    const o = a.owner;
+    const o = a.owner, carle = a.id === 'carle';
+    const petCfg = carle ? { ...PET, ...PET.carle } : PET;
     anchor(o, a.ownerPos);
     // owner velocity (finite difference, smoothed; a jump is a teleport and counts as standing still)
     let vx = 0, vy = 0, vz = 0;
@@ -139,13 +144,13 @@ export function createPets({
     const sailing = isSailing();
     const settle = !!cinematic && cinematic.busy && !sailing;
     const night = clock ? clock.nightness : 0, dusk = atmosphere ? atmosphere.duskWeight : 0;
-    a.mode = petMood({ nightness: night, duskWeight: dusk });
+    a.mode = petMood({ nightness: night, duskWeight: carle ? 0 : dusk });
     const sleepy = a.mode === 'sleepy';
     const owner = { x: a.ownerPos.x, y: a.ownerPos.y, z: a.ownerPos.z, facing: a.heading };
 
     const heel = heelPoint(owner, o.index ?? 0, { settle });
     const groundY = heightAt(heel.x, heel.z);
-    let ty = glideTarget({ ground: groundY, t: time, phase: a.phase, sleepy, settle });
+    let ty = glideTarget({ ground: groundY, t: time, phase: a.phase, sleepy, settle, cfg: petCfg });
     ty = Math.max(ty, owner.y + 0.65);
     let target = { x: heel.x, y: ty, z: heel.z };
 
@@ -165,18 +170,20 @@ export function createPets({
     a.dist = dist;
 
     // idles (the owner standing still)
-    const items = dusk > 0.5 && !settle ? duskItems() : null;
+    const flower = carle ? nearestFlower(flowers(), owner) : null;
+    const items = !carle && dusk > 0.5 && !settle ? duskItems() : null;
     const giant = items ? nearestGiant(items, owner.x, owner.z) : null;
     const hide = hideSpotOf(giant, owner);
     const inCombat = !!dungeon && dungeon.contains(o);
-    const kind = stepIdle(a.idle, dt, {
+    const kind = (carle ? stepCarleIdle : stepIdle)(a.idle, dt, {
+      flower,
       ownerStill: speed < 0.4, canIdle: !settle && !inCombat && !sailing, hide: !!hide, sleepy,
       angle: Math.atan2(a.s.x - owner.x, a.s.z - owner.z), rng, cfg: PET,
     });
     a.idleKind = kind;
     let stiff = 1, extraRoll = 0, lookYaw = a.heading, tv = a.ownerVel;
     if (kind) {
-      const d = idleDrive(kind, a.idle.t / a.idle.dur, { owner, heel, hideSpot: hide, idle: a.idle, heelDist: Math.hypot(owner.x - a.s.x, owner.z - a.s.z), cfg: PET });
+      const d = (carle ? carleIdleDrive : idleDrive)(kind, a.idle.t / a.idle.dur, { owner, heel, flower, hideSpot: hide, idle: a.idle, heelDist: Math.hypot(owner.x - a.s.x, owner.z - a.s.z), cfg: PET });
       if (d.target && d.w > 0) {
         target = { x: lerp(target.x, d.target.x, d.w), y: lerp(target.y, d.target.y, d.w), z: lerp(target.z, d.target.z, d.w) };
         tv = { x: a.ownerVel.x * (1 - d.w), y: 0, z: a.ownerVel.z * (1 - d.w) };
@@ -188,10 +195,10 @@ export function createPets({
 
     const catching = !kind && catchState(Math.hypot(target.x - a.s.x, target.z - a.s.z));
     a.catching = catching;
-    const cfg = stiff === 1 ? PET : { ...PET, spring: PET.spring * stiff };
+    const cfg = stiff === 1 ? petCfg : { ...petCfg, spring: petCfg.spring * stiff };
     followStep(a.s, target, tv, dt, { catching: catching || sailing, slow: sailing ? PET.sailSpeed : sleepy ? PET.sleepyScale : settle ? 0.6 : 1, cfg });
     poseStep(a.pose, { vx: a.s.vx, vy: a.s.vy, vz: a.s.vz }, lookYaw, dt);
-    if (kind === 'head' || kind === 'hide' || kind === 'nuzzle') { const dy = wrap(lookYaw - a.pose.yaw); a.pose.yaw = wrap(a.pose.yaw + dy * (1 - Math.exp(-5 * dt))); }
+    if (kind === 'head' || kind === 'hide' || kind === 'nuzzle' || kind === 'shoulder' || kind === 'flower') { const dy = wrap(lookYaw - a.pose.yaw); a.pose.yaw = wrap(a.pose.yaw + dy * (1 - Math.exp(-5 * dt))); }
 
     // pose onto the model
     a.appearT += dt;
@@ -201,7 +208,8 @@ export function createPets({
     m.rig.rotation.x = a.pose.pitch + (catching ? 0.22 : 0);
     m.rig.rotation.z = a.pose.roll + extraRoll;
     m.root.scale.setScalar(appearScale(a.appearT));
-    m.update(dt, time + a.phase, { sway: 0.7 + Math.min(1, Math.hypot(a.s.vx, a.s.vz) / 4) * 0.6, rocking: 1 });
+    a.anim = carle && ((kind && kind !== 'loop' && a.idle.t / a.idle.dur > 0.2 && a.idle.t / a.idle.dur < 0.82) || settle) ? 'rest' : carle && (catching || (time + a.phase) % PET.carle.flapPeriod < PET.carle.flapBurst || kind === 'loop') ? 'flap' : 'glide';
+    m.update(dt, time + a.phase, { anim: a.anim, sway: 0.7 + Math.min(1, Math.hypot(a.s.vx, a.s.vz) / 4) * 0.6, rocking: 1 });
   }
 
   function hideActor(a) {
@@ -243,7 +251,7 @@ export function createPets({
   const summary = () => ({
     unlocked: domain.unlocked, known: domain.known, prefs: { ...prefs },
     pets: [...actors.values()].map((a) => ({
-      owner: a.owner.index, local: a.local, id: a.id, shown: a.shown, mode: a.mode, idle: a.idleKind, catching: a.catching, dist: +a.dist.toFixed(2),
+      owner: a.owner.index, local: a.local, id: a.id, shown: a.shown, mode: a.mode, idle: a.idleKind, anim: a.anim, catching: a.catching, dist: +a.dist.toFixed(2),
       pos: { x: +a.s.x.toFixed(2), y: +a.s.y.toFixed(2), z: +a.s.z.toFixed(2) }, scale: +a.model.root.scale.x.toFixed(2),
       drawCalls: a.shown ? a.model.drawCalls : 0,
     })),

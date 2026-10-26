@@ -33,7 +33,7 @@ const { duskFlora } = await import('../public/js/world/islands/duskVisuals.js');
 const island = ISLANDS.find((i) => i.id === 'duskcrown'), mod = getIslandModule('duskcrown');
 const plan = duskCaprayPlan();
 
-test('the version is 0.85.5', () => { assert.equal(VERSION, '0.85.5'); });
+test('the version is 0.85.6', () => { assert.equal(VERSION, '0.85.6'); });
 
 // ---- pure rules --------------------------------------------------------------------------------------------------------------------------------------------------------------
 test('the stage machine runs in order: sight, three Glimmerfin, hits, showers, the favourite, the Lanternkoi', () => {
@@ -559,4 +559,17 @@ test('budget: the moss cluster is one merged geometry; the wild ray + moss + sta
   const s = stableWith({ unlocked: true }); for (let i = 0; i < 40; i++) s.stable.update(0.05);
   const total = w.cw.summary().drawCalls + s.stable.summary().drawCalls;
   assert.ok(total <= 12, `ray 4 + moss 1 + stable (pavilion 3 + resting Capray 4) = ${total}`);
+});
+
+
+test('stable: unlocked Carle replaces the home silhouette and flutters by the basin until any player brings it', () => {
+  const w = stableWith({ unlocked: true }); w.domain.unlock('carle');
+  for (let i = 0; i < 50; i++) w.stable.update(0.1);
+  const rows = w.stable.rows(w.p);
+  assert.deepEqual(rows.map((r) => r.label), ['Capray', 'Carle', 'No pet', '???', '???']);
+  assert.equal(rows.some((r) => r.detail === LOCKED_PETS[0].hint), false);
+  const m = w.stable.restingModelOf('carle'); assert.ok(m.root.visible); assert.ok(m.state.ph > 0);
+  assert.ok(w.stable.summary().drawCalls <= 9);
+  rows[1].onSelect(); assert.deepEqual(w.choices.at(-1), [w.p, 'carle']); w.stable.update(0.1); assert.equal(m.root.visible, false);
+  w.domain.reset(); assert.equal(m.root.parent, null);
 });

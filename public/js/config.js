@@ -2,7 +2,7 @@
 
 // Game version, shown on the title card. The client can't read package.json (only public/ is deployed), so this is
 // the source of truth: bump it together with "version" in package.json. Minor = last completed PLAN.md step.
-export const VERSION = '0.85.5';
+export const VERSION = '0.85.6';
 
 // Held-mouse direction: world-unit dead bands, optional pooled ground ring.
 export const MOUSE_STEER = { dead: 0.6, sideDead: 0.4, ring: true };
@@ -757,6 +757,7 @@ export const FISHING = {
 
 // Step 73a (pets): tunables for the companion that follows its owner (game/petLogic.js is the pure maths, world/pets.js the runtime). Lengths in units, times in seconds.
 export const PET = {
+  carle: { glideMin: 0.65, glideMax: 1.35, flapPeriod: 3.4, flapBurst: 0.85, flowerRange: 7, headY: 2.05, shoulderY: 1.55, idleLen: { head: 4.2, loop: 3.4, flower: 4.5, shoulder: 7 } },
   glideMin: 0.9, glideMax: 1.4,              // hover height above the ground (eased between the two by a slow bob)
   waterGlide: 0.55,                          // over water the pet skims lower, above the surface (WATER_LEVEL)
   heelBack: 1.15, heelSide: 0.95,            // the heel point: this far behind the owner and to the owner's left (mirrored by slot parity)
@@ -815,6 +816,8 @@ export const CARLE = {
     { items: { mint: 1 }, from: ['frost'] },
   ],
   cocoonDays: 3,
+  cocoonScale: 2.1, readyGlow: 0.18,
+  scene: { preStart: 350, feedWait: 4, cocoon: 5, hatch: 7 },
   sight: 6, feedReach: 3.2, remoteSlack: 2.5,    // first sight within this of the perch; a feeding from this far; the host accepts a REMOTE actor this much further (latency slack)
   growth: { from: 1, to: 1.35 },                 // the caterpillar's root scale before the first feeding and after the seventh
   // The caterpillar's own sapling (world/islands/homeCarle.js picks the spot): a small leafy plant 5.5-7 u from the home fire, preferably on the camera side (+Z, the follow camera looks north from the south).

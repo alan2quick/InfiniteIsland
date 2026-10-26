@@ -16,9 +16,9 @@ const { createPetLab } = await import('../public/js/world/petLab.js');
 const range = (v, lo, hi, what) => assert.ok(v >= lo && v <= hi, `${what} ${v.toFixed(3)} not in ${lo}..${hi}`);
 const meshesOf = (m) => { const out = []; m.root.traverse((o) => { if (o.isMesh) out.push(o); }); return out; };
 
-test('the registry is untouched: PET_IDS / PETS are still just Capray, the new models are only in the WIP table', () => {
-  assert.deepEqual(PET_IDS, ['capray']);
-  assert.deepEqual(PETS.map((p) => p.id), ['capray']);
+test('Carle is promoted into the registry; the stage models and Snowsong remain in the WIP table', () => {
+  assert.deepEqual(PET_IDS, ['capray', 'carle']);
+  assert.deepEqual(PETS.map((p) => p.id), ['capray', 'carle']);
   assert.deepEqual(WIP_KEYS, ['carle:caterpillar', 'carle:cocoon', 'carle:butterfly', 'snowsong']);
   assert.equal(Object.keys(PET_MODELS_WIP).length, 4);
   assert.throws(() => createWipPetModel('ghost'));

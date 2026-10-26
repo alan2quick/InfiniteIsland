@@ -10,7 +10,7 @@ import { CARLE, FIRES, OFFLINE } from '../public/js/config.js';
 import { getItem } from '../public/js/game/catalog.js';
 import {
   STAGES, DAY_COUNT, freshState, normaliseState, savedView, wireView, hashView, readSave, debugState, wantsOf, nextOf, isFull, hungry, ache, growth, needLine, hintFor, hintsFor,
-  validateSight, validateFeed, applySight, applyFeed, applyDawns, dawnsBetween,
+  validateSight, validateFeed, validateHatch, applySight, applyFeed, applyDawns, dawnsBetween,
 } from '../public/js/game/carleLogic.js';
 import { homeCarlePlan } from '../public/js/world/islands/homeCarle.js';
 import { getHeight, getGroundType, isWalkable } from '../public/js/world/terrain.js';
@@ -60,7 +60,7 @@ test('the week: seven days, the counts rise one a day, every item exists in the 
 });
 
 // ---- pure rules ------------------------------------------------------------------------------------------------------------------------------------------------------
-test('the stage / day machine: sight, seven feedings, one per day, the week ends in the cocoon (a placeholder in 74b)', () => {
+test('the stage / day machine: sight, seven feedings, one per day, the week ends in the cocoon then three dawns reach ready', () => {
   assert.equal(STAGES.length, 6);
   let s = freshState(); assert.deepEqual([s.stage, s.day, s.fedToday], [0, 0, false]); assert.equal(wantsOf(s), null); assert.equal(nextOf(s), null);
   s = applySight(s); assert.equal(s.stage, 1); assert.equal(applySight(s), s, 'sighting is idempotent');
@@ -75,7 +75,7 @@ test('the stage / day machine: sight, seven feedings, one per day, the week ends
   }
   s = applyFeed(s);                                           // the seventh: the mint
   assert.deepEqual([s.stage, s.day, s.fedToday, s.cocoonDays], [3, 7, false, 0], 'the cocoon: stage 3, nothing hungry');
-  assert.equal(wantsOf(s), null); assert.equal(applyFeed(s), s, 'a finished week feeds no more'); assert.equal(applyDawns(s, 5), s, 'TODO 74c: cocoon days are not counted yet');
+  assert.equal(wantsOf(s), null); assert.equal(applyFeed(s), s, 'a finished week feeds no more'); assert.equal(applyDawns(s, 5).stage, 4, 'cocoon dawns reach ready');
 });
 
 test('several dawns without feeding never skip a day; a feeding day is only ever the next one', () => {
@@ -214,12 +214,13 @@ function pair(opts = {}) {
   const petsH = createPetsDomain({ sync: hSync, params: opts.testpet ? new URLSearchParams('testpet') : undefined }), petsR = createPetsDomain({ sync: rSync });
   const clock = opts.clock === false ? null : (opts.clock || new DayNight({ persist: false, params: new URLSearchParams() }));
   if (clock && opts.hour !== undefined) clock.set(opts.hour);
-  const host = createCarle({ sync: hSync, plan, inventory, pets: petsH, clock, params: opts.params });
+  const host = createCarle({ sync: hSync, plan, inventory, pets: petsH, clock, cinematic: opts.cinematic, params: opts.params });
   const replica = createCarle({ sync: rSync, plan, pets: petsR });
   rSync.linkUp(); hSync.screenConnected(1, { clientId: 'friend' }); flush();
   const at = plan.spots[0], near = { x: at.x, y: 1, z: at.z };
   const mk = (pos) => ({ index: 0, position: pos });
   return { hSync, rSync, host, replica, petsH, petsR, bag, inventory, clock, flush, hostP: mk({ ...near }), shore: mk(near), far: mk({ x: at.x + 60, y: 1, z: at.z }), near,
+    advance: (seconds) => { time += seconds * 1000; host.update(); flush(); },
     equal: () => assert.equal(hSync.hash(), rSync.hash(), 'hashes equal'),
     late() {
       const sync = new WorldSync({ role: 'replica', wallNow: () => time }); replicas.set(2, sync);
@@ -406,7 +407,8 @@ test('the same example through the ?away=900 debug flag (the clock was saved a m
 function worldRig(opts = {}) {
   storage.clear(); homeSave.reset();
   const scene = new THREE.Scene();
-  const sync = new WorldSync({ role: 'host', wallNow: () => 1000 });
+  let now = 1000;
+  const sync = new WorldSync({ role: 'host', wallNow: () => now });
   const bag = {}, inventory = { count: (id) => bag[id] || 0, removeAll: (need) => { if (!Object.entries(need).every(([id, n]) => (bag[id] || 0) >= n)) return false; for (const [id, n] of Object.entries(need)) bag[id] -= n; return true; } };
   const petsD = createPetsDomain({ sync, params: opts.testpet ? new URLSearchParams('testpet') : undefined });
   const carle = createCarle({ sync, plan, inventory, pets: petsD, params: new URLSearchParams(opts.testcarle === false ? '' : 'testcarle') });
@@ -417,11 +419,14 @@ function worldRig(opts = {}) {
   const toasts = [], hud = { toast: (t) => toasts.push(t) }, floats = [], bursts = [];
   const flags = { full: true };
   const world = { regions: { isFull: () => flags.full } };
+  let busy = false;
+  const cin = { get busy() { return busy; }, startPos: new THREE.Vector3(0, 10, 10), startLook: new THREE.Vector3(), begin() { if (busy) return false; busy = true; return true; }, end() { busy = false; }, freezeAll() {}, releaseAll() {}, pollSkip() { return false; }, look() {}, showBanner() {} };
+  const sets = [], pets = { petOf: () => null, set: (p, id) => sets.push([p, id]) };
   const cw = createCarleWorld({
-    scene, players, world, sync, carle, plan, domain: petsD, inventory, thoughts, particles: { burst: (...a) => bursts.push(a) }, sfx: { play() {} }, hud, dialog, cinematic: { busy: false }, floatText: (...a) => floats.push(a),
+    scene, players, world, sync, carle, plan, domain: petsD, inventory, thoughts, particles: { burst: (...a) => bursts.push(a) }, sfx: { play() {} }, hud, dialog, cinematic: cin, camera: new THREE.PerspectiveCamera(), pets, floatText: (...a) => floats.push(a),
     heightAt: getHeight,
   });
-  return { scene, sync, bag, petsD, carle, p, players, dialog, bubbles, thoughts, toasts, floats, bursts, flags, cw, inventory, step: (n = 1, dt = 0.05) => { for (let i = 0; i < n; i++) cw.update(dt); } };
+  return { scene, sync, bag, petsD, carle, p, players, dialog, bubbles, thoughts, toasts, floats, bursts, flags, cw, inventory, sets, cin, step: (n = 1, dt = 0.05) => { for (let i = 0; i < n; i++) { now += dt * 1000; carle.update(); cw.update(dt); } } };
 }
 
 test('the world: the interactables are registered once (one per perch) and nothing is added or lost by more updates; the caterpillar appears only once the quest is open', () => {
@@ -494,7 +499,7 @@ test('the world: the feast day lists all three dishes; the tummy ache tints the 
   assert.ok(w.cw.cocoon.root.visible && w.cw.summary().cocoon, 'the cocoon hangs at the perch'); assert.equal(w.cw.model.root.visible, false, 'the caterpillar is gone');
   assert.ok(w.cw.ache < 0.05, 'cured');
   const sw = w.cw.cocoon.shellPivot.rotation.z; w.step(20, 0.1); assert.notEqual(w.cw.cocoon.shellPivot.rotation.z, sw, 'it sways');
-  w.cw.openMenu(w.p); assert.equal(w.dialog.last.pages.length, 1); assert.equal(w.cw.interactables[0].prompt, 'Look');
+  w.bubbles.length = 0; w.cw.openMenu(w.p); assert.ok(w.bubbles.some((b) => b.key === 'carle-listen')); assert.equal(w.cw.interactables[0].prompt, 'Listen');
   assert.ok(w.cw.summary().drawCalls <= 8, `cheap: ${w.cw.summary().drawCalls}`);
 });
 
@@ -525,4 +530,122 @@ test('the world: it stays inside the budget (a few draw calls) and builds nothin
   const s = w.cw.summary(); assert.ok(s.drawCalls === 4, `idle: ${s.drawCalls} draw calls`); assert.equal(s.interactables, 1);
   assert.ok(w.cw.model.drawCalls === 2 && w.cw.model.length < 1 && w.cw.model.height < 1);
   const before = new THREE.Scene(); assert.equal(before.children.length, 0);
+});
+
+// ---- Step 74c: cocoon clock, hatch authority and screen presentation -----------------------------------
+test('cocoon dawns: mint day 7, three live dawns OR three catch-up dawns reach ready; no further progress', () => {
+  for (const offline of [false, true]) {
+    const t = pair({ testpet: true, hour: 8 });
+    t.host.debug.fedDays(6); t.host.debug.feed(); t.flush();
+    assert.equal(t.host.stage, 3); assert.equal(t.host.state.cocoonDays, 0);
+    if (offline) t.clock.catchUp(3 * 630);
+    else for (let i = 0; i < 3; i++) { t.clock.set(8); t.clock.set(5.5); }
+    t.flush(); assert.equal(t.host.stage, 4); assert.equal(t.replica.state.cocoonDays, 3); t.equal();
+    t.clock.catchUp(10 * 630); t.flush(); assert.equal(t.host.stage, 4); t.equal();
+  }
+});
+
+test('a 74b cocoon save resumes, a ready save loads ready, and catch-up can make a loaded cocoon ready', () => {
+  const t = pair({ testpet: true, saved: { stage: 3, day: 7 }, hour: 8 });
+  assert.equal(t.host.state.cocoonDays, 0);
+  t.clock.catchUp(3 * 630); t.flush(); assert.equal(t.host.stage, 4); t.equal();
+  const saved = JSON.parse(storage.get(STORAGE_KEY)).carle;
+  assert.equal(saved.cocoonDays, 3);
+  const r = pair({ testpet: true, saved }); assert.equal(r.host.stage, 4); r.equal();
+});
+
+test('hatch validation: ready only, local reach, remote slack, busy scene; no premature unlock', async () => {
+  assert.equal(validateHatch({ state: debugState(3) }), 'not-ready');
+  assert.equal(validateHatch({ state: debugState(4), dist: CARLE.feedReach + CARLE.remoteSlack }), null);
+  assert.equal(validateHatch({ state: debugState(4), dist: CARLE.feedReach + CARLE.remoteSlack + 0.01 }), 'far');
+  const cinematic = { busy: true }, t = pair({ testpet: true, cinematic });
+  t.host.debug.ready(); t.flush();
+  assert.equal(reject(t.host.hatch(t.hostP)), 'busy'); cinematic.busy = false;
+  assert.equal(reject(t.host.hatch(t.far)), 'far');
+  const far = t.replica.hatch(t.far); t.flush(); assert.equal(reject(await far), 'far');
+  t.shore.position.x = t.near.x + CARLE.feedReach + CARLE.remoteSlack - 0.01;
+  const good = t.replica.hatch(t.shore); t.flush(); assert.equal((await good).ok, true);
+  assert.equal(t.host.stage, 4); assert.equal(t.petsH.has('carle'), false);
+  t.equal();
+});
+
+test('host + replica hatch: queued behind cinematics, host clock finish OR shared skip, unlock and equal hashes', async () => {
+  for (const skip of [false, true]) {
+    const t = pair({ testpet: true }); t.host.debug.ready(); t.flush();
+    const request = t.replica.hatch(t.shore); t.flush(); assert.equal((await request).ok, true);
+    assert.equal(t.host.scene.startAt, null); t.advance(0.1); assert.ok(t.host.scene.startAt > 0); t.equal();
+    const late = t.late(); assert.equal(late.sync.hash(), t.hSync.hash());
+    if (skip) { const req = t.replica.skip(); t.flush(); assert.equal((await req).ok, true); }
+    else t.advance(8);
+    t.flush(); assert.equal(t.host.scene, null); assert.equal(t.replica.stage, 5);
+    assert.equal(t.petsH.has('carle'), true); assert.equal(t.petsR.has('carle'), true); t.equal();
+    assert.equal(reject(t.host.hatch(t.hostP)), 'not-ready');
+  }
+});
+
+test('the cocoon scene waits for cinematic.busy and a reload of a hatch returns to ready', () => {
+  const cinematic = { busy: true }, t = pair({ testpet: true, cinematic });
+  t.host.debug.fedDays(6); t.host.debug.feed(); t.advance(8);
+  assert.equal(t.host.scene.kind, 'cocoon'); assert.equal(t.host.scene.startAt, null);
+  cinematic.busy = false; t.advance(0.1); assert.ok(t.host.scene.startAt);
+  t.advance(6); assert.equal(t.host.scene, null); assert.equal(t.host.stage, 3);
+  t.host.debug.hatch(); t.advance(0.1);
+  const saved = JSON.parse(storage.get(STORAGE_KEY)).carle;
+  assert.equal(saved.stage, 4);
+  const r = pair({ testpet: true, saved }); assert.equal(r.host.stage, 4); assert.equal(r.host.scene, null);
+});
+
+test('world: Listen has one/two/three zz marks, ready toasts once off-island, glows, and Watch starts the hatch', () => {
+  const w = worldRig();
+  for (let n = 0; n < 3; n++) {
+    w.carle.debug.cocoonDays(n); w.step(1); w.bubbles.length = 0;
+    w.cw.openMenu(w.p); assert.equal(w.dialog.isOpen, false);
+    assert.equal((w.bubbles.at(-1).icon.match(/zz/g) || []).length, n + 1);
+    assert.ok(w.cw.cocoon.root.scale.x >= 2);
+  }
+  w.flags.full = false; w.carle.debug.ready(); w.step(10);
+  assert.equal(w.toasts.filter((s) => s === 'The cocoon on the home island is wiggling!').length, 1);
+  assert.ok(w.cw.cocoon.mesh.geometry.getAttribute('aGlow').array.some((v) => v > 0));
+  w.flags.full = true; w.step(1); assert.equal(w.cw.interactables[0].prompt, 'Watch');
+  w.cw.openMenu(w.p); assert.equal(w.carle.scene.kind, 'hatch');
+});
+
+test('world: host-timed climb, hatch bones and four temporary butterflies; skip disposes them and asks each local player once', () => {
+  const w = worldRig(); w.carle.debug.fedDays(6); w.carle.debug.feed(); w.step(60, 0.1);
+  assert.ok(w.cw.cut.active); assert.ok(w.cw.model.root.position.y >= plan.perch.y);
+  w.carle.skip(); w.step(2); assert.equal(w.cw.cut.active, false);
+  w.carle.debug.ready(); w.cw.openMenu(w.p); w.step(25, 0.1);
+  assert.equal(w.cw.cut.extras.length, 4); assert.ok(w.cw.cocoon.state.crack > 0.9);
+  const extras = [...w.cw.cut.extras]; let disposed = 0;
+  for (const m of extras) m.mesh.geometry.addEventListener('dispose', () => disposed++);
+  w.carle.skip(); w.step(2);
+  assert.equal(w.carle.stage, 5); assert.equal(disposed, 4); assert.equal(w.cw.cut.extras.length, 0);
+  assert.ok(extras.every((m) => m.root.parent === null));
+  assert.equal(w.dialog.last.text, 'Bring Carle along?');
+  w.dialog.last.choices[0].onSelect(); w.step(10);
+  assert.deepEqual(w.sets, [[w.p, 'carle']]); assert.equal(w.dialog.isOpen, false);
+  assert.equal(w.cw.interactables[0].canInteract(), false); assert.equal(w.cw.sapling.visible, true);
+  assert.equal(w.cw.cocoon.root.visible, false);
+});
+
+
+test('closed game: a saved stage-3 cocoon counts three load catch-up dawns before any live phase', () => {
+  storage.clear(); homeSave.reset(); let wall = 1_700_100_000_000;
+  const firstClock = new DayNight({ now: () => wall }); firstClock.set(8);
+  homeSave.set('carle', savedView({ ...debugState(3), phase: 'day' })); firstClock.dispose();
+  wall += 3 * 630 * 1000; homeSave.reset();
+  const clock = new DayNight({ now: () => wall });
+  const sync = new WorldSync({ role: 'host' }), carle = createCarle({ sync, plan, clock });
+  assert.equal(carle.stage, 3); assert.equal(clock.away.entered.dawn, 3);
+  clock.flushCatchUp(); assert.equal(carle.stage, 4); assert.equal(carle.state.cocoonDays, 3);
+  clock.flushCatchUp(); assert.equal(carle.state.cocoonDays, 3); clock.dispose();
+});
+
+test('two local players are invited once each, Yes affects its owner and Not now leaves the other choice alone', () => {
+  const w = worldRig(), p2 = { ...w.p, index: 1, position: w.p.position.clone(), colors: { name: 'P2', ui: '#acf' } };
+  w.players.list.push(p2); w.players.multi = true;
+  w.carle.debug.hatch(w.p); w.step(10, 0.1); w.carle.skip(); w.step(2);
+  assert.equal(w.dialog.last.owner, w.p); w.dialog.last.choices[0].onSelect(); w.step(1);
+  assert.equal(w.dialog.last.owner, p2); w.dialog.last.choices[1].onSelect(); w.step(10);
+  assert.deepEqual(w.sets, [[w.p, 'carle']]); assert.equal(w.dialog.isOpen, false);
 });

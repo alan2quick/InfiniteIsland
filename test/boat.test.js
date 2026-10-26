@@ -86,7 +86,7 @@ test('Marlo\'s boat talk follows the saved state and hints at the open courses; 
   for (const p of PARTS) s.parts[p] = true;
   assert.deepEqual(boatPages(s).slice(-1), MARLO_SCRIPT.allBack);
   assert.ok(MARLO_SCRIPT.intro.length >= 3 && MARLO_SCRIPT.intro.join(' ').includes('crew') && MARLO_SCRIPT.clams.join(' ').includes('clam'));
-  assert.equal(MARLO.name, 'Marlo'); assert.equal(VERSION, '0.85.5');
+  assert.equal(MARLO.name, 'Marlo'); assert.equal(VERSION, '0.85.6');
 });
 
 // ---- the sync domain

@@ -508,9 +508,9 @@ const caprayWorld = createCaprayWorld({
 const petStable = createPetStable({ scene, players, avatars, world: worldVis, domain: petsDomain, pets, dialog, particles, sfx, hud, heightAt: getHeight });
 // ---- Carle's quest line (Step 74b): the `carle` domain (host-saved in infinite-island.home.v1), the caterpillar by the home campfire (world/carleWorld.js); it counts dawns on the clock, including the ones that passed while the game was closed
 const carlePlan = homeCarlePlan();                                                // (reads the terrain and the colliders / interactables registered so far: call it after the home props, fires and gathering exist)
-const carle = createCarle({ sync, plan: carlePlan, inventory, pets: petsDomain, clock: dayNight, params });
+const carle = createCarle({ sync, plan: carlePlan, inventory, pets: petsDomain, clock: dayNight, cinematic, params });
 const carleWorld = createCarleWorld({
-  scene, players, world: worldVis, sync, carle, plan: carlePlan, domain: petsDomain, inventory, thoughts, particles, sfx, hud, dialog, cinematic, floatText, heightAt: getHeight,
+  scene, players, world: worldVis, sync, carle, plan: carlePlan, domain: petsDomain, inventory, thoughts, particles, sfx, hud, dialog, cinematic, camera, pets, floatText, heightAt: getHeight,
 });
 dayNight.flushCatchUp();                                                          // Step 74b: the clock's load catch-up (the game was closed) reaches the listeners only now that they all exist
 const beachFinds = createBeachFinds({ scene, collection, sync, world: worldVis });
@@ -912,7 +912,7 @@ function tick(realDt) {
   boatSailScene.update(dt); duskDock.update(dt);       // Step 71: the crossing (it owns the camera while it runs) and Duskcrown's dock
   pets.update(dt);                            // Step 73a: the pets follow their owners (after the crossing placed the crew's visuals)
   petLab.update(dt);                          // Step 74a: the debug pet lab (does nothing while empty)
-  carleWorld.update(dt);                      // Step 74b: Carle's caterpillar (perch, bubbles, feeding beat, cocoon)
+  carle.update(); carleWorld.update(dt);                      // Step 74b: Carle's caterpillar (perch, bubbles, feeding beat, cocoon)
   capray.update(); caprayWorld.update(dt); petStable.update(dt);   // Step 73b: the host's befriend-scene timing, the wild ray / moss / scene (it owns the camera while the scene runs) and the pet stable
   fishing.update(dt); fishingPlay.update(dt, simTime); fishingSpots.update(dt, simTime);   // Step 72a: the host's spot schedule, this screen's anglers (after players / items), the spot rings
   boatLookouts.update(dt);
@@ -1049,12 +1049,13 @@ const caprayDebug = {
 const carleDebug = {
   summary: () => ({ ...carle.summary(), world: carleWorld.summary(), away: dayNight.away }),
   get state() { return carle.state; },
+  cocoonDays: (n) => carle.debug.cocoonDays(n), ready: () => carle.debug.ready(), hatch: (p = players.p1) => carle.debug.hatch(p),
   stage: (n) => carle.debug.stage(n), fedDays: (k) => carle.debug.fedDays(k), feed: () => carle.debug.feed(), nextDay: (n = 1) => carle.debug.dawn(n), reset: () => carle.debug.reset(),
   goto: () => world.goto('carle'),
   menu: (p = players.p1) => carleWorld.openMenu(p),
   plan: carlePlan, world: carleWorld, api: carle,
 };
-// Debug (Step 73a): __game.pets.{list (names), unlocked, unlock(id), reset(), set(player, id | null) = bring a pet (saved per screen, must be unlocked), preview(id) = Capray on P1 for a look (not unlocked / saved),
+// Debug (Step 73a): __game.pets.{list (names), unlocked, unlock(id), reset(), set(player, id | null) = bring a pet (saved per screen, must be unlocked), preview(id) = the named pet on P1 for a look (not unlocked / saved),
 // summary(), api}. ?testpet = Capray unlocked and never saved. unlock / reset are the host-path debug unlocks (saved + synced).
 const petsDebug = {
   get list() { return PETS.map((p) => p.name); },

@@ -19,14 +19,14 @@ const { createPetsDomain, PETS_KEY } = await import('../public/js/game/petsDomai
 const { createPetModel, PETS, petMaterial, petUniforms } = await import('../public/js/npc/pets.js');
 const { createPets, STORAGE_KEY } = await import('../public/js/world/pets.js');
 
-test('the version is 0.85.5', () => { assert.equal(VERSION, '0.85.5'); });
+test('the version is 0.85.6', () => { assert.equal(VERSION, '0.85.6'); });
 
 // ---- ids and the wire ---------------------------------------------------------------------------------------------------------------------------------------------------------
 test('ids: Capray first, pose ids are 1 + index, 0 / junk decode as none, the model registry has the same order', () => {
-  assert.deepEqual(PET_IDS, ['capray']);
+  assert.deepEqual(PET_IDS, ['capray', 'carle']);
   assert.equal(petIndexOf('capray'), 0); assert.equal(petIndexOf('nope'), -1); assert.equal(petIdAt(0), 'capray'); assert.equal(petIdAt(5), null);
-  assert.equal(encodePetId(-1), 0); assert.equal(encodePetId(0), 1); assert.equal(encodePetId(1), 0); assert.equal(encodePetId(undefined), 0);
-  assert.equal(decodePetId(0), -1); assert.equal(decodePetId(1), 0); assert.equal(decodePetId(2), -1); assert.equal(decodePetId('x'), -1);
+  assert.equal(encodePetId(-1), 0); assert.equal(encodePetId(0), 1); assert.equal(encodePetId(1), 2); assert.equal(encodePetId(undefined), 0);
+  assert.equal(decodePetId(0), -1); assert.equal(decodePetId(1), 0); assert.equal(decodePetId(2), 1); assert.equal(decodePetId('x'), -1);
   assert.deepEqual(PETS.map((p) => p.id), PET_IDS);
 });
 
@@ -446,4 +446,46 @@ test('runtime: the boat crossing wrapper (player.visualRoot) is the place the pe
   const a = w.pets.actorOf(w.p0);
   assert.ok(a.ownerPos.x > 1.5 && w.p0.position.x === 0);
   assert.ok(Math.abs(a.s.x - a.ownerPos.x) < 2.5, 'the pet kept up with the rendered boat crew');
+});
+
+// ---- Step 74c: Carle's own model animation and idle policy ----------------------------------------------
+test('Carle pose id 2 travels in field 16; older packets and Capray still decode', () => {
+  const p = { index: 0, position: { x: 0, y: 0, z: 0 }, velocity: { x: 0, z: 0 }, character: {}, petIndex: 1 };
+  const wire = encodePose(p, -1, 1); assert.equal(wire[15], 2); assert.equal(decodePetId(decodePose(wire).pet), 1);
+  assert.equal(decodePetId(decodePose(wire.slice(0, 15)).pet), -1);
+  assert.equal(decodePetId(1), 0);
+});
+
+test('Carle runtime: one skinned mesh + shadow, own update driven with flap/glide/rest; follows and disposes', () => {
+  const w = world(); w.domain.unlock('carle'); w.pets.set(w.p0, 'carle'); w.run(0.1);
+  const a = w.pets.actorOf(w.p0), m = a.model;
+  assert.equal(m.meshes.length, 1); assert.equal(m.meshes[0].isSkinnedMesh, true); assert.equal(m.drawCalls, 2);
+  const anims = new Set(), update = m.update; let updates = 0;
+  m.update = (dt, t, opts) => { updates++; anims.add(opts.anim); update(dt, t, opts); };
+  w.run(5, (dt) => { w.p0.position.z += dt * 4; });
+  assert.ok(updates >= 299); assert.ok(anims.has('glide') && anims.has('flap'));
+  assert.ok(Math.hypot(a.s.x - w.p0.position.x, a.s.z - w.p0.position.z) < 4);
+  w.state.night = 1; w.state.dusk = 1; w.run(10); assert.equal(a.idleKind, 'shoulder'); assert.ok(anims.has('rest'));
+  assert.ok(m.state.centre > 1.3, 'folded wings, including on Duskcrown at night');
+  w.run(20); assert.equal(a.idleKind, 'shoulder'); assert.ok(m.state.centre > 1.4, 'stays asleep until morning');
+  assert.equal(w.pets.summary().drawCalls, 2);
+  let triangles = 0; for (const mesh of m.meshes) triangles += (mesh.geometry.index?.count || mesh.geometry.attributes.position.count) / 3;
+  console.log(`Carle follower: 2 draw calls, ${triangles} main-pass triangles (${triangles * 2} including shadow)`);
+  assert.ok(triangles < 20000); assert.equal(petMeshes(w.scene), 1);
+  let lights = 0; w.scene.traverse((o) => { if (o.isLight) lights++; }); assert.equal(lights, 0);
+  w.pets.set(w.p0, null); w.run(0.1); assert.equal(m.root.parent, null);
+});
+
+test('Carle idle policy picks head/loop/nearest flower, skips missing flowers, shoulder at night, cancels while moving', async () => {
+  const { nearestFlower, stepCarleIdle, carleIdleDrive } = await import('../public/js/game/carlePetLogic.js');
+  const owner = { x: 0, y: 2, z: 0, facing: 0 }, flowers = [{ x: 2, y: 2, z: 0 }, { x: 4, y: 2, z: 0 }];
+  assert.equal(nearestFlower(flowers, owner), flowers[0]); assert.equal(nearestFlower([], owner), null);
+  const context = { ownerStill: true, canIdle: true, sleepy: false, flower: flowers[0], angle: 0, rng: () => 0.99 };
+  let idle = createIdle(() => 0); idle.cooldown = 0;
+  assert.equal(stepCarleIdle(idle, 2, context), 'flower');
+  const d = carleIdleDrive('flower', 0.5, { owner, flower: flowers[0] }); assert.equal(d.target.x, 2); assert.equal(d.w, 1);
+  assert.equal(stepCarleIdle(idle, 0.1, { ...context, ownerStill: false }), null);
+  for (const seed of [0, 0.5, 0.99]) { idle = createIdle(() => 0); idle.cooldown = 0; assert.ok(['head', 'loop'].includes(stepCarleIdle(idle, 2, { ...context, flower: null, rng: () => seed }))); }
+  idle = createIdle(() => 0); assert.equal(stepCarleIdle(idle, 2, { ...context, sleepy: true }), 'shoulder');
+  const sleep = carleIdleDrive('shoulder', 0.5, { owner }); assert.equal(sleep.target.y, owner.y + PET.carle.shoulderY);
 });
