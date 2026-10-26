@@ -17,6 +17,7 @@ import { buildPlan, view as bView, init as bInit, step as bStep, apply as bApply
 import { createNpcModel } from '../../npc/models.js';
 import { part, G, VERTEX_TOON, combine } from '../../render/geo.js';
 import { solid, disc, ring, box, post, ball } from './kit.js';
+import { stageLivingLifecycle, hostIdle } from './livingStage.js';
 
 const B = PARTY.bonk, O = PARTY.origin;
 const centre = stageCentre(ID);
@@ -44,31 +45,38 @@ export function createBonkWorld({ scene, sfx, particles, labels }) {
   scene.add(root);
   const geos = [], mats = [];
   const R = B.meadowR, HR = B.hitR;
+  const living = stageLivingLifecycle({ root, id: 'bonk', cam: CAM });
 
   // ---- the stream, the meadow, the molehills, the islets, the bridge stub, trees and reeds
-  const base = [disc(46, '#2f86b8', [0, -0.4, 0], 0.5), disc(R + 1.6, '#3f9fd0', [0, -0.3, 0], 0.2), disc(R + 0.35, '#c9a06a', [0, -0.05, 0], 0.4), disc(R, '#82df5c', [0, 0, 0], 0.3), disc(R * 0.62, '#94ec6c', [0, 0.01, 0], 0.1)];
+  const base = [];                                                                // (the meadow, its irregular bank, the stream and the land round it are the living pass: livingStage.js / living82d.js)
   const bits = [];
   for (const h of HILLS) {
     base.push(ball(h.r, '#a9743f', [h.x, 0, h.z], [1, 0.55, 1]), disc(h.r * 0.45, '#3c2614', [h.x + h.r * 0.1, 0.5 * h.r, h.z + h.r * 0.1], 0.03));
     for (let k = 0; k < 3; k++) { const a = k * 2.1 + h.x; base.push(ball(0.2, '#c88c52', [h.x + Math.cos(a) * h.r * 1.15, 0.05, h.z + Math.sin(a) * h.r * 1.15], [1, 0.5, 1])); }
   }
-  for (const p of B.patches) base.push(disc(B.patchR, '#82df5c', [p.x, -0.05, p.z], 0.4), disc(B.patchR + 0.25, '#c9a06a', [p.x, -0.1, p.z], 0.3), ring(0.5, 0.7, '#fff3a0', [p.x - 0.8, 0.02, p.z], 0.02), ring(0.5, 0.7, '#fff3a0', [p.x + 0.8, 0.02, p.z], 0.02));
-  for (let k = 0; k < 5; k++) { const a = Math.PI * (0.22 + k * 0.07), r = R + 0.9; base.push(disc(0.5, '#9aa0a8', [Math.cos(a) * r - 0.6, 0.02, Math.sin(a) * r], 0.1)); }       // stepping stones toward the left islet (decor: nobody can use them)
+  for (const p of B.patches) base.push(disc(B.patchR, '#82df5c', [p.x, 0.08, p.z], 0.4), disc(B.patchR + 0.25, '#c9a06a', [p.x, 0.05, p.z], 0.3), ring(0.5, 0.7, '#fff3a0', [p.x - 0.8, 0.09, p.z], 0.02), ring(0.5, 0.7, '#fff3a0', [p.x + 0.8, 0.09, p.z], 0.02));
   // the home bridge landing at the back: planks across the stream, posts, a sign
   for (let k = 0; k < 9; k++) base.push(box(3.2, 0.18, 0.62, k % 2 ? '#c98a56' : '#b57a4e', [COBBLE.x, 0.05, -R + 0.1 - k * 0.7]));
   for (const sx of [-1.7, 1.7]) for (let k = 0; k < 4; k++) base.push(post(0.12, 1.1, '#8a5a3c', [COBBLE.x + sx, 0.1, -R - 0.2 - k * 1.7]));
-  base.push(box(3.4, 0.14, 0.14, '#8a5a3c', [0, 1.0, -R - 0.2]), box(2.2, 0.8, 0.12, '#f4e2c8', [-3.4, 1.4, -R - 0.9]), post(0.1, 1.4, '#8a5a3c', [-3.4, 0.1, -R - 0.9]));
-  const FL = ['#ff8fbe', '#ffd54a', '#ffffff', '#c7a6ff', '#ff7a6b'];
-  for (let i = 0; i < 70; i++) { const a = i * 2.399, r = 1.5 + ((i * 3.7) % 8.2), x = Math.cos(a) * r, z = Math.sin(a) * r; if (HILLS.some((h) => Math.hypot(x - h.x, z - h.z) < h.r + 0.3)) continue; base.push(part(G.sphereLo, FL[i % 5], { p: [x, 0.28, z], s: [0.12, 0.09, 0.12] }), part(G.cyl6, '#4fb865', { p: [x, 0.13, z], s: [0.02, 0.14, 0.02] })); }
-  for (let i = 0; i < 16; i++) { const a = Math.PI * (1.12 + i * 0.05), x = Math.cos(a) * 21, z = Math.sin(a) * 14 - 3, h = 2.4 + (i % 3) * 0.5; base.push(post(0.34, h, '#9a6a44', [x, -0.3, z]), ball(1.6, i % 2 ? '#58c96b' : '#4fb865', [x, h + 0.6, z], [1, 0.9, 1])); }
-  for (let i = 0; i < 26; i++) { const a = i * 0.9, r = R + 1.1 + hash(i) * 0.4; if (Math.sin(a) < -0.6) continue; base.push(post(0.05, 0.9 + hash(i + 3) * 0.5, '#4d9a8a', [Math.cos(a) * r, -0.3, Math.sin(a) * r])); }
-  const baseMesh = solid(base, { outline: 0.03 });
+  base.push(box(3.4, 0.14, 0.14, '#8a5a3c', [0, 1.0, -R - 0.2]), box(2.2, 0.8, 0.12, '#f4e2c8', [-3.9, 1.4, -15.4]), post(0.1, 1.4, '#8a5a3c', [-3.9, 0, -15.4]));          // (the sign stands on the far bank now)
+  // Clover and daisy clumps in tight little groups (bright and light, never darker than the grass: nothing on the meadow may look like a shadow). The grass, the stream, the trees and the reeds are the living pass.
+  for (let c = 0; c < 12; c++) {
+    const a = c * 2.399 + 0.4, r = 2.2 + hash(c) * 6.8, cx = Math.cos(a) * r, cz = Math.sin(a) * r;
+    if (HILLS.some((h) => Math.hypot(cx - h.x, cz - h.z) < h.r + 1.2)) continue;
+    for (let k = 0; k < 5; k++) {
+      const fa = k * 2.1 + c, fr = 0.12 + hash(c * 9 + k) * 0.5, x = cx + Math.cos(fa) * fr, z = cz + Math.sin(fa) * fr;
+      if (k % 2) base.push(part(G.sphereLo, '#aef27a', { p: [x, 0.06, z], s: [0.1, 0.03, 0.1] }), part(G.sphereLo, '#c4f896', { p: [x + 0.08, 0.075, z + 0.03], s: [0.07, 0.025, 0.07] }));
+      else base.push(part(G.sphereLo, '#ffffff', { p: [x, 0.07, z], s: [0.13, 0.04, 0.13] }), part(G.sphereLo, '#ffd23a', { p: [x, 0.1, z], s: [0.06, 0.04, 0.06] }));
+    }
+  }
+  const baseMesh = solid(base, { outline: 0.03, cast: false });                  // (the molehills cast nothing: no scenery shadow may fall on the meadow)
   baseMesh.name = 'bonk-base';
   root.add(baseMesh); geos.push(baseMesh.geometry);
 
   // ---- Cobble the mole on the bridge stub
   const cobble = createNpcModel('mole');
   cobble.root.scale.setScalar(1.3);
+  cobble.root.traverse((o) => { if (o.isMesh) o.castShadow = false; });          // (his shadow must not fall on the meadow either)
   cobble.root.position.set(COBBLE.x, 0.2, COBBLE.z + 0.3); cobble.root.rotation.y = 0;
   root.add(cobble.root);
 
@@ -88,10 +96,11 @@ export function createBonkWorld({ scene, sfx, particles, labels }) {
   const drawn = [];                                                                  // per slot of the pool: { i (slam), x, z, r, core, u, y }
   const landed = new Set();
 
-  let t0 = 0, lastMode = '', practice = null, swing = 0;
+  let t0 = 0, lastMode = '', practice = null, swing = 0, busyNow = false, cheerUntil = -1;
 
   function present(slams, t, quiet) {
     const n = Math.min(CAP, slams.length);
+    busyNow = slams.some((s) => s.phase === 'warn');
     drawn.length = 0;
     for (let k = 0; k < CAP; k++) {
       const s = slams[k];
@@ -117,6 +126,7 @@ export function createBonkWorld({ scene, sfx, particles, labels }) {
         sfx?.play('malletthump', { vol: 0.7 }); sfx?.play('malletsqueak', { vol: 0.5, pitch: 0.9 + hash(s.i) * 0.5 });
         particles?.burst('puff', wp(s.x, 0.3, s.z), { count: 10, radius: HR * 0.75, height: 0.5, size: 1.4, color: '#e0cda0' });
         particles?.burst('sparkle', wp(s.x, 0.6, s.z), { count: 5, radius: HR * 0.5, height: 0.6, color: '#fff3a0' });
+        living.api.crumble?.(s.x, s.z); cheerUntil = t0 + 0.5;
       }
     }
     rings.instanceMatrix.needsUpdate = true; fills.instanceMatrix.needsUpdate = true; mallets.instanceMatrix.needsUpdate = true;
@@ -151,6 +161,9 @@ export function createBonkWorld({ scene, sfx, particles, labels }) {
     const lit = mode === 'play' && v && v.slams.length;
     cobble.rig.position.y = Math.sin(t0 * 2.2) * 0.02 + (lit ? 0.03 : 0);
     cobble.headGroup.rotation.x = damp(cobble.headGroup.rotation.x, lit ? -0.15 : 0.05, 4, dt);
+    if (t0 < cheerUntil) cobble.rig.position.y += Math.abs(Math.sin(t0 * 14)) * 0.12;                                  // a little hop when a mallet lands
+    hostIdle(cobble, t0, mode === 'play' && v ? { alive: v.alive, done: v.done } : null, lanePlayers);
+    living.update(dt, t0, lanePlayers, { busy: busyNow });
   }
   function flash(p) {
     if (!p || !p.position) return;
@@ -160,7 +173,9 @@ export function createBonkWorld({ scene, sfx, particles, labels }) {
 
   return {
     root, update, cam: CAM, look: 'day',
+    get living() { return living.current; },
     setVisible(on) {
+      living.setVisible(on);
       root.visible = !!on;
       if (!on) { labels?.clear?.(); lastMode = ''; practice = null; landed.clear(); present([], 0, true); }
     },
@@ -183,6 +198,6 @@ export function createBonkWorld({ scene, sfx, particles, labels }) {
     malletDraw: (k) => (drawn[k] ? { x: drawn[k].x, z: drawn[k].z, y: drawn[k].y, r: HR } : null),
     counts: () => ({ drawn: drawn.length }),
     summary() { let calls = 0; root.traverse((o) => { if (o.isMesh && o.visible) calls++; }); return { visible: root.visible, meshes: calls, drawn: drawn.length }; },
-    dispose() { for (const g of geos) g.dispose(); for (const m of mats) m.dispose(); cobble.dispose?.(); scene.remove(root); },
+    dispose() { if (root.userData.disposed) return; root.userData.disposed = true; living.dispose(); { const all = new Set(geos), own = new Set(); cobble.root.traverse((o) => { if (o.geometry) own.add(o.geometry); }); root.traverse((o) => { if (o.geometry && !own.has(o.geometry)) all.add(o.geometry); }); for (const g of all) if (!own.has(g)) g.dispose(); } for (const m of mats) m.dispose(); cobble.dispose?.(); scene.remove(root); },
   };
 }

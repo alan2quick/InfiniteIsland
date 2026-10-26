@@ -19,6 +19,7 @@ import { planeNormal, rollQuaternion } from '../../game/tiltLogic.js';
 import { createTdoongModel } from '../../npc/tdoongz.js';
 import { part, G, VERTEX_TOON, combine, makeOutline } from '../../render/geo.js';
 import { solid, disc, ring, box, post, ball } from './kit.js';
+import { stageLivingLifecycle, hostIdle } from './livingStage.js';
 
 const T = PARTY.tilty, O = PARTY.origin;
 const centre = stageCentre(ID);
@@ -109,7 +110,16 @@ function frameGeo() {
     box(r, RIM_H, ihz * 2, WOOD, [-(hx - r / 2), 0, 0]), box(r, RIM_H, ihz * 2, WOOD, [hx - r / 2, 0, 0]),
     ...[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => ball(0.3, GOLD, [a * (hx - r / 2), RIM_H, b * (hz - r / 2)], [1, 0.7, 1])),
     box(ihx * 2 + 0.02, 0.02, 0.06, '#5a3c26', [0, 0.005, -ihz]), box(ihx * 2 + 0.02, 0.02, 0.06, '#5a3c26', [0, 0.005, ihz]),
+    ...frameWear(hx, hz, r),
   ]);
+}
+/** Wear for the rim, all inside the frame's own geometry (no extra node): wood-grain lines on the rim tops and bright corner brackets that catch the light as the frame tips. The inside face is untouched. */
+function frameWear(hx, hz, r) {
+  const out = [], y = RIM_H + 0.006;
+  for (const sz of [-1, 1]) for (let k = -1; k <= 1; k++) out.push(box((hx * 2 - 1.2) * (0.55 + hash(k * 7 + sz) * 0.4), 0.012, 0.022, k % 2 ? '#a56c42' : '#c68e5e', [(hash(k + 3 + sz * 5) - 0.5) * 1.2, y, sz * (hz - r / 2) + k * 0.12]));
+  for (const sx of [-1, 1]) for (let k = -1; k <= 1; k++) out.push(box(0.022, 0.012, (hz * 2 - 1.2 - 2 * r) * (0.55 + hash(k * 5 + sx) * 0.4), k % 2 ? '#a56c42' : '#c68e5e', [sx * (hx - r / 2) + k * 0.12, y, (hash(k + 9 + sx * 3) - 0.5) * 1.2]));
+  for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) out.push(box(1.0, 0.03, 0.14, '#fff0b8', [a * (hx - 0.72), RIM_H + 0.012, b * (hz - r / 2)]), box(0.14, 0.03, 1.0, '#fff0b8', [a * (hx - r / 2), RIM_H + 0.012, b * (hz - 0.72)]));
+  return out;
 }
 function coconutGeo() {
   const R = T.ballR, p = [part(G.sphere, '#7a4a2a', { s: [R, R, R] }), part(G.sphereLo, '#a06d44', { p: [-R * 0.36, R * 0.5, R * 0.55], s: [R * 0.3, R * 0.34, R * 0.16] })];
@@ -125,22 +135,14 @@ export function createTiltyWorld({ scene, sfx, particles, labels }) {
   root.visible = false;
   scene.add(root);
   const geos = [], mats = [];
+  const living = stageLivingLifecycle({ root, id: 'tilty', cam: CAM });
   const BOARDS = tiltyBoards();
 
   // ---- the lawn: a big picnic lawn, the posts the frames balance on, flowers, a few trees at the back
-  const base = [disc(46, '#8fe36b', [0, 0, 0], 0.5), disc(15.5, '#a8f07c', [0, 0.02, 0], 0.2)];
+  const base = [];
   for (const f of T.frames) base.push(post(0.55, T.pivotY - 0.5, '#9a6a44', [f.x, 0, f.z]), ball(0.8, '#c9a06a', [f.x, T.pivotY - 0.55, f.z], [1, 0.45, 1]), disc(1.5, '#7acb55', [f.x, 0.03, f.z], 0.04));
   base.push(disc(1.15, '#ffd85e', [0, 0.35, 0], 0.35), ring(0.75, 1.0, '#fff3a0', [0, 0.37, 0], 0.03));                     // Zyoni's pedestal in the middle of the cross
-  const FL = ['#ff8fbe', '#ffd54a', '#ffffff', '#c7a6ff', '#ff7a6b'];
-  for (let i = 0; i < 90; i++) {
-    const a = i * 2.399, r = 13 + ((i * 7.31) % 17), x = Math.cos(a) * r * 1.2, z = Math.sin(a) * r;
-    if (Math.abs(x) < 13.5 && Math.abs(z) < 10.8) continue;
-    base.push(part(G.sphereLo, FL[i % 5], { p: [x, 0.3, z], s: [0.13, 0.1, 0.13] }), part(G.cyl6, '#4fb865', { p: [x, 0.14, z], s: [0.02, 0.14, 0.02] }));
-  }
-  for (let i = 0; i < 12; i++) {
-    const a = Math.PI * (1.08 + i * 0.07), x = Math.cos(a) * 24, z = Math.sin(a) * 15 - 1, h = 2.4 + (i % 3) * 0.5;
-    base.push(post(0.34, h, '#9a6a44', [x, 0, z]), ball(1.6 + (i % 2) * 0.3, i % 2 ? '#58c96b' : '#4fb865', [x, h + 0.9, z], [1, 0.9, 1]));
-  }
+  // (the flowers, the trees and the lawn itself are the living pass: livingStage.js / living82d.js; nothing is ever placed under or in a frame)
   const baseMesh = solid(base, { outline: 0.04 });
   baseMesh.name = 'tilty-base';
   root.add(baseMesh); geos.push(baseMesh.geometry);
@@ -187,7 +189,7 @@ export function createTiltyWorld({ scene, sfx, particles, labels }) {
   }
 
   // ---- state
-  let t0 = 0, lastMode = '', practice = null, shownTilt = BOARDS.map(() => ({ x: 0, z: 0 }));
+  let t0 = 0, lastMode = '', practice = null, shownTilt = BOARDS.map(() => ({ x: 0, z: 0 })), cheerUntil = -1, lastHot = 0;
   const worldAt = (st, x, y, z) => { const v = new THREE.Vector3(x, y, z); st.grp.updateMatrixWorld(true); return st.grp.localToWorld(v); };
 
   function pop(st, k, i, board) {
@@ -240,17 +242,25 @@ export function createTiltyWorld({ scene, sfx, particles, labels }) {
       practice.g.boards.forEach((B, k) => showFrame(k, B, dt, false));
       if (practice.g.boards.some((B) => B.n >= TILES - 1)) practice = null;                                      // (the rehearsal starts over before a picture is ever finished)
     } else for (let k = 0; k < 4; k++) showFrame(k, FRESH, dt, true);
-    // Zyoni cheers: a bounce, her head nods; she hops higher for a moment whenever somebody uncovers a lot
+    // Zyoni cheers: a bounce, her head nods; she hops higher for a moment whenever somebody uncovers a lot, and throws both arms up when a picture is finished (a short reaction)
     const hot = v ? v.boards.reduce((a, B) => Math.max(a, B.n), 0) / TILES : 0, s = t0 * (4.5 + hot * 2.5);
-    zy.rig.position.y = Math.abs(Math.sin(s)) * (0.12 + hot * 0.2);
-    zy.headGroup.rotation.z = Math.sin(s * 0.5) * 0.12;
-    for (const [arm, side] of [[zy.armL, 1], [zy.armR, -1]]) if (arm) arm.rotation.x = -0.5 + Math.sin(s + side) * 0.3;
+    if (hot >= (TILES - 1) / TILES && lastHot < (TILES - 1) / TILES) cheerUntil = t0 + 1.6;
+    lastHot = hot;
+    const cheer = Math.max(0, Math.min(1, cheerUntil - t0));
+    zy.rig.position.y = Math.abs(Math.sin(s)) * (0.12 + hot * 0.2) + cheer * Math.abs(Math.sin(t0 * 10)) * 0.25;
+    for (const [arm, side] of [[zy.armL, 1], [zy.armR, -1]]) if (arm) arm.rotation.x = (-0.5 + Math.sin(s + side) * 0.3) * (1 - cheer) + (-2.7 + Math.sin(t0 * 12 + side) * 0.2) * cheer;
     zy.update?.(dt, t0);
+    (zy.ears || []).forEach((ear, i) => { if (ear && ear.userData.restZ !== undefined) ear.rotation.z = ear.userData.restZ + (((t0 + i * 2.7) % 6) < 0.35 ? Math.sin(t0 * 30) * 0.08 : 0); });        // an ear flick every few seconds
+    hostIdle(zy, t0, v && mode === 'play' ? { totals: Object.fromEntries(v.slots.map((sl, i) => [sl, v.boards[i].n])), done: v.done } : null, lanePlayers);          // (her head follows whoever has uncovered the most)
+    zy.headGroup.rotation.z += Math.sin(s * 0.5) * 0.1;
+    living.update(dt, t0, lanePlayers);
   }
 
   return {
     root, update, cam: CAM, look: 'day',
+    get living() { return living.current; },
     setVisible(on) {
+      living.setVisible(on);
       root.visible = !!on;
       if (!on) { labels?.clear?.(); lastMode = ''; practice = null; for (const st of frames) { st.shown = 0; st.age.fill(-1); st.last = null; } }
     },
@@ -267,6 +277,6 @@ export function createTiltyWorld({ scene, sfx, particles, labels }) {
     frameGroup: (f) => frames[f].grp,
     counts: () => ({ frames: frames.length, tiles: frames.map((st) => st.age.filter((a) => a < 0).length) }),
     summary() { let calls = 0; root.traverse((o) => { if (o.isMesh && o.visible) calls++; }); return { visible: root.visible, meshes: calls }; },
-    dispose() { for (const g of geos) g.dispose(); for (const m of mats) m.dispose(); zy.dispose?.(); scene.remove(root); },
+    dispose() { if (root.userData.disposed) return; root.userData.disposed = true; living.dispose(); { const all = new Set(geos), own = new Set(); zy.root.traverse((o) => { if (o.geometry) own.add(o.geometry); }); root.traverse((o) => { if (o.geometry && !own.has(o.geometry)) all.add(o.geometry); }); for (const g of all) if (!own.has(g)) g.dispose(); } for (const m of mats) m.dispose(); zy.dispose?.(); scene.remove(root); },
   };
 }

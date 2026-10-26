@@ -141,6 +141,7 @@ export function createDecor({ root, placements, materials, acceptSphere = () => 
     const sphere = g.boundingSphere.clone();
     sphere.radius += staticPiece ? 0.02 : swayPadding(g.boundingBox.max.y, crown);
     const boundsEntry = { kind: p.kind, layer: p.layer, sphere, lowCover: !!p.lowCover,
+      y0: p.y ?? 0, // (a piece standing on a raised surface: its cover height is top - y0)
       top: g.boundingBox.max.y, // shader wind is horizontal; only crowns tilt vertically
       x: p.x, z: p.z, footprint: p.scale, parent: p.parent, zone: p.zone || 'meadow',
       triangles: g.attributes.position.count / 3, detail: g.userData.partyDetail || 'patch' };

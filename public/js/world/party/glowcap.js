@@ -18,6 +18,7 @@ import { buildPlan, view as glowView, init as glowInit, onCap, capCentre, CAPS, 
 import { createTdoongModel } from '../../npc/tdoongz.js';
 import { part, G, VERTEX_TOON, combine } from '../../render/geo.js';
 import { solid, glow, disc, ring, box, ball } from './kit.js';
+import { stageLivingLifecycle, hostIdle } from './livingStage.js';
 
 const GC = PARTY.glowcap, O = PARTY.origin;
 const centre = stageCentre(ID);
@@ -55,30 +56,21 @@ export function createGlowcapWorld({ scene, sfx, particles, labels }) {
   scene.add(root);
   const geos = [], mats = [];
   const R = GC.capR, sh = GC.shore;
+  const living = stageLivingLifecycle({ root, id: 'glowcap', cam: CAM });
 
-  // ---- the lagoon bed, the mossy shore, a ring of glowing giant mushrooms and reeds behind, rocks
+// ---- the mossy shore (the lagoon bed, the giant mushrooms, the reeds and the islets are the living pass: livingStage.js / living82d.js)
   const base = [
-    disc(60, '#0a0f2e', [0, GC.waterY - 2.2, 0], 0.5),
     box(sh.x * 2 + 0.8, 0.9, sh.z1 - sh.z0 + 0.6, '#3a5e66', [0, -0.9, (sh.z0 + sh.z1) / 2]), box(sh.x * 2 + 0.2, 0.06, sh.z1 - sh.z0 + 0.1, '#5f9a86', [0, -0.06, (sh.z0 + sh.z1) / 2]),     // the shore: its top is the floor (y 0)
   ];
   for (let k = 0; k < 4; k++) base.push(disc(1.3, '#8fe6c8', [-4.5 + k * 3, 0.02, GC.spectatorZ], 0.05), ring(0.8, 1.2, '#cfe9ff', [-4.5 + k * 3, 0.03, GC.spectatorZ], 0.03));     // where the ones who fell in stand
   const glowBits = [];
-  const mush = (x, z, h, cap, i) => {
-    base.push(part(G.cyl8, '#b8b2e8', { p: [x, h / 2 - 1.2, z], s: [0.28 * h / 3, h, 0.28 * h / 3] }));
-    base.push(part(G.sphere, cap, { p: [x, h - 1.2, z], s: [h * 0.62, h * 0.3, h * 0.62] }));
-    glowBits.push(part(G.sphereLo, i % 2 ? '#ffb86a' : '#8ff4ff', { p: [x + 0.2 * h * 0.3, h - 1.2 + h * 0.2, z + 0.2 * h * 0.3], s: [h * 0.09, h * 0.05, h * 0.09] }));
-  };
-  for (let i = 0; i < 16; i++) { const a = Math.PI * (1.05 + (i / 15) * 0.9), rr = 17 + hash(i) * 4; mush(Math.cos(a) * rr * 1.15, Math.sin(a) * rr * 0.62 - 3, 3 + hash(i + 9) * 4, ['#4a4fb8', '#5a3fa8', '#3a6ab8', '#7a4aa8'][i % 4], i); }
-  for (let i = 0; i < 10; i++) { const side = i % 2 ? 1 : -1, x = side * (11 + hash(i + 20) * 5), z = 3 + hash(i + 31) * 8; mush(x, z, 1.4 + hash(i + 41) * 1.4, ['#5a8ae0', '#c070d8'][i % 2], i + 1); }
-  for (let i = 0; i < 14; i++) base.push(part(G.cyl6, '#4d9a8a', { p: [-12 + hash(i + 50) * 24, 0.5, 6.5 + hash(i + 60) * 6.5 - (i % 3) * 0.1], s: [0.05, 1.4 + hash(i) * 0.6, 0.05] }));
   const baseMesh = solid(base, { outline: 0.03 });
   baseMesh.name = 'glowcap-base';
   root.add(baseMesh); geos.push(baseMesh.geometry);
-  const bits = glow(glowBits); bits.name = 'glowcap-bulbs'; root.add(bits); geos.push(bits.geometry);
 
   // ---- the water: a translucent layer above the sunk caps, soft halos under every cap
-  const waterG = new THREE.CircleGeometry(60, 48); waterG.rotateX(-Math.PI / 2);
-  const waterM = new THREE.MeshBasicMaterial({ color: '#1b3c98', transparent: true, opacity: 0.62, depthWrite: false });
+  const waterG = new THREE.CircleGeometry(250, 48); waterG.rotateX(-Math.PI / 2);
+  const waterM = new THREE.MeshBasicMaterial({ color: '#16328a', transparent: true, opacity: 0.62, depthWrite: false });
   const water = new THREE.Mesh(waterG, waterM);
   water.position.y = GC.waterY; water.renderOrder = 2; water.name = 'glowcap-water';
   root.add(water); geos.push(waterG); mats.push(waterM);
@@ -123,7 +115,18 @@ export function createGlowcapWorld({ scene, sfx, particles, labels }) {
   tz.root.scale.setScalar(TDOONGZ.tzukumi.scale);
   tz.root.position.set(TZUKUMI.x, 0.95, TZUKUMI.z); tz.root.rotation.y = Math.PI / 2;
   root.add(tz.root);
-  const stump = solid([disc(1.25, '#4a3a5e', [TZUKUMI.x, 0.95, TZUKUMI.z], 0.95), disc(1.05, '#6fcfa0', [TZUKUMI.x, 0.97, TZUKUMI.z], 0.03)], { outline: 0.03 });
+  const stumpParts = [disc(1.25, '#4a3a5e', [TZUKUMI.x, 0.95, TZUKUMI.z], 0.95), disc(1.05, '#6fcfa0', [TZUKUMI.x, 0.97, TZUKUMI.z], 0.03)];
+  for (let k = 0; k < 7; k++) {                                                                      // moss round the stump's rim and four little glowing mushrooms on it (cosmetic)
+    const a = k * 0.9 + 0.3, mx = TZUKUMI.x + Math.cos(a) * 1.05, mz = TZUKUMI.z + Math.sin(a) * 1.05;
+    stumpParts.push(part(G.sphereLo, k % 2 ? '#4f9a6a' : '#6fb87a', { p: [mx, 0.98, mz], s: [0.34 + hash(k) * 0.14, 0.12, 0.3] }));
+    if (k < 4) {
+      const sx = TZUKUMI.x + Math.cos(a + 0.5) * 0.78, sz = TZUKUMI.z + Math.sin(a + 0.5) * 0.78, h = 0.22 + hash(k + 4) * 0.14;
+      stumpParts.push(part(G.cyl6, '#e8e0f4', { p: [sx, 0.97 + h / 2, sz], s: [0.035, h, 0.035] }));
+      glowBits.push(part(G.sphereLo, k % 2 ? '#ffb86a' : '#8ff4ff', { p: [sx, 0.97 + h, sz], s: [0.11, 0.07, 0.11] }));
+    }
+  }
+  const stump = solid(stumpParts, { outline: 0.03 });
+  const bits = glow(glowBits); bits.name = 'glowcap-bulbs'; root.add(bits); geos.push(bits.geometry);
   root.add(stump); geos.push(stump.geometry);
   const heartGeo = symbolGeo('heart', 0.1); heartGeo.rotateX(Math.PI / 2); geos.push(heartGeo);       // (upright again: its flat face looks along +z)
   const heartM = new THREE.MeshBasicMaterial({ color: '#555577', side: THREE.DoubleSide, transparent: true, opacity: 0.95 }); mats.push(heartM);
@@ -189,6 +192,7 @@ export function createGlowcapWorld({ scene, sfx, particles, labels }) {
     if (!root.visible) return;
     t0 += dt;
     if (mode !== lastMode) { lastMode = mode; lastKey = ''; practice = null; }
+    let livingDepth = null;
     let view = null;
     if (mode === 'play' && v) view = v;
     else if (mode === 'practice') {
@@ -197,7 +201,7 @@ export function createGlowcapWorld({ scene, sfx, particles, labels }) {
       if (tm < dt * 1.5) { lastKey = ''; }
       view = glowView(practice.g, tm);
     }
-    if (view) { placeCaps(view.depth, t0); showCall(view.call); setPips(view.call ? view.count : 0); beats(view, mode, lanePlayers); }
+    if (view) { placeCaps(view.depth, t0); showCall(view.call); setPips(view.call ? view.count : 0); beats(view, mode, lanePlayers); livingDepth = view.depth; }
     else { placeCaps(null, t0); showCall(null); }
     // Tzukumi: sleepy sway; she nods when a call is lit
     const lit = view && view.call;
@@ -206,11 +210,15 @@ export function createGlowcapWorld({ scene, sfx, particles, labels }) {
     tz.setExpression?.(lit ? 'happy' : 'sleepy');
     for (const h of hearts) h.rotation.z = Math.sin(t0 * 6) * 0.05 * (lit ? 1 : 0);
     plate.rotation.z = Math.sin(t0 * 2.2) * 0.02; plate.position.y = 1.2 + Math.sin(t0 * 1.6) * 0.08;
+    living.update(dt, t0, lanePlayers, { depth: livingDepth });
+    hostIdle(tz, t0, view && mode === 'play' ? { alive: view.alive, done: view.done } : null, lanePlayers);          // (head only: she watches whoever is still dry)
   }
 
   return {
     root, update, cam: CAM, look: 'lagoon',
+    get living() { return living.current; },
     setVisible(on) {
+      living.setVisible(on);
       root.visible = !!on;
       if (!on) { labels?.clear?.(); lastMode = ''; lastKey = ''; practice = null; plate.visible = pips.visible = false; }
     },
@@ -237,7 +245,7 @@ export function createGlowcapWorld({ scene, sfx, particles, labels }) {
     heartColor: () => '#' + heartM.color.getHexString(),
     counts: () => ({ caps: caps.count, symbols: syms.filter((s) => s.visible).length }),
     summary() { let calls = 0; root.traverse((o) => { if (o.isMesh && o.visible) calls++; }); return { visible: root.visible, meshes: calls, plate: plate.visible }; },
-    dispose() { for (const g of geos) g.dispose(); for (const m of mats) m.dispose(); tz.dispose?.(); scene.remove(root); },
+    dispose() { if (root.userData.disposed) return; root.userData.disposed = true; living.dispose(); { const all = new Set(geos), own = new Set(); tz.root.traverse((o) => { if (o.geometry) own.add(o.geometry); }); root.traverse((o) => { if (o.geometry && !own.has(o.geometry)) all.add(o.geometry); }); for (const g of all) if (!own.has(g)) g.dispose(); heartGeo.dispose(); } for (const m of mats) m.dispose(); tz.dispose?.(); scene.remove(root); },
   };
 }
 

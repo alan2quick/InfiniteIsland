@@ -17,6 +17,7 @@ import { glow } from './kit.js';
 import { dressingAsset } from './stageDressing.js';
 import { composeStage } from './stageComposition.js';
 import { SPECS, isSpec82c, specKeepOut, specGameplayPoints } from './living82c.js';
+import './living82d.js'; // (registers Glowcap Shuffle, Driftwood Cast, Tilty Tiles and Bonk Burrows into SPECS)
 
 // A head-only look keeps feet, held flags and every judged piece fixed. Prefer the
 // current leader; bounded neck motion still faces the camera enough to read a call.
@@ -212,19 +213,19 @@ export function createStageLiving({ root, id, cam }) {
   const keepOut = stageKeepOut(id), position = floorY ? root.position.clone().setY(root.position.y + floorY) : root.position;
   const clear = (s, entry) => {
     const world = s.clone().translate(position);
-    return cameras.some(c => sphereInFrame(world, c)) && (entry.lowCover ? entry.top <= 0.45 : cameras.every(c => points.every(p => !sphereCoversPoint(world, p, c))));
+    return cameras.some(c => sphereInFrame(world, c)) && (entry.lowCover ? entry.top - (entry.y0 || 0) <= 0.45 : cameras.every(c => points.every(p => !sphereCoversPoint(world, p, c))));
   };
   const shape = circle(0, 0, 43);
-  const low = scatter({ seed: b.seed, shape, keepOut, count: spec ? spec.low : id === 'vineskip' ? 2000 : id === 'marlosays' ? 260 : 400, minDistance: 0.43, radius: 0.65,
+  const low = scatter({ seed: b.seed, shape: spec?.lowShape || shape, keepOut, count: spec ? spec.low : id === 'vineskip' ? 2000 : id === 'marlosays' ? 260 : 400, minDistance: 0.43, radius: 0.65,
     size: [0.65, 1.2], density: (d, p) => 0.25 + 0.75 * Math.min(1, Math.hypot(p.x, p.z) / 35) ** 2 });
   const tallKeep = [...keepOut, circle(0, 0, 14.5), rect(-16, 16, -1, 44)];
-  const groves = spec?.groves === 0 ? [] : scatter({ seed: b.seed + 10, shape, keepOut: tallKeep, count: spec ? spec.groves : 125, minDistance: 1.6, radius: 2.4, size: [0.75, 1.25], clusterRadius: 3.2 });
-  const ringN = spec?.farRing ? 46 : 130;
+  const groves = spec?.groves === 0 ? [] : scatter({ seed: b.seed + 10, shape: spec?.groveShape || shape, keepOut: tallKeep, count: spec ? spec.groves : 125, minDistance: 1.6, radius: 2.4, size: [0.75, 1.25], clusterRadius: 3.2 });
+  const ringN = spec?.ring === false ? 0 : spec?.farRing ? 46 : 130;
   const trees = Array.from({ length: ringN }, (_, i) => {
     const a = (i + rng() * 0.3) / ringN * Math.PI * 2, r = 39 + rng() * 0.5;
     const scale = spec ? (spec.farRing ? 2.4 + rng() * 1.2 : 1.45 + rng() * 0.75) : 1.7 + rng() * 0.22; // (82c: varied heights; the older stages keep their exact numbers)
     return { x: Math.cos(a) * r, z: Math.sin(a) * r, scale, yaw: rng() * 6.28, kind: spec?.farRing || b.trees[i % 3], zone: 'treeline', layer: 'back', crownSway: false };
-  }).filter(p => !(p.z > -1 && Math.abs(p.x) < 16) && !(id === 'marlosays' && p.z < -17));
+  }).filter(p => !(p.z > -1 && Math.abs(p.x) < 16) && !(id === 'marlosays' && p.z < -17) && (!spec?.ringKeep || spec.ringKeep(p)));
   const smallKinds = spec?.smallKinds || (id === 'marlosays' || id === 'huddle' ? ['grass'] : ['grass', 'flowerWhite', 'grass', 'pebble', 'leaf', 'flowerPink']);
   const placements = [...trees, ...groves.map((p, i) => ({ ...p, kind: b.trees[i % 4], zone: 'sides' })),
     ...low.map((p, i) => ({ ...p, kind: smallKinds[i % smallKinds.length], lowCover: true,

@@ -21,6 +21,7 @@ import { createTdoongModel } from '../../npc/tdoongz.js';
 import { createJournalModel } from '../../player/journalModels.js';
 import { part, G, VERTEX_TOON, combine } from '../../render/geo.js';
 import { solid, glow, disc, ring, box, post, ball } from './kit.js';
+import { stageLivingLifecycle, hostIdle } from './livingStage.js';
 
 const C = PARTY.cast, O = PARTY.origin;
 const centre = stageCentre(ID);
@@ -63,6 +64,7 @@ export function createCastWorld({ scene, sfx, particles, labels }) {
   root.visible = false;
   scene.add(root);
   const geos = [], mats = [];
+  const living = stageLivingLifecycle({ root, id: 'cast', cam: CAM });
 
   // ---- the jetty (its top is the floor, y 0), the berths, lamp posts, rails, the sand behind with the bench pads, palms
   const base = [box(C.lanes[3] * 2 + 7.6, 0.3, 2.6, '#b98a5a', [0, -0.3, C.berthZ]), box(C.lanes[3] * 2 + 7.6, 0.06, 2.6, '#d4a46e', [0, -0.06, C.berthZ])];
@@ -72,8 +74,6 @@ export function createCastWorld({ scene, sfx, particles, labels }) {
   [-12, -6, 0, 6, 12].forEach((x) => { base.push(post(0.1, 2.0, '#6e4a2a', [x, 0, C.berthZ - 1.2]), ball(0.2, '#ffd9a0', [x, 2.1, C.berthZ - 1.2])); });                  // lamp posts (the bulbs are lit by the glow mesh)
   base.push(box(C.lanes[3] * 2 + 7.6, 0.07, 0.07, '#8a5e36', [0, 0.8, C.berthZ + 1.2]));                                                                                  // a rail behind the berths
   C.lanes.forEach((lx, k) => base.push(disc(1.4, '#f2d6a2', [lx, 0.02, C.benchZ], 0.06)));                                                                                  // the bench pads on the sand
-  base.push(disc(30, '#e6b078', [0, -0.55, C.benchZ + 17], 0.5));                                                                                                            // the sand bank behind
-  for (const [x, z, h, l] of [[-17, 6, 4.6, 0.8], [18, 5, 5.0, -0.9], [16, -3, 3.8, -0.5]]) { base.push(part(G.cyl8, '#a9814f', { p: [x + l * 0.5, h / 2, z], r: [0, 0, -l * 0.25], s: [0.28, h, 0.28] })); for (let k = 0; k < 6; k++) { const a = (k / 6) * Math.PI * 2; base.push(part(G.sphere, k % 2 ? '#e0743a' : '#c85a2a', { p: [x + l + Math.cos(a) * 1.3, h - (k % 2) * 0.2, z + Math.sin(a) * 1.3], s: [1.3, 0.16, 0.45], r: [0, -a, k % 2 ? 0.3 : 0.1] })); } }
   // the far volcano and the lagoon's far shore
   base.push(part(G.cone6, '#5a2f5e', { p: [14, 4.2, -24], s: [11, 8.4, 11] }), part(G.cone6, '#7a3a5a', { p: [-17, 2.6, -25], s: [9, 5.2, 9] }), part(G.sphere, '#442a52', { p: [0, -0.5, -27], s: [34, 3, 3] }));
   // Bbui's little stage
@@ -83,11 +83,8 @@ export function createCastWorld({ scene, sfx, particles, labels }) {
   root.add(baseMesh); geos.push(baseMesh.geometry);
 
   // ---- the water: a deep base, the sunset glitter path, a faint tint per lane, buoys between lanes, the sun; one unlit glow mesh for everything bright
-  const water = glow([disc(60, '#c86a5a', [0, WATER_Y - 0.2, 0], 0.4), disc(40, '#8a5a8a', [0, WATER_Y - 0.19, -2], 0.4), disc(22, '#ff9a6a', [0, WATER_Y - 0.18, -9], 0.4)]);
-  water.name = 'cast-water'; root.add(water); geos.push(water.geometry);
   const bright = [];
   bright.push(part(G.sphere, '#fff1a8', { p: [0, 3.2, -28], s: [6.4, 6.4, 0.3] }), part(G.sphere, '#ffc070', { p: [0, 3.2, -28.2], s: [9.0, 9.0, 0.3] }));      // the setting sun
-  for (let k = 0; k < 9; k++) bright.push(part(B1, '#fff1b8', { p: [(hash(k) - 0.5) * 4.4, WATER_Y + 0.02, -12 - k * 1.2], s: [2.6 - k * 0.2, 0.01, 0.18] }));       // glitter
   [-12, -6, 0, 6, 12].forEach((x) => bright.push(part(G.sphereLo, '#ffe9b0', { p: [x, 2.1, C.berthZ - 1.2], s: [0.14, 0.14, 0.14] })));                       // lamp bulbs
   for (let k = 0; k < 6; k++) bright.push(part(G.sphereLo, k % 2 ? '#ff7aa8' : '#8ff4ff', { p: [BBUI.x + Math.cos(k) * 1.2, 1.0 + (k % 3) * 0.3, BBUI.z + Math.sin(k) * 1.2], s: [0.1, 0.1, 0.1] }));       // sparkles round Bbui
   const brightMesh = glow(bright); brightMesh.name = 'cast-glow'; root.add(brightMesh); geos.push(brightMesh.geometry);
@@ -151,7 +148,7 @@ export function createCastWorld({ scene, sfx, particles, labels }) {
     return out.set(px + 0.3, py + 1.9, pz - 0.9);
   };
   const ease = (u) => { const k = Math.max(0, Math.min(1, u)); return k * k * (3 - 2 * k); };
-  let t0 = 0, lastMode = '', practice = null, lastReelSnd = 0;
+  let t0 = 0, lastMode = '', practice = null, lastReelSnd = 0, cheerUntil = -1;
 
   function ripple(x, z) { splashes.push({ x, z, age: 0 }); if (splashes.length > 8) splashes.shift(); }
   function laneFx(i, st, tm, p) {
@@ -267,6 +264,12 @@ export function createCastWorld({ scene, sfx, particles, labels }) {
     bbui.rig.position.y = Math.sin(t0 * 1.8) * 0.02;
     bbui.armR.rotation.x = -0.15 + Math.sin(t0 * 2.4) * 0.05; bbui.armL.rotation.x = Math.sin(t0 * 2.1 + 1) * 0.05;
     bbui.setExpression?.('happy');
+    // Bbui poses between finds (a hand on her hip, a tilt of the head) and cheers when somebody lands one; the head follows whoever leads (hostIdle).
+    const pose = (t0 % 9.5) > 7.2 ? Math.sin(Math.min(1, ((t0 % 9.5) - 7.2) / 0.4) * Math.PI / 2) * (1 - Math.max(0, ((t0 % 9.5) - 9.1) / 0.4)) : 0;
+    bbui.armL.rotation.x = bbui.armL.rotation.x * (1 - pose) + -0.8 * pose; bbui.armL.rotation.z = (bbui.armL.rotation.z || 0) * (1 - pose) + 0.55 * pose;
+    if (t0 < cheerUntil) { bbui.armR.rotation.x = -2.6 + Math.sin(t0 * 14) * 0.25; bbui.armL.rotation.x = -2.5 + Math.sin(t0 * 14 + 1) * 0.25; bbui.rig.position.y += Math.abs(Math.sin(t0 * 9)) * 0.12; }
+    hostIdle(bbui, t0, mode === 'play' && v ? { totals: v.score, done: v.done } : null, lanePlayers);
+    living.update(dt, t0, lanePlayers);
   }
 
   /** A practice press: the SAME request / apply as the game on a scratch lane (lane i): a strike while the line rests, a reel pull once something is hooked; nothing scores. */
@@ -280,7 +283,9 @@ export function createCastWorld({ scene, sfx, particles, labels }) {
 
   return {
     root, update, practicePress, cam: CAM, look: 'sunset',
+    get living() { return living.current; },
     setVisible(on) {
+      living.setVisible(on);
       root.visible = !!on;
       if (!on) { labels?.clear?.(); lastMode = ''; practice = null; for (const mesh of [...Object.values(finds), markers, dots, bobs, lines, rings, drops]) mesh.count = 0; fx.length = 0; splashes.length = 0; for (const L of lane) { L.n = 0; L.landed = true; L.reel = 0; } }
     },
@@ -297,6 +302,7 @@ export function createCastWorld({ scene, sfx, particles, labels }) {
         if (it.kind === 'boot') { sfx?.play('blah', { vol: 0.5 }); labels?.label('Blah!', pos, '#d8c0a0'); }
         else { sfx?.play(it.kind === 'shell' ? 'golden' : 'chime', { pitch: it.kind === 'shell' ? 1 : 0.9 + rec.pts * 0.06, vol: it.kind === 'shell' ? 0.8 : 0.5 }); labels?.label(`+${rec.pts}${big ? '!' : ''}`, pos, it.kind === 'shell' ? '#ffe27a' : '#ffffff'); }
         if (p && p.swing) p.swing();
+        cheerUntil = t0 + (it.kind === 'boot' ? 0.4 : 1.1);
       }
     },
     scoreText(v, slot) { return v ? { text: `${v.score[slot] ?? 0}`, out: false } : { text: '', out: false }; },
@@ -308,6 +314,6 @@ export function createCastWorld({ scene, sfx, particles, labels }) {
     dropCount: () => drops.count, glintCount: () => glints.count,
     counts: () => ({ ...n }),
     summary() { let calls = 0; root.traverse((o) => { if (o.isMesh && o.visible) calls++; }); return { visible: root.visible, meshes: calls, ...n }; },
-    dispose() { for (const g of geos) g.dispose(); for (const m of mats) m.dispose(); bbui.dispose?.(); scene.remove(root); },
+    dispose() { if (root.userData.disposed) return; root.userData.disposed = true; living.dispose(); { const all = new Set(geos), own = new Set(); bbui.root.traverse((o) => { if (o.geometry) own.add(o.geometry); }); root.traverse((o) => { if (o.geometry && !own.has(o.geometry)) all.add(o.geometry); }); for (const g of all) if (!own.has(g)) g.dispose(); } for (const m of mats) m.dispose(); bbui.dispose?.(); scene.remove(root); },
   };
 }

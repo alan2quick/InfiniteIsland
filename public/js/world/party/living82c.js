@@ -13,19 +13,19 @@ import { mulberry32 } from '../../utils/rng.js';
 import { scatter, distanceToShape } from './scatter.js';
 import { dressingAsset } from './stageDressing.js';
 
-const circle = (x, z, r) => ({ type: 'circle', x, z, r });
-const rect = (x0, x1, z0, z1) => ({ type: 'rect', x0, x1, z0, z1 });
-const TAU = Math.PI * 2;
+export const circle = (x, z, r) => ({ type: 'circle', x, z, r });
+export const rect = (x0, x1, z0, z1) => ({ type: 'rect', x0, x1, z0, z1 });
+export const TAU = Math.PI * 2;
 const FOOT = { bamboo: 1.0, fern: 1.3, hibiscus: 0.5, plumeria: 0.5, reed: 0.4, 'giant-a': 3.2, 'giant-b': 3.8, farMushroom: 1.3, bush: 1.4 };
 const footprintOf = kind => kind === 'patch' ? 1 : Math.max(0.65, (dressingAsset(kind)?.userData.footprint ?? FOOT[kind] ?? 1) + 0.05);
 
 /** [x, z, heights] gameplay sample rows for a disc, on a grid. */
-function gridDisc(cx, cz, r, step, heights) {
+export function gridDisc(cx, cz, r, step, heights) {
   const out = [];
   for (let x = -r; x <= r + 1e-6; x += step) for (let z = -r; z <= r + 1e-6; z += step) if (Math.hypot(x, z) <= r) out.push([cx + x, cz + z, heights]);
   return out;
 }
-function gridRect(x0, x1, z0, z1, step, heights) {
+export function gridRect(x0, x1, z0, z1, step, heights) {
   const out = [];
   for (let x = x0; x <= x1 + 1e-6; x += step) for (let z = z0; z <= z1 + 1e-6; z += step) out.push([x, z, heights]);
   return out;
@@ -44,7 +44,7 @@ export function frameGroups(cameras, origin, anchors, gap = 5) {
   return groups;
 }
 
-function makePut(keepOut, base) {
+export function makePut(keepOut, base) {
   const out = [];
   const put = (kind, x, z, scale = 1, yaw = 0, extra = {}) => {
     const footprint = kind === 'patch' ? scale : footprintOf(kind) * scale;
@@ -225,7 +225,7 @@ function feastCompose({ cameras, origin, keepOut, rng }) {
 }
 
 /** Water filling an irregular basin: UV.x runs from one bank to the other, so the banks foam like the islands' ponds. */
-function basinGeometry(cx, cz, rx, rz, y, wobble, seed) {
+export function basinGeometry(cx, cz, rx, rz, y, wobble, seed) {
   const r2 = mulberry32(seed), p1 = r2() * TAU, p2 = r2() * TAU, n = 72;
   const path = Array.from({ length: n + 1 }, (_, i) => ({ x: cx - rx + 2 * rx * i / n, y, z: cz }));
   return buildRibbonGeometry(path, (i, p) => {
@@ -239,7 +239,7 @@ function basinPolygon(cx, cz, rx, rz, wobble, seed, n = 48) {
   return { type: 'polygon', points: [...up, ...down] };
 }
 
-function ownWater(materials, shallow, deep, ownClock, foam = null) {
+export function ownWater(materials, shallow, deep, ownClock, foam = null) {
   const m = materials.water.clone();
   if (foam) m.uniforms.uFoam.value.set(foam);
   m.uniforms.uTime = ownClock ? { value: 0 } : waterUniforms.uTime;
@@ -385,7 +385,7 @@ export const SPECS = {
       spore: [{ x: -24, y: 0.3, z: -4 }, { x: 25, y: 0.3, z: -2 }], fish: [{ x: -13, y: 0.03, z: -3 }, { x: 13, y: 0.03, z: -9 }] },
   },
 };
-export const isSpec82c = id => id in SPECS;
+export const isSpec82c = id => id in SPECS; // (82d registers its four specs into SPECS from living82d.js)
 export const specKeepOut = id => SPECS[id].keepOut();
 export function specGameplayPoints(id) {
   const o = PARTY.origin, c = stageCentre(id), out = [];
