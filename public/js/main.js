@@ -1077,7 +1077,7 @@ function islandSpot(id) {
     return { x: t.x + (dx / d) * r, z: t.z + (dz / d) * r };
   }
   if (id === 'duskDock') return duskDockLayout().arrive[0];          // Step 71: the beach by Marlo's pier (where the boat lands the party, and where a reload on Duskcrown puts it)
-  if (id === 'duskcrown' || id === 'duskLanding' || id === 'duskLagoon' || id === 'duskCliff' || id === 'duskWest') {   // Step 69a: debug-only; the island has no bridge or travel entry
+  if (id === 'duskcrown' || id === 'duskLanding' || id === 'duskLagoon' || id === 'duskCliff' || id === 'duskWest' || id === 'duskCrown' || id === 'crownRock' || id === 'crownFalls') {   // Step 69a: debug-only; the island has no bridge or travel entry (Step 85a: the Crownlands' spots)
     const s = getIslandModule('duskcrown')?.spots?.();
     return s ? s[id === 'duskcrown' ? 'duskLanding' : id] : null;
   }
@@ -1090,6 +1090,10 @@ function islandSpot(id) {
   }
   return { x: br.bx, z: br.bz };
 }
+// Step 85a: ?crown reveals the Crownlands (the cloud lid stays off, and the players start at the crown landing); a goto to a crown spot hides the lid too (the per-screen rule is Step 85b)
+const CROWN_FLAG = params.has('crown');
+const CROWN_SPOTS = ['duskCrown', 'crownRock', 'crownFalls'];
+if (CROWN_FLAG) atmosphere.duskFx.lid(false);
 const world = {
   islands: ISLANDS, regionOf, setBridgeOpen, isBridgeOpen,
   regions: worldVis.regions, visuals: worldVis.visuals, summary: () => worldVis.summary(),
@@ -1101,7 +1105,8 @@ const world = {
     const spot = islandSpot(id);
     if (!spot) return false;
     players.list.forEach((p, i) => p.teleport(spot.x + (i % 2) * 1.6, spot.z + Math.floor(i / 2) * 1.6));
-    if (typeof id === 'string' && id.startsWith('dusk')) for (const p of players.list) { p.facing = Math.PI; p.root.rotation.y = Math.PI; }   // (Step 69a: face north, up the marsh, at the cliff)
+    atmosphere.duskFx.lid(!(CROWN_FLAG || CROWN_SPOTS.includes(id)));
+    if (typeof id === 'string' && (id.startsWith('dusk') || id.startsWith('crown'))) for (const p of players.list) { p.facing = Math.PI; p.root.rotation.y = Math.PI; }   // (Step 69a: face north, up the marsh, at the cliff)
     followCam.snap();
     followCam.update(0, players.focus);
     if (controls) {
@@ -1138,6 +1143,14 @@ const duskDebug = {
   },
 };
 const DUSK_FLAG = params.has('duskcrown');
+// Step 85a: __game.dusk.crown = { summary(), layout, rivers(), skyIslands(), reveal(on) }: the Crownlands' plan (pools, rivers, kopjes, floating-island data), reveal(true) hides the cloud lid, reveal(false) puts it back. Goto: 'duskCrown' | 'crownRock' | 'crownFalls'.
+duskDebug.crown = {
+  get layout() { return getIslandModule('duskcrown').crown; },
+  summary() { return { ...getIslandModule('duskcrown').crown.summary(), lid: atmosphere.duskFx.mesh.visible, flag: CROWN_FLAG, spots: getIslandModule('duskcrown').spots() }; },
+  rivers() { return getIslandModule('duskcrown').crown.rivers.map((r) => ({ id: r.id, kind: r.kind, pool: r.pool, length: r.length, outlet: r.outlet, surfaceFrom: r.surf[0], surfaceTo: r.surf[r.surf.length - 1] })); },
+  skyIslands() { return getIslandModule('duskcrown').crown.skyIslands.map(({ topHeight, walkable, edgeR, ...data }) => data); },
+  reveal(on = true) { atmosphere.duskFx.lid(!on); return !atmosphere.duskFx.mesh.visible; },
+};
 
 // Debug (Step 33b): __game.paths.summary() = every trail (length, samples), get(id) = the built path (island-local samples), markers(id) = its lantern posts
 // (world x / z), lanes(islandId) = the thin polylines props keep clear of, list = config PATHS; __game.campMenu = the fire spirit's intro memory (seen / reset).
@@ -1303,7 +1316,7 @@ window.__game.loadMs = Math.round(performance.now());   // ms from navigation st
 // Restore after all props, bridges and camp stages have registered their colliders.
 // Joined screens follow the host's spawn rules and never read or write this save.
 function rememberPlayers() {
-  if (!sync.isHost || DUSK_FLAG || party.pageMode) return;                 // (a party remembers nothing: Step 80a, everybody goes back where they stood)                  // (?duskcrown, Step 69a: a debug visit writes nothing)
+  if (!sync.isHost || DUSK_FLAG || CROWN_FLAG || party.pageMode) return;                 // (a party remembers nothing: Step 80a, everybody goes back where they stood)                  // (?duskcrown, Step 69a: a debug visit writes nothing)
   for (const p of players.list) {
     if (p.leaving) continue;
     const previous = playerMemory.get(p.index)?.zone;
@@ -1316,6 +1329,7 @@ function rememberPlayers() {
 }
 function restorePlayer(p) {
   if (p.bot) return;                                       // (a party bot has no saved place)
+  if (CROWN_FLAG) { world.goto('duskCrown'); return; }     // ?crown (Step 85a): the crown landing on the plateau, nothing is written for it
   if (DUSK_FLAG) { world.goto('duskLanding'); return; }     // ?duskcrown (Step 69a): the landing beach, whatever the save says; nothing is written for it
   if (!sync.isHost) return;
   const saved = playerMemory.get(p.index);

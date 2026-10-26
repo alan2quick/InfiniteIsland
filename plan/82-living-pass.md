@@ -4,7 +4,7 @@ Moved verbatim from PLAN.md on 2026-10-22: the spec first, then the progress lin
 
 ## Spec
 
-### Step 82 — Party Glade living pass: make every stage feel alive and organic (82a-c complete; 82d pending)
+### Step 82 — Party Glade living pass: make every stage feel alive and organic (82a-d complete)
 
 **Decision (user, 2026-10-22):** a second pass over every finished party stage (the lobby and all minigames, including Tilty Tiles and
 Bonk Burrows from 81b). The islands feel alive (grass and flowers sway in the wind, butterflies and fireflies drift, water moves and
@@ -157,4 +157,4 @@ and each biome's cached island assets (`world/islands/frostAssets.js`, `emberAss
 - [x] Step 82b — Vine Skip, Timber Trim, Marlo Says, Pinecone Huddle (0.82.1)
 - [x] Driftwood Cast: press to hook again, only the cast is automatic (fix before 82c, 0.82.2)
 - [x] Step 82c — Sizzle Seed, Egg Scramble, Feast-Go-Round, Puffball Bumpers (0.82.3, done). **Built as specified, via `world/party/living82c.js` (per-stage specs on top of `livingStage.js`):** composed side groves / back tree lines / wildflower clumps, campfire embers + smoke + a warm unlit ground flicker, Dub's gaze; snowy wood, packed-snow apron, two dens with peeking fox / rabbit, a feather pool (laying grouse, catches), grouse preen / ruffle; bamboo clumps, ferns, hibiscus, a rocky-rim hot spring with steam, a flume on its own signed clock + foam flecks (flows with the current, reverses with it), Chaetty's nap; Bumpers' lowered marsh (moving water, lily pads, islets, reeds, mushroom groves, mist, fireflies, fish), a +-4 % rim pulse and Capray's roll. Stages stay cached; only their living scenery is built on show / freed on hide. Budgets and tests recorded in CLAUDE.md (1327 tests / 108 files); not verified: portrait / animation by eye, audio, two-screen run.
-- [ ] Step 82d — Glowcap Shuffle, Driftwood Cast, Tilty Tiles, Bonk Burrows (0.82.4)
+- [x] Step 82d — Glowcap Shuffle, Driftwood Cast, Tilty Tiles, Bonk Burrows (0.82.4, done). Built via `world/party/living82d.js` (four SPECS registered into living82c's): Glowcap lagoon + ripples + islets, Cast sea / sun path / waves / foam / gulls / boat / palms, Tilty picnic lawn + bunting + frame wear, Bonk irregular meadow + moving stream + moles + crumbs. Not done: cloud shadows over the frames and Zyoni's sit pose (readability / scope). 1371 tests / 109 files pass.

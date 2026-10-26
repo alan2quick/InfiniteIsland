@@ -6,14 +6,15 @@
 //     and a deep unwalkable middle; the mud shelf round it is lowered to RIM_H (0.42) so the water surface sits a little below the rim;
 //   * STREAMS (waterfall to pond chains): shallow wading channels (floor -0.2, WALKABLE, 2.6 u wide) with a mud shelf; they are cosmetic water for now;
 //   * the LAGOON: the same profile at lagoon scale (floor -0.95): a walkable shallow rim, then deep unwalkable water; nothing closes it (a later quest opens it, PLAN Step 69);
-//   * the CROWNLANDS (north half + the east arm): a flat plateau PLATEAU_TOP (46 u) above the sea, behind a sheer wall (CLIFF_W = 3.4 u in plan: unwalkable) and sea cliffs all
-//     round; the top is a featureless placeholder in 69a;
+//   * the CROWNLANDS (north half + the east arm): a plateau PLATEAU_TOP (46 u) above the sea, behind a sheer wall (CLIFF_W = 3.4 u in plan: unwalkable) and sea cliffs all
+//     round. Since Step 85a its top comes from crownLayout.js: an untouched 46 u rim band, a gentle rise to a northern upland (52-54), kopjes, plunge pools and wading rivers;
 //   * the LANDING: a sandy beach on the middle of the south coast.
-// Ground types: 'water' 'wetsand' 'sand' 'mud' 'marsh' 'rock' ('rock' = the cliff and the plateau top). Unknown strings are ordinary dry ground to every consumer.
+// Ground types: 'water' 'wetsand' 'sand' 'mud' 'marsh' 'rock' ('rock' = the cliff) and, on the plateau top (85a), 'savanna' 'riverbank' 'kopje' (+ 'water' in rivers and pools). Unknown strings are ordinary dry ground to every consumer.
 import { createNoise2D, fbm } from '../../utils/noise.js';
 import { WATER_LEVEL, DEEP_WATER_BLOCK } from '../../config.js';
 import { sstep, lerp, beachHeight, BEACH_T0 } from './util.js';
 import { createDuskLayout, PLATEAU_TOP, CLIFF_W, RIM_H, WADE_H } from './duskLayout.js';
+import { getCrownLayout, CROWN } from './crownLayout.js';
 
 const MAX_WALK_SLOPE = 0.8;
 const FLAT = 8;                     // how far (u) beyond a pond's mud shelf the marsh blends down to RIM_H
@@ -24,6 +25,7 @@ export function createDuskIsland(island) {
   const { halfX, halfZ } = L.bounds;
   const nHum = createNoise2D(seed + 31), nWarp = createNoise2D(seed + 37), nCliff = createNoise2D(seed + 53), nLag = createNoise2D(seed + 59), nTone = createNoise2D(seed + 61);
   const lagoon = L.lagoon;
+  const crown = getCrownLayout(island, L);                     // Step 85a: the plateau top (relief, rivers, pools, kopjes) and the floating-island data
 
   /** The shared pond / lagoon bed profile along s = distance / radius: mud shelf (RIM_H) -> wading slope to WADE_H (s 1.25 -> 0.62) -> the deep bowl to -depth (s 0.62 -> 0.28). */
   const bed = (s, depth) => {
@@ -93,7 +95,7 @@ export function createDuskIsland(island) {
     const c = L.cliffC(lx, lz) + 1.5 * nCliff(lx * 0.11, lz * 0.11);
     if (c > 0) {
       const P = sstep(0, CLIFF_W, c) * sstep(2.0, 4.6, t);
-      if (P > 0) h += (PLATEAU_TOP - h) * P;
+      if (P > 0) h += (crown.topAt(lx, lz) - h) * P;
     }
     return h;
   }
@@ -131,10 +133,17 @@ export function createDuskIsland(island) {
     return m;
   }
 
+  /** True on the plateau's top proper (past the wall and the sea cliff), where the crown layout owns the ground. */
+  function plateauCore(lx, lz) {
+    const c = L.cliffC(lx, lz) + 1.5 * nCliff(lx * 0.11, lz * 0.11);
+    return c > CLIFF_W - 0.05 && inlandLocal(lx, lz) > 4.55;
+  }
+
   function groundType(x, z) {
     const lx = x - cx, lz = z - cz;
     const h = heightLocal(lx, lz);
     if (h < WATER_LEVEL - 0.03) return 'water';
+    if (h > 30) { const cg = plateauCore(lx, lz) ? crown.groundType(lx, lz, h) : null; if (cg) return cg; }
     if (h > 3.4 || (h > 1.2 && slopeAt(x, z, 0.5) > 1.0)) return 'rock';
     const t = inlandLocal(lx, lz);
     if (sandAt(lx, lz, t) > 0.5) return h < WATER_LEVEL + 0.2 ? 'wetsand' : 'sand';
@@ -143,7 +152,9 @@ export function createDuskIsland(island) {
   }
 
   function walkable(x, z) {
-    if (height(x, z) < WATER_LEVEL - DEEP_WATER_BLOCK) return false;
+    const h = height(x, z);
+    if (h < WATER_LEVEL - DEEP_WATER_BLOCK) return false;
+    if (h > 30 && crown.waterDepth(x - cx, z - cz, h) > CROWN.deepBlock) return false;      // the deep middle of a plunge pool (the plateau's water sits up at 46-54)
     return slopeAt(x, z, 0.4) < MAX_WALK_SLOPE;
   }
 
@@ -157,6 +168,7 @@ export function createDuskIsland(island) {
       sand: sandAt(lx, lz, t), mud: mudAt(lx, lz),
       plateau: c > 0 ? sstep(0, CLIFF_W, c) * sstep(2.0, 4.6, t) : 0,
       top: sstep(PLATEAU_TOP - 2.5, PLATEAU_TOP - 0.2, h),
+      crown: h > 30 && plateauCore(lx, lz) ? crown.paint(lx, lz, h) : null,       // Step 85a: the savanna masks (only on the plateau top)
     };
   }
 
@@ -180,6 +192,9 @@ export function createDuskIsland(island) {
       duskLagoon: at(lagoon.x - lagoon.rx * 1.35, lagoon.z),
       duskCliff: at(-30, L.cliffZAt(-30) + 11),
       duskWest: at(-140, 42),
+      duskCrown: at(crown.spawn.x, crown.spawn.z),                                 // Step 85a: the crown landing, at the top of the reserved way up
+      crownRock: at(crown.crownRock.x, crown.crownRock.z + crown.crownRock.r * 1.15 + 5),   // on the plain just south of Crown Rock's face (the camera side), looking up at it
+      crownFalls: at(crown.pools[2].x, crown.pools[2].z + crown.pools[2].r * 1.6),   // the south shore of the plunge pool under the biggest island's fall
     };
     return spotCache;
   }
@@ -196,5 +211,5 @@ export function createDuskIsland(island) {
     return measured;
   }
 
-  return { id: island.id, height, groundType, walkable, inland, paintInfo, layout: L, ponds: L.ponds, lagoon, plateauTop: PLATEAU_TOP, slopeAt, spots, measure, nearestWalkable };
+  return { id: island.id, height, groundType, walkable, inland, paintInfo, layout: L, ponds: L.ponds, lagoon, plateauTop: PLATEAU_TOP, crown, slopeAt, spots, measure, nearestWalkable };
 }

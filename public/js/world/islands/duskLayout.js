@@ -64,7 +64,7 @@ const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const sstep = (a, b, x) => { const t = clamp01((x - a) / (b - a)); return t * t * (3 - 2 * t); };
 
 /** Catmull-Rom through the control points, resampled every ~`step` u, then roughened sideways with two octaves of noise (buttresses and alcoves). */
-function smoothLine(ctrl, noise, step, amp, wl) {
+export function smoothLine(ctrl, noise, step, amp, wl) {
   const P = (i) => ctrl[Math.max(0, Math.min(ctrl.length - 1, i))];
   const out = [];
   for (let i = 0; i < ctrl.length - 1; i++) {

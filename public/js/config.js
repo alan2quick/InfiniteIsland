@@ -2,7 +2,7 @@
 
 // Game version, shown on the title card. The client can't read package.json (only public/ is deployed), so this is
 // the source of truth: bump it together with "version" in package.json. Minor = last completed PLAN.md step.
-export const VERSION = '0.82.3';
+export const VERSION = '0.85.0';
 
 // Held-mouse direction: world-unit dead bands, optional pooled ground ring.
 export const MOUSE_STEER = { dead: 0.6, sideDead: 0.4, ring: true };
@@ -691,7 +691,7 @@ export const DUSK_LIGHT = {
   glow: 0.96, breathe: 0.04, breatheRate: 0.24,
   spores: 240, sporeOpacity: 0.48, sporeDensity: 0.30, sporeBox: [42, 12, 36],
   palette: ['#6fcfe6', '#9b6cf0', '#ffd98a'],
-  lidHeight: 48, lidCell: 3, lidMargin: 8, lidWave: 0.55, lidSpeed: 0.035,
+  lidHeight: 48, lidClear: 1.0, lidCell: 3, lidMargin: 8, lidWave: 0.55, lidSpeed: 0.035,
 };
 
 // Marsh-only music transitions and offline tail; older tracks keep their original buses and impulse.

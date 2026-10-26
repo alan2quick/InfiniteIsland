@@ -213,12 +213,13 @@ Keep PLAN.md and CLAUDE.md short: long text goes to the topic file, the changelo
 | 74–79 | (numbers not used) | | |
 | 80–84 | Party Games | 80a–d done; **80e open** | [plan/80-party-games.md](plan/80-party-games.md) |
 | 81 | Party Games II | done (0.81.1) | [plan/81-party-games-2.md](plan/81-party-games-2.md) |
-| 82 | Party Glade living pass | 82a–c done (0.82.3); **82d open** | [plan/82-living-pass.md](plan/82-living-pass.md) |
+| 82 | Party Glade living pass | done (0.82.4) | [plan/82-living-pass.md](plan/82-living-pass.md) |
+| 85 | The Crownlands (Duskcrown's sunlit plateau, floating islands) | 85a done (0.85.0); **85b–d open** | [plan/85-crownlands.md](plan/85-crownlands.md) |
 
 ### Open steps
 
-- [ ] Step 82d — Glowcap Shuffle, Driftwood Cast, Tilty Tiles, Bonk Burrows living pass (0.82.4) — [plan/82-living-pass.md](plan/82-living-pass.md)
 - [ ] Step 80e — Party mode stars + trophy ceremony, kiosk + attract mode, 4-bot balance soak — [plan/80-party-games.md](plan/80-party-games.md)
+- [ ] Step 85b–d — The Crownlands: sunlit lighting, water / falls / floating islands, acacia and baobab trees — [plan/85-crownlands.md](plan/85-crownlands.md)
 - [ ] Step 68f — Playtest fixes, star chart — [plan/68-boat.md](plan/68-boat.md)
 - [ ] Step 68g — Playtest fixes, repair and story — [plan/68-boat.md](plan/68-boat.md)
 - [ ] Step 53b — Wildroot Ramparts and bosses (storybook) — [plan/47-53-storybook.md](plan/47-53-storybook.md)

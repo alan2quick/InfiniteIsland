@@ -28,7 +28,7 @@ const ponds = duskFishPonds(), byId = new Map(ponds.map((p) => [p.id, p]));
 const hearth = duskHearthLayout();
 const bank = (pond, a = 0.4) => ({ x: pond.x + Math.cos(a) * (pond.rx * 1.05 + 0.4), y: 0.3, z: pond.z + Math.sin(a) * (pond.rz * 1.05 + 0.4) });
 
-test('the version is 0.82.3', () => { assert.equal(VERSION, '0.82.3'); });
+test('the version is 0.85.0', () => { assert.equal(VERSION, '0.85.0'); });
 
 test('the marsh hearth is a FIRES entry with its own domain, menu, save key and island; the other fires are untouched', () => {
   const dusk = FIRES.find((f) => f.id === 'dusk');

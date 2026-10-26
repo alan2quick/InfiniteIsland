@@ -141,7 +141,8 @@ test('walking from the landing reaches the whole marsh, never the Crownlands or 
   assert.ok(marsh > 15000);
   assert.ok(marshMax <= 2.6 && marshMax >= 2.0, `marsh hummocks reach ${marshMax.toFixed(2)}`);
   assert.ok(PLATEAU_TOP - marshMax >= 40, 'the plateau top is at least 40 u above the swamp');
-  assert.equal(getHeight(island.x + 20, island.z - 60), PLATEAU_TOP);
+  assert.equal(getHeight(island.x + 20, island.z + L.cliffZAt(20) - 9), PLATEAU_TOP);            // (the rim band is the flat 46; Step 85a lifts the rest to an upland of about 52-54)
+  assert.ok(getHeight(island.x + 20, island.z - 60) > 49 && getHeight(island.x + 20, island.z - 60) < 55);
   // the cliff is unwalkable in plan view: a north-south line across the wall always meets unwalkable ground
   for (let x = -150; x <= 70; x += 10) {
     const z0 = L.cliffZAt(x);
@@ -227,7 +228,7 @@ test('the rectangular island meshes: 8 x 8 chunks over a 368 x 260 u rectangle, 
     const e = meshExtent(island);
     assert.ok(Math.abs((box.max.x - box.min.x) - 2 * e.halfX) < 1e-6 && Math.abs((box.max.z - box.min.z) - 2 * e.halfZ) < 1e-6);
     assert.ok(Math.abs((box.min.x + box.max.x) / 2 - island.x) < 1e-6 && Math.abs((box.min.z + box.max.z) / 2 - island.z) < 1e-6);
-    assert.ok(box.max.y >= PLATEAU_TOP - 0.01 && box.max.y <= PLATEAU_TOP + 0.01 && box.min.y >= -3.0001);
+    assert.ok(box.max.y >= PLATEAU_TOP + 8 && box.max.y <= 66 && box.min.y >= -3.0001);
     const pos = far.mesh.geometry.attributes.position, cols = new Set();
     for (let i = 0; i < pos.count; i++) cols.add(pos.getX(i).toFixed(3));
     assert.ok(cols.size >= 90 && cols.size <= 100, `${cols.size} far columns`);

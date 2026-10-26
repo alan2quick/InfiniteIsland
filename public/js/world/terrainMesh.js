@@ -492,7 +492,10 @@ function duskPainter(island, mod) {
   const cTop = new THREE.Color('#9ba3b4');
   const cTopLight = new THREE.Color('#b4bac8');
   const cSea = new THREE.Color('#3f9c9d');
-  const tmp = new THREE.Color();
+  // the Crownlands (Step 85a, plain colours): lush chartreuse savanna drifting to golden on the upland, a teal-mint river fringe, lavender patches, warm sandstone kopjes
+  const cLime = new THREE.Color('#a6e35a'), cLimeLight = new THREE.Color('#bdf070'), cGold = new THREE.Color('#e8c95a'), cMint = new THREE.Color('#5fd6b0'), cLav = new THREE.Color('#b9a3e8');
+  const cKop = new THREE.Color('#d9b48a'), cKopDark = new THREE.Color('#a8865e'), cBed = new THREE.Color('#4fb8b0'), cBedDeep = new THREE.Color('#2c8da0');
+  const tmp = new THREE.Color(), tmp2 = new THREE.Color();
   return (x, z, h, slope, out) => {
     const col = out.color;
     const info = mod.paintInfo(x, z, h);
@@ -524,6 +527,15 @@ function duskPainter(island, mod) {
       tmp.copy(cTop).lerp(cTopLight, sstep(-0.2, 0.5, nP(x * 0.05 + 2, z * 0.05)) * 0.6);
       col.lerp(tmp, info.top);
       grassW *= 1 - info.top;
+    }
+    // the Crownlands' top: the savanna replaces the placeholder entirely
+    const cr = info.crown;
+    if (cr) {
+      tmp.copy(cLime).lerp(cLimeLight, sstep(0.3, 0.7, nP(x * 0.08 + 5, z * 0.08 - 2)) * 0.5).lerp(cGold, cr.up * 0.85).lerp(cLav, cr.lav).lerp(cMint, cr.bank * 0.9);
+      if (cr.kop > 0) tmp.copy(cKop).lerp(cKopDark, cr.band);
+      if (cr.wet > 0) tmp.lerp(tmp2.copy(cBed).lerp(cBedDeep, cr.deep), cr.wet * 0.92);
+      col.copy(tmp);
+      grassW = 0;
     }
     // wet edge at the waterline, tinting to the sea / pond bed below the water
     const wetM = 1 - sstep(0.03, 0.22, h);

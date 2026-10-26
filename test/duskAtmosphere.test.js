@@ -123,6 +123,25 @@ test('water and foam use the same eased Duskcrown weight and restore the exact d
  near(waterUniforms.uNight.value,0);r.atmosphere.dispose();
 });
 
+test('the lid rises over the Crownlands relief and kopjes, never lower than 1 u above the ground, and stays at 48 u over the rim band (Step 85a)', () => {
+  const {atmosphere,mod,scene}=rig(), mesh=atmosphere.duskFx.mesh;scene.updateMatrixWorld(true);
+  const ray=new THREE.Raycaster();let raised=0,flat=0,checked=0,maxY=0;
+  for(let z=-110;z<100;z+=3)for(let x=-170;x<175;x+=3){
+    const wx=island.x+x,wz=island.z+z,h=mod.height(wx,wz);
+    if(h<40||mod.layout.cliffC(x,z)<3.4||mod.layout.coastT(x,z)<4.6)continue;
+    ray.set(new THREE.Vector3(wx,120,wz),new THREE.Vector3(0,-1,0));
+    const lid=ray.intersectObject(mesh)[0];assert.ok(lid,'no lid over '+x+','+z);
+    assert.ok(lid.point.y-0.55>=h+0.9,'lid '+lid.point.y.toFixed(2)+' too low over ground '+h.toFixed(2)+' at '+x+','+z);
+    maxY=Math.max(maxY,lid.point.y);
+    if(lid.point.y>49.2)raised++;
+    if(h<=46&&mod.crown.edgeD(x,z)<5&&mod.crown.kopjes.every(k=>Math.hypot(x-k.x,z-k.z)>k.reach+24)){assert.ok(lid.point.y<49,'rim band lid stays near 48 away from the kopjes: '+lid.point.y+' at '+x+','+z);flat++;}
+    checked++;
+  }
+  assert.ok(checked>2000&&raised>500&&flat>100,`${checked} ${raised} ${flat}`);
+  assert.ok(maxY>58&&maxY<70,'the lid peaks over Crown Rock: '+maxY);
+  atmosphere.dispose();
+});
+
 test('rounded lid has a continuous nongrid boundary and covers plateau edges from all view bearings', () => {
   const {atmosphere,mod,scene}=rig(), mesh=atmosphere.duskFx.mesh;scene.updateMatrixWorld(true);
   const pos=mesh.geometry.getAttribute('position');
@@ -161,7 +180,8 @@ test('concave lid excludes every walkable marsh cell, lagoon and pond, including
     const wx=island.x+x,wz=island.z+z,h=mod.height(wx,wz);
     // The separate, unreachable plateau component is itself flat/walkable;
     // its top must be covered, while all walkable ground below it stays clear.
-    if(h>=45.99){assert.ok(covered(x,z),'uncovered plateau cell '+x+','+z);top++;}
+    // (Step 85a: a river bed or plunge pool sunk into the plateau is plateau too)
+    if(h>=45.99||(h>40&&mod.layout.cliffC(x,z)>0&&mod.layout.coastT(x,z)>2)){assert.ok(covered(x,z),'uncovered plateau cell '+x+','+z);top++;}
     else if(mod.walkable(wx,wz)){assert.equal(covered(x,z),false,'covered walkable cell '+x+','+z);walkable++;}
     if(covered(x,z))assert.ok(mod.layout.cliffC(x,z)>=-2,'overhang past cliff wall exceeds 2 u');
   }

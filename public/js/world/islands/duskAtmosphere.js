@@ -1,9 +1,12 @@
 // Duskcrown canopy (69b): one opaque mist lid shared by full/far views, one shader-driven spore layer, no lights.
 // createDuskAtmosphere({scene,island}) -> {update(t,w,view,height,camera,px,fogColor), lid(on), mesh, spores, dispose()}.
 // duskUniforms.uGlow is the always-on breathing glow contract for the future 69c/d flora.
+// Step 85a: the Crownlands' relief and kopjes rise above the old flat 48 u lid, so each lid vertex follows the plateau's envelope (crownLayout lidTop, an 8 u max filter) plus
+// DUSK_LIGHT.lidClear: the rim band keeps the lid at exactly lidHeight, so every marsh and boat view still sees the same unbroken cap.
 import * as THREE from 'three';
 import { DUSK_LIGHT } from '../../config.js';
 import { createDuskLayout } from './duskLayout.js';
+import { getCrownLayout } from './crownLayout.js';
 import { createNoise2D } from '../../utils/noise.js';
 import { mulberry32 } from '../../utils/rng.js';
 
@@ -15,7 +18,7 @@ export const duskUniforms = { uGlow: { value: DUSK_LIGHT.glow } };
  * Linear edge intersections remove cell steps; all clipped cells share one mesh.
  */
 export function buildDuskLidGeometry(island) {
-  const layout = createDuskLayout(island), { halfX, halfZ } = layout.bounds;
+  const layout = createDuskLayout(island), { halfX, halfZ } = layout.bounds, crown = getCrownLayout(island, layout);
   // Use the terrain's cliff perturbation, so alcoves/buttresses agree with its wall.
   const noise = createNoise2D(island.seed + 53), cell = 1, p = [];
   const nx = Math.ceil(2 * halfX / cell), nz = Math.ceil(2 * halfZ / cell);
@@ -36,7 +39,8 @@ export function buildDuskLidGeometry(island) {
     smooth[j*(nx+1)+i] = value / 16;
   }
   field.set(smooth);
-  const emit = (a, b, c) => { for (const q of [a,b,c]) p.push(q[0], DUSK_LIGHT.lidHeight, q[1]); };
+  const lidY = (x, z) => Math.max(DUSK_LIGHT.lidHeight, crown.lidTop(x, z) + DUSK_LIGHT.lidClear);
+  const emit = (a, b, c) => { for (const q of [a,b,c]) p.push(q[0], lidY(q[0], q[1]), q[1]); };
   const clip = (tri) => {
     const out = [];
     for (let i = 0; i < tri.length; i++) {
@@ -55,7 +59,8 @@ export function buildDuskLidGeometry(island) {
     if ([a,b,c,d].every(q => q[2] >= 0)) {
       // Batch interior runs, capped at 8 u to retain the lid shader's wave detail.
       let end = i + 1;
-      while (end < nx && end - i < 8 && field[j*(nx+1)+end+1] >= 0 && field[(j+1)*(nx+1)+end+1] >= 0) end++;
+      // (strips stop at multiples of 8 cells, so neighbouring rows share their vertices and the raised lid of Step 85a has no cracks)
+      while (end < nx && end % 8 !== 0 && field[j*(nx+1)+end+1] >= 0 && field[(j+1)*(nx+1)+end+1] >= 0) end++;
       const e = corner(end,j), f = corner(end,j+1);
       emit(a,d,e); emit(e,d,f); i = end - 1;
     } else { clip([a,d,b]); clip([b,d,c]); }
