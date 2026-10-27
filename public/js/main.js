@@ -130,6 +130,9 @@ import { createCapray } from './game/capray.js';                  // Step 73b: C
 import { createCaprayWorld } from './world/caprayWorld.js';
 import { createPetStable } from './world/petStable.js';
 import { duskCaprayPlan } from './world/islands/duskCapray.js';
+import { createRuby } from './game/ruby.js';
+import { createRubyWorld } from './world/rubyWorld.js';
+import { rubyPlan } from './world/islands/emberRuby.js';
 import { createCarle } from './game/carle.js';                    // Step 74b: Carle's quest line "The Very Hungry Visitor" (the `carle` domain), its world side and its place by the home campfire
 import { createCarleWorld } from './world/carleWorld.js';
 import { homeCarlePlan } from './world/islands/homeCarle.js';
@@ -514,6 +517,10 @@ const carle = createCarle({ sync, plan: carlePlan, inventory, pets: petsDomain, 
 const carleWorld = createCarleWorld({
   scene, players, world: worldVis, sync, carle, plan: carlePlan, domain: petsDomain, inventory, thoughts, particles, sfx, hud, dialog, cinematic, camera, pets, floatText, heightAt: getHeight,
 });
+// Ruby's Shell Ladder: action-only host state and screen-side quest targets.
+const rubyPlaces = rubyPlan();
+const ruby = createRuby({ sync, plan: rubyPlaces, inventory, pets: petsDomain, cinematic, params, heldKind: key => items.heldByKey(key)?.kind || null });
+const rubyWorld = createRubyWorld({ scene, ruby, plan: rubyPlaces, players, world: worldVis, items, inventory, pets, domain: petsDomain, dialog, cinematic, camera, particles, sfx, hud, thoughts, hop: hopCourses, marlo, hearthFire: campfires.get('ember') });
 // Plan racks after createGathering and garden plot registration, reserving all later camp stages too.
 const toolRacks = createToolRacks({ plan: toolRackPlan({ reserved: [saplingReserve(carlePlan.collider)] }), scene, players, items, quests, sync, boat, world: worldVis, particles, sfx, table: slotTable, cinematic, followCam, params,
   floatLabel: (text, at, by) => invBar.label(text, at, by && players.multi ? by.colors.ui : null),
@@ -858,6 +865,7 @@ function tick(realDt) {
       if (a.interactPressed && t) {
         const toolAction = getToolAction(held, t);
         if (toolAction === 'fish') fishingPlay.cast(p, t.pond);
+        else if (['rubydig', 'rubycoconut', 'rubycrust'].includes(t.type) && toolAction) rubyWorld.toolAction(t, p);
         else if (toolAction === 'chop' && t.type === 'shademoss') caprayWorld.clearMoss(t, p);                                  // Step 73b: an axe / sword / saber on a titan's shade moss: swing now, the host counts the hit at the impact frame
         else if (toolAction === 'dig') (t.type === 'seeddig' ? seeds.dig(t, p) : gathering.dig(t, p));                       // shovel on a dig spot: plunge now, the soil flies at the impact frame
         else if (toolAction) harvest.hit(t, p);                              // chop / break: swing now, the hit lands at the impact frame
@@ -919,6 +927,7 @@ function tick(realDt) {
   boatSailScene.update(dt); duskDock.update(dt);       // Step 71: the crossing (it owns the camera while it runs) and Duskcrown's dock
   pets.update(dt);                            // Step 73a: the pets follow their owners (after the crossing placed the crew's visuals)
   petLab.update(dt);                          // Step 74a: the debug pet lab (does nothing while empty)
+  ruby.update(dt); rubyWorld.update(dt);
   carle.update(); carleWorld.update(dt);                      // Step 74b: Carle's caterpillar (perch, bubbles, feeding beat, cocoon)
   capray.update(); caprayWorld.update(dt); petStable.update(dt);   // Step 73b: the host's befriend-scene timing, the wild ray / moss / scene (it owns the camera while the scene runs) and the pet stable
   fishing.update(dt); fishingPlay.update(dt, simTime); fishingSpots.update(dt, simTime);   // Step 72a: the host's spot schedule, this screen's anglers (after players / items), the spot rings
@@ -1054,6 +1063,16 @@ const caprayDebug = {
 // Debug (Step 74b): __game.carle.{summary(), state, stage(n) = jump to the START of stage n (host debug request), fedDays(k) = k feeding days done, feed() = today's food, free (ignores the bag, the reach and "full"),
 // nextDay(n = 1) = count n dawns (clears "full": the next feeding opens), reset(), goto() = teleport P1 beside the perch, menu(p) = the feeding menu, plan, world (carleWorld), api (the domain)}. ?testcarle = the quest is open
 // without Capray and nothing is read or written; ?away=SECONDS pretends that many seconds passed while the game was closed (host, once at load: the clock catches up and the dawns count).
+const rubyDebug = {
+  ...ruby.debug, summary: () => ({ ...ruby.summary(), world: rubyWorld.summary() }),
+  get state() { return ruby.state; }, api: ruby, world: rubyWorld, plan: rubyPlaces,
+  goto: (stage) => {
+    if (typeof stage === 'number') ruby.debug.stage(stage);
+    const key = typeof stage === 'string' ? stage : ruby.stage >= 5 ? 'hearth' : ruby.stage === 0 ? 'thief' : 'pool';
+    const p = key === 'hop' ? { ...rubyPlaces.course.pads[0], y: rubyPlaces.course.pads[0].top } : rubyPlaces[key]; if (!p) return false;
+    players.p1.teleport(p.x, p.z + (key === 'goal' ? 0 : 1.5)); if (key === 'goal' || key === 'hop') players.p1.position.y = p.y; followCam.snap(); return { ...p };
+  },
+};
 const carleDebug = {
   summary: () => ({ ...carle.summary(), world: carleWorld.summary(), away: dayNight.away }),
   get state() { return carle.state; },
@@ -1350,7 +1369,7 @@ const partyDebug = party;
 
 window.__game = {
   toolRacks,
-  version: VERSION, party: partyDebug, dusk: duskDebug, boat: boatDebug, tdoongz: tdoongzDebug, hats, tails, pets: petsDebug, petLab, capray: caprayDebug, carle: carleDebug, petStable, garlands: {
+  version: VERSION, party: partyDebug, dusk: duskDebug, boat: boatDebug, tdoongz: tdoongzDebug, hats, tails, pets: petsDebug, petLab, capray: caprayDebug, carle: carleDebug, ruby: rubyDebug, petStable, garlands: {
     list: GARLANDS.map((g) => g.name), set: (p, i) => garlandStand.wear(typeof p === "number" ? players.list.find((a) => a.index === p) : p, i),
     cycle: (p = players.p1) => garlandStand.cycle(p), get unlocked() { return garlandStand.unlocked; },
     preview: (i) => players.p1.wearGarland(i), evaluate: () => garlandStand.evaluate(), api: garlandStand,

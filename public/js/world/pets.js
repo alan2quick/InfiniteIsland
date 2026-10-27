@@ -1,4 +1,5 @@
-// The pet followers (PLAN Step 73a): every player who chose a pet has it glide along beside them, on every screen. Pure rules are game/petLogic.js, the model npc/pets.js, the unlock domain game/petsDomain.js.
+// Ground followers (Step 76a) use terrain heights, swept local collider steering and a stuck/lost poof.
+// The pet followers (PLAN Steps 73a / 76a): each chosen pet follows its owner on every screen. Pure rules are game/petLogic.js, the model npc/pets.js, the unlock domain game/petsDomain.js.
 //
 //   const pets = createPets({ scene, players, avatars, sync, domain, clock, atmosphere, storybook, dungeon, cinematic, particles, sfx, hud, floatLabel,
 //                             heightAt, duskItems, isSailing, params })
@@ -10,22 +11,24 @@
 // Owners: this screen's local players AND remote avatars. A pet is COSMETIC and per screen: it is moved locally from its owner's position and is never synced, saved or hashed. Only the choice travels, as pose field 16
 // (net/poseBuffer.js `petId`, written from player.petIndex; net/avatars.js sets player.petIndex on remote avatars). Everything below runs the same for local and remote owners.
 //
-// Where pets show: islands, the boat crossing (it glides alongside; the owner's rendered place is the crossing wrapper, player.visualRoot), combat areas (it follows; it has no collider or interactable, so it can neither be targeted nor block),
+// Where pets show: islands, the boat crossing (flyers glide alongside, ground pets hide until arrival; the owner's rendered place is the crossing wrapper, player.visualRoot), combat areas (it follows; it has no collider or interactable, so it can neither be targeted nor block),
 // hidden on storybook pages and while the owner is downed or away or (a remote owner) out of draw range. While any other cinematic or a feast holds everyone it settles low beside its owner. Built lazily, disposed when the owner
-// leaves or drops it. The follower flies: no colliders, no pathfinding. Poofs to the heel beyond PET.lost (regroup, travel, boat arrival, teleport); a quick swoop beyond PET.catchUp.
+// leaves or drops it. Flying followers ignore obstacles; ground followers query terrain/colliders but register none. No global pathfinding. Poofs to the heel beyond PET.lost (regroup, travel, boat arrival, teleport); a quick swoop beyond PET.catchUp.
 //
 // Choices are saved per screen under localStorage 'infiniteIsland.pets' = { slotIndex: petId } (hosts and replicas alike; a cosmetic preference, not game state), re-applied when a player (re)joins. A pet that is not unlocked
 // (e.g. after ?newgame) falls back to none, and the stale entry is forgotten once the real list is known.
 import * as THREE from 'three';
 import { stepCarleIdle, carleIdleDrive, nearestFlower } from '../game/carlePetLogic.js';
 import { getInteractables } from './interactables.js';
-import { islandAt } from './terrain.js';
+import { groundFollowStep, nearestGroundSpot, stepRubyIdle } from '../game/groundPetLogic.js';
+import { overlapsAny } from './colliders.js';
+import { islandAt, isWalkable, getGroundType } from './terrain.js';
 import { PET } from '../config.js';
 import {
   PET_IDS, petIndexOf, glideTarget, heelPoint, followStep, catchState, shouldPoof, poseStep, petMood, appearScale, createIdle, stepIdle, idleDrive,
   hideSpotOf, nearestGiant, clampPet, parsePetPrefs,
 } from '../game/petLogic.js';
-import { createPetModel, petUniforms } from '../npc/pets.js';
+import { createPetModel, petUniforms, PETS } from '../npc/pets.js';
 
 export const STORAGE_KEY = 'infiniteIsland.pets';
 const lerp = (a, b, k) => a + (b - a) * k;
@@ -40,7 +43,7 @@ function savePrefs(prefs) {
 
 export function createPets({
   scene, players, avatars = null, sync = null, domain, clock = null, atmosphere = null, storybook = null, dungeon = null, cinematic = null, particles = null, sfx = null,
-  heightAt = () => 0, flowers = () => getInteractables().filter((it) => it.type === 'flower' && ['home', 'ember'].includes(islandAt(it.position.x, it.position.z)?.id)), duskItems = () => null, isSailing = () => false,
+  heightAt = () => 0, walkable = isWalkable, blocked = overlapsAny, groundType = getGroundType, flowers = () => getInteractables().filter((it) => it.type === 'flower' && ['home', 'ember'].includes(islandAt(it.position.x, it.position.z)?.id)), duskItems = () => null, isSailing = () => false,
 }) {
   const prefs = loadPrefs();
   const actors = new Map();                   // owner Player -> actor
@@ -104,7 +107,7 @@ export function createPets({
     model.root.rotation.order = 'YXZ';
     scene.add(model.root);
     return {
-      owner, local, id, model, shown: false, appearT: 0, phase: rng() * 6.28,
+      owner, local, id, model, move: PETS.find((p) => p.id === id).move, shown: false, appearT: 0, phase: rng() * 6.28,
       s: { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 }, pose: { yaw: 0, roll: 0, pitch: 0, yawRate: 0 },
       idle: createIdle(rng), ownerPos: new THREE.Vector3(), lastPos: new THREE.Vector3(), lastSet: false, ownerVel: { x: 0, y: 0, z: 0 }, heading: 0,
       mode: 'awake', idleKind: null, dist: 0, catching: false,
@@ -121,6 +124,45 @@ export function createPets({
     if (!local && owner.root && !owner.root.visible) return false;               // a remote owner that is culled / waiting for its first pose
     if (storybook && storybook.contains(owner)) return false;
     return true;
+  }
+
+  // Ground pets share eligibility / lifecycle with flyers, but never enter their spring or idle path.
+  // Boat policy: hide for the crossing and appear on walkable terrain on arrival (all screens).
+  function stepGroundActor(a, dt) {
+    if (isSailing()) { hideActor(a); return; }
+    const o = a.owner, pos = anchor(o, a.ownerPos);
+    const speed = a.lastSet && dt > 0 ? Math.hypot(pos.x - a.lastPos.x, pos.z - a.lastPos.z) / dt : 0;
+    a.lastPos.copy(pos); a.lastSet = true;
+    const settle = !!cinematic?.busy, owner = { x: pos.x, z: pos.z, facing: o.facing || 0 };
+    const heel = heelPoint(owner, o.index ?? 0, { settle });
+    const env = { heightAt, walkable, blocked };
+    const spot = nearestGroundSpot(heel, env);
+    if (!spot) { hideActor(a); return; }
+    if (!a.shown) {
+      Object.assign(a.s, spot, { vx: 0, vy: 0, vz: 0, yaw: owner.facing, bestDist: undefined, stuckFor: 0 });
+      a.shown = true; a.model.root.visible = true; a.appearT = 0; poof(spot, true);
+    }
+    const water = groundType(a.s.x, a.s.z) === 'water' || [0, 1, 2, 3].some((i) => {
+      const angle = i * Math.PI / 2; return groundType(a.s.x + Math.sin(angle) * PET.ruby.waterRange, a.s.z + Math.cos(angle) * PET.ruby.waterRange) === 'water';
+    });
+    const kind = a.id === 'ruby' ? stepRubyIdle(a.idle, dt, { ownerStill: speed < 0.4, canIdle: !settle && !dungeon?.contains(o), sand: groundType(a.s.x, a.s.z) === 'sand', water, angle: Math.atan2(a.s.x - owner.x, a.s.z - owner.z), rng }) : null;
+    let target = heel;
+    if (kind === 'shuffle') {
+      const angle = a.idle.ang0 + a.idle.side * Math.sin(a.idle.t / a.idle.dur * Math.PI) * 0.7;
+      target = { x: owner.x + Math.sin(angle) * PET.ruby.shuffleRadius, z: owner.z + Math.cos(angle) * PET.ruby.shuffleRadius };
+    }
+    const old = { x: a.s.x, y: a.s.y, z: a.s.z };
+    const result = groundFollowStep(a.s, target, dt, env);
+    if (result.poof) { poof(old); poof(a.s, true); a.appearT = 0; a.idle.kind = null; }
+    a.idleKind = kind; a.dist = Math.hypot(a.s.x - heel.x, a.s.z - heel.z); a.catching = result.catching;
+    a.anim = result.speed > 0.05 ? 'walk' : kind === 'hide' && a.idle.t / a.idle.dur < 0.75 ? 'hide' : kind === 'wave' || kind === 'dig' || kind === 'bubbles' ? kind : 'idle';
+    a.appearT += dt;
+    const m = a.model;
+    m.root.position.set(a.s.x, a.s.y, a.s.z);
+    const facingOwner = Math.atan2(owner.x - a.s.x, owner.z - a.s.z);
+    const yaw = result.speed > 0.05 ? a.s.yaw + (kind === 'shuffle' ? a.idle.side * PET.ruby.sideways : 0) : kind === 'wave' ? facingOwner : a.s.yaw;
+    m.root.rotation.y = yaw; m.root.scale.setScalar(appearScale(a.appearT));
+    m.update(dt, time + a.phase, { anim: a.anim, speed: result.speed });
   }
 
   function stepActor(a, dt) {
@@ -238,7 +280,7 @@ export function createPets({
       if (!a) { a = makeActor(p, local); actors.set(p, a); }
       live.add(p);
       if (!eligible(p, local)) { hideActor(a); continue; }
-      stepActor(a, dt);
+      if (a.move === 'ground') stepGroundActor(a, dt); else stepActor(a, dt);
     }
     for (const a of [...actors.values()]) if (!live.has(a.owner)) drop(a);
     // the shared material: wing ripple clock and the glow (day -> night / Duskcrown)

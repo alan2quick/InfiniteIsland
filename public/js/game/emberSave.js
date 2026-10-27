@@ -1,5 +1,5 @@
 // The shared Emberleaf save file (PLAN Step 37b): ONE localStorage key, `infinite-island.emberleaf.v1`, written by several modules that each own one key of it
-// ({ v: 1, garden: {...}, (later) flowers / jobs / garlands }). Same idea as frostSave.js: each module reads its part once at load and writes it back with `set`, which merges
+// ({ v: 1, garden: {...}, flowers / jobs / garlands / ruby }). Same idea as frostSave.js: each module reads its part once at load and writes it back with `set`, which merges
 // into the one in-memory copy, so no writer can drop another's keys. ?newgame wipes the file once, at the first read. Replicas never save (game/save.js switches writeSave off).
 //
 //   emberSave.read()          the parsed file (an object, {} when missing / new game); cached, so every module sees the same one

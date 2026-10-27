@@ -37,6 +37,8 @@ export function bonusLogs(n, kind, random = Math.random) {
   return whole + (value > whole && random() < value - whole ? 1 : 0);
 }
 
+const rubyAction = (kind, type) => type === 'rubydig' ? (kind === 'shovel' ? 'dig' : null) : type === 'rubycoconut' ? (['axe', 'hammer'].includes(kind) ? (kind === 'hammer' ? 'break' : 'chop') : null) : type === 'rubycrust' ? (['hammer', 'axe', 'sword'].includes(kind) ? 'break' : null) : undefined;
+
 const ACTION_OF = { tree: 'chop', palm: 'chop', rock: 'break', ritualstone: 'strike', digspot: 'dig', seeddig: 'dig', pond: 'fish', shademoss: 'chop' };   // (seeddig: Emberleaf's glinting seed spots, world/seeds.js; shademoss: Duskcrown's smothered titans, Step 73b: an axe / sword / saber 'chops' it, main.js routes that to capray.clearMoss instead of harvest)
 
 export function toolHits(kind, action) {
@@ -52,6 +54,8 @@ export function toolHits(kind, action) {
  */
 export function getToolAction(held, interactable) {
   if (!held || !interactable || held.state !== 'held') return null;
+  const special = rubyAction(held.kind, interactable.type);
+  if (special !== undefined) return special;
   const action = ACTION_OF[interactable.type];
   if (!action) return null;
   return toolHits(held.kind, action) > 0 ? action : null;
@@ -63,6 +67,8 @@ export function getToolAction(held, interactable) {
  */
 export function actionForKind(kind, interactable) {
   if (!kind || !interactable) return null;
+  const special = rubyAction(kind, interactable.type);
+  if (special !== undefined) return special;
   const action = ACTION_OF[interactable.type];
   if (!action) return null;
   return toolHits(kind, action) > 0 ? action : null;

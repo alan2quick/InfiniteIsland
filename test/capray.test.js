@@ -33,7 +33,7 @@ const { duskFlora } = await import('../public/js/world/islands/duskVisuals.js');
 const island = ISLANDS.find((i) => i.id === 'duskcrown'), mod = getIslandModule('duskcrown');
 const plan = duskCaprayPlan();
 
-test('the version is 0.85.9', () => { assert.equal(VERSION, '0.85.9'); });
+test('the version is 0.85.10', () => { assert.equal(VERSION, '0.85.10'); });
 
 // ---- pure rules --------------------------------------------------------------------------------------------------------------------------------------------------------------
 test('the stage machine runs in order: sight, three Glimmerfin, hits, showers, the favourite, the Lanternkoi', () => {
@@ -573,4 +573,19 @@ test('stable: unlocked Carle replaces the home silhouette and flutters by the ba
   assert.ok(w.stable.summary().drawCalls <= 9);
   rows[1].onSelect(); assert.deepEqual(w.choices.at(-1), [w.p, 'carle']); w.stable.update(0.1); assert.equal(m.root.visible, false);
   w.domain.reset(); assert.equal(m.root.parent, null);
+});
+
+
+test('stable: Ruby replaces only the Emberleaf silhouette and rests beside the basin until brought by any owner', () => {
+  const w = stableWith({ unlocked: true }); w.domain.unlock('ruby');
+  for (let i = 0; i < 60; i++) w.stable.update(0.05);
+  const rows = w.stable.rows(w.p);
+  assert.deepEqual(rows.map((r) => r.label), ['Capray', 'Ruby', 'No pet', '???', '???']);
+  assert.equal(rows.some((r) => r.detail === LOCKED_PETS[2].hint), false);
+  assert.equal(rows.filter((r) => r.disabled).length, 2);
+  const ruby = w.stable.restingModelOf('ruby'); assert.ok(ruby.root.visible); assert.equal(ruby.state.shell, 'home');
+  assert.ok(ruby.root.position.x > 1); assert.equal(ruby.root.position.y, 0); assert.equal(ruby.state.anim, 'idle');
+  rows[1].onSelect(); w.stable.update(0.1); assert.equal(ruby.root.visible, false);
+  w.p.__pet = null; w.stable.update(0.1); assert.equal(ruby.root.visible, true);
+  w.domain.reset(); assert.equal(ruby.root.parent, null);
 });

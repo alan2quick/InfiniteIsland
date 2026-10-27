@@ -2,7 +2,7 @@
 
 // Game version, shown on the title card. The client can't read package.json (only public/ is deployed), so this is
 // the source of truth: bump it together with "version" in package.json. Minor = last completed PLAN.md step.
-export const VERSION = '0.85.9';
+export const VERSION = '0.85.10';
 
 // Held-mouse direction: world-unit dead bands, optional pooled ground ring.
 export const MOUSE_STEER = { dead: 0.6, sideDead: 0.4, ring: true };
@@ -770,6 +770,12 @@ export const FISHING = {
 
 // Step 73a (pets): tunables for the companion that follows its owner (game/petLogic.js is the pure maths, world/pets.js the runtime). Lengths in units, times in seconds.
 export const PET = {
+  ground: { walkSpeed: 3.6, runSpeed: 8.5, radius: 0.26, stop: 0.12, runAfter: 3, maxStep: 0.45,
+    probe: 0.65, sampleStep: 0.1, stuckAfter: 2, stuckFar: 2, progress: 0.12, searchRadius: 4, searchStep: 0.25, searchAngles: 24,
+    headings: [0, 0.4, -0.4, 0.8, -0.8, 1.2, -1.2, 1.57, -1.57], turnRate: 8 },
+  ruby: { modelScale: 1.3,                  // the whole crab (every shell and quest size) is drawn 30% bigger than its built size: knee-high reads small at gameplay zoom (browser review 2026-10-27)
+    idleLen: { hide: 4, wave: 2.6, dig: 3.2, bubbles: 3, shuffle: 2.2 }, bubbleEvery: 0.3, waterRange: 2.5,
+    shuffleRadius: 1.25, sideways: 0.65, gaitRate: 12, hideRate: 12, legSwing: 0.28, bob: 0.008, antennaSway: 0.15, shellRock: 0.07 },
   carle: { glideMin: 0.65, glideMax: 1.35, flapPeriod: 3.4, flapBurst: 0.85, flowerRange: 7, headY: 2.05, shoulderY: 1.55, idleLen: { head: 4.2, loop: 3.4, flower: 4.5, shoulder: 7 } },
   glideMin: 0.9, glideMax: 1.4,              // hover height above the ground (eased between the two by a slow bob)
   waterGlide: 0.55,                          // over water the pet skims lower, above the surface (WATER_LEVEL)
@@ -954,4 +960,12 @@ export const PARTY = {
     hitR: 2.5, core: 0.55, hopSpeed: 7.2, airFrom: 0.06, airTo: 0.5, cool: 0.55, lag: 0.2,                   // a slam's circle; inside `core` x hitR you are always squashed, a hop at the landing saves you only in the outer ring; the hop's air window; a second hop waits `cool` s
     first: 2.6, warn: [1.5, 0.7], fall: 0.4, keep: 0.8, duration: 60, tail: 2, botMiss: 0.5,                // the first shadow, a shadow grows for `warn` s (shorter later), the mallet falls in the last `fall` s and rests `keep` s
   },
+};
+
+// Step 76b: Ruby's action-only Shell Ladder. No clock gates.
+export const RUBY = {
+  sight: 6, reach: 3.2, remoteSlack: 1.6,
+  coconutHits: 3, crustWork: 12, crustHits: { hammer: 4, sword: 6, axe: 6 },
+  gifts: { obsidian: 3, bamboo: 2, 'spring-water': 1 },
+  sizes: [0.48, 0.60, 0.71, 0.82, 0.92, 1], swapSeconds: 3, befriendSeconds: 6,
 };

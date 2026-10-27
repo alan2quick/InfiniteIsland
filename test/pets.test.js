@@ -19,11 +19,11 @@ const { createPetsDomain, PETS_KEY } = await import('../public/js/game/petsDomai
 const { createPetModel, PETS, petMaterial, petUniforms } = await import('../public/js/npc/pets.js');
 const { createPets, STORAGE_KEY } = await import('../public/js/world/pets.js');
 
-test('the version is 0.85.9', () => { assert.equal(VERSION, '0.85.9'); });
+test('the version is 0.85.10', () => { assert.equal(VERSION, '0.85.10'); });
 
 // ---- ids and the wire ---------------------------------------------------------------------------------------------------------------------------------------------------------
 test('ids: Capray first, pose ids are 1 + index, 0 / junk decode as none, the model registry has the same order', () => {
-  assert.deepEqual(PET_IDS, ['capray', 'carle']);
+  assert.deepEqual(PET_IDS, ['capray', 'carle', 'ruby']);
   assert.equal(petIndexOf('capray'), 0); assert.equal(petIndexOf('nope'), -1); assert.equal(petIdAt(0), 'capray'); assert.equal(petIdAt(5), null);
   assert.equal(encodePetId(-1), 0); assert.equal(encodePetId(0), 1); assert.equal(encodePetId(1), 2); assert.equal(encodePetId(undefined), 0);
   assert.equal(decodePetId(0), -1); assert.equal(decodePetId(1), 0); assert.equal(decodePetId(2), 1); assert.equal(decodePetId('x'), -1);
@@ -488,4 +488,41 @@ test('Carle idle policy picks head/loop/nearest flower, skips missing flowers, s
   for (const seed of [0, 0.5, 0.99]) { idle = createIdle(() => 0); idle.cooldown = 0; assert.ok(['head', 'loop'].includes(stepCarleIdle(idle, 2, { ...context, flower: null, rng: () => seed }))); }
   idle = createIdle(() => 0); assert.equal(stepCarleIdle(idle, 2, { ...context, sleepy: true }), 'shoulder');
   const sleep = carleIdleDrive('shoulder', 0.5, { owner }); assert.equal(sleep.target.y, owner.y + PET.carle.shoulderY);
+});
+
+
+test('Ruby pose id 3, safe prefs and unlocks; older packets still decode none', () => {
+  assert.equal(encodePetId(2), 3); assert.equal(decodePetId(3), 2); assert.equal(petIndexOf('ruby'), 2);
+  assert.deepEqual(parsePetPrefs('{"3":"ruby"}'), { 3: 'ruby' });
+  const pose = encodePose({ index: 0, position: { x: 1, y: 0, z: 2 }, velocity: { x: 0, z: 0 }, character: {}, petIndex: 2 }); assert.equal(decodePose(pose).pet, 3);
+  assert.equal(decodePose(pose.slice(0, 15)).pet, 0);
+  const w = pair(); w.host.unlock('ruby'); w.flush(); assert.ok(w.replica.has('ruby')); w.equal();
+  assert.deepEqual(PETS.map((p) => p.move), ['fly', 'fly', 'ground']);
+});
+
+test('Ruby runtime follows each local/remote owner on terrain, drives walk/hide/wave and keeps feet on ground', () => {
+  const w = world(); w.domain.unlock('ruby');
+  const p2 = w.mk(1, 5, 0); w.players.list.push(p2); w.pets.set(p2, 'ruby');
+  const remote = w.mk(2, -4, 0); remote.petIndex = 2; w.avatars.list.push(remote);
+  w.run(0.5); assert.equal(w.pets.count, 2); assert.equal(w.pets.petOf(w.p0), null);
+  const a = w.pets.actorOf(p2); assert.equal(a.s.y, 2); assert.equal(a.model.state.shell, 'home');
+  let walking = false;
+  w.run(4, (dt) => { p2.position.x += dt * 5; if (a.anim === 'walk') walking = true; });
+  assert.ok(walking); assert.ok(a.s.x > 20); assert.equal(a.model.state.anim, 'walk');
+  assert.ok(Math.abs(a.s.y - 2) < 1e-6); assert.equal(a.model.rig.rotation.x, 0);
+  w.run(2); a.idle.kind = 'hide'; a.idle.t = 0; a.idle.dur = 4;
+  w.run(0.1); assert.equal(a.model.state.anim, 'hide');
+  a.idle.kind = 'wave'; a.idle.t = 0; a.idle.dur = 3; w.run(0.1); assert.equal(a.model.state.anim, 'wave');
+  assert.equal(w.pets.summary().drawCalls, 8);
+});
+
+test('Ruby runtime shares combat, feast, storybook/downed rules; boat hides then reappears safely; preview needs no unlock', () => {
+  const w = world(); w.pets.debug.preview('ruby', w.p0); w.run(1);
+  const a = w.pets.actorOf(w.p0); assert.ok(a.shown); assert.equal(w.domain.has('ruby'), false);
+  w.state.dungeon = true; w.run(4); assert.equal(a.idleKind, null); assert.ok(a.shown);
+  w.state.busy = true; w.run(1); assert.ok(a.shown); assert.equal(a.s.y, 2);
+  for (const key of ['page', 'sailing']) { w.state[key] = true; w.run(0.1); assert.equal(a.shown, false); w.state[key] = false; w.run(0.1); assert.ok(a.shown); }
+  w.p0.downed = true; w.run(0.1); assert.equal(a.shown, false); w.p0.downed = false; w.run(0.1); assert.ok(a.shown);
+  w.p0.position.x = 50; w.run(0.1); assert.ok(a.s.x > 48); assert.ok(a.appearT < PET.appear);
+  w.pets.set(w.p0, null); w.run(0.1); assert.equal(w.pets.count, 0); assert.equal(a.model.root.parent, null);
 });

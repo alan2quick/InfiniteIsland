@@ -8,6 +8,7 @@
 //   m.headRest      Object3D at the tail's cap in rig space (used for the "rest the tail cap on the owner's head" idle)
 //   m.wingspan / m.length / m.height   metres in model units (Capray: 1.1 / 1.6 with the tail / 0.3)
 //   m.drawCalls     main-pass meshes + the body's shadow pass: 4 for Capray (budget: +4 per pet, no lights)
+//   PETS entries declare move: 'fly' | 'ground'. Ruby uses buildRuby (petsEmber.js), feet-origin, home shell, four draws; its update accepts anim/speed.
 //   Carle uses buildButterfly (petsHome.js), one SkinnedMesh + shadow (2 calls), with its own update(dt, t, { anim: glide|flap|rest }).
 //   m.update(dt, t, { sway, rocking })   tail sway and cap rocking (group rotations only: no per-frame geometry work)
 //   m.dispose()     frees the geometries (the shared material stays)
@@ -21,6 +22,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Baker, castMesh, makeToon, xf } from '../player/character.js';
 import { sphere, sphereLo, cyl, surf, at } from './models.js';
 import { PET } from '../config.js';
+import { buildRuby } from './petsEmber.js';
 import { buildButterfly } from './petsHome.js';
 import { PET_IDS } from '../game/petLogic.js';
 
@@ -289,10 +291,11 @@ function buildCapray() {
 }
 
 // ---------------------------------------------------------------------------------------------
-/** Registry order = PET_IDS (game/petLogic.js). `hint` is the stable's line for a pet that is not unlocked yet (73b); `name` the label. */
+/** Entries declare move ('fly' or 'ground'); registry order = PET_IDS (game/petLogic.js). `hint` is the stable's line for a pet that is not unlocked yet (73b); `name` the label. */
 export const PETS = [
-  { id: 'capray', name: 'Capray', species: 'stingray', build: buildCapray },
-  { id: 'carle', name: 'Carle', species: 'butterfly', build: buildButterfly },
+  { id: 'capray', name: 'Capray', species: 'stingray', move: 'fly', build: buildCapray },
+  { id: 'carle', name: 'Carle', species: 'butterfly', move: 'fly', build: buildButterfly },
+  { id: 'ruby', name: 'Ruby', species: 'hermit crab', move: 'ground', build: buildRuby },
 ];
 export const PET_BUILDERS = Object.fromEntries(PETS.map((p) => [p.id, p.build]));
 if (PETS.some((p, i) => p.id !== PET_IDS[i]) || PETS.length !== PET_IDS.length) throw new Error('npc/pets.js PETS must match game/petLogic.js PET_IDS');

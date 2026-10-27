@@ -1,7 +1,7 @@
 // Pure rules for the pets (PLAN Step 73a). No three.js, so Node can test them (test/pets.test.js). The runtime is world/pets.js, the model npc/pets.js, the unlock domain game/petsDomain.js.
 //
 // IDS AND THE WIRE
-//   PET_IDS                      ['capray', 'carle'] in registry order (npc/pets.js PETS has the same order; a test pins it). A pet's pose-packet id is 1 + its index, 0 = none (field 16, older packets decode as none)
+//   PET_IDS                      ['capray', 'carle', 'ruby'] in registry order (npc/pets.js PETS has the same order; a test pins it). A pet's pose-packet id is 1 + its index, 0 = none (field 16, older packets decode as none)
 //   encodePetId(index) / decodePetId(id)   pose id <-> index in PET_IDS (-1 = none)
 //   petIndexOf(id) / petIdAt(i)            string id <-> index (-1 / null when unknown)
 //   normaliseUnlocked(raw)       a saved / received list made safe: known ids only, unique, in registry order
@@ -19,7 +19,7 @@
 //   createIdle(seed) -> idle state;  stepIdle(idle, dt, ctx) advances it and returns the kind that is running (or null);  idleDrive(kind, u, ctx) -> { target, w, roll, stiff, yaw }
 import { PET, WATER_LEVEL } from '../config.js';
 
-export const PET_IDS = ['capray', 'carle'];
+export const PET_IDS = ['capray', 'carle', 'ruby'];
 export const NO_PET = -1;
 export const IDLE_KINDS = ['roll', 'loop', 'nuzzle', 'head', 'hide'];
 

@@ -26,7 +26,7 @@ import { ICONS } from '../public/js/ui/icons.js';
 const island = ISLANDS.find((i) => i.id === 'duskcrown'), mod = getIslandModule('duskcrown');
 const DISHES = ['glimmerfin-skewer', 'marsh-chowder', 'dusk-wrap', 'lantern-supper'];
 
-test('the version is 0.85.9', () => { assert.equal(VERSION, '0.85.9'); });
+test('the version is 0.85.10', () => { assert.equal(VERSION, '0.85.10'); });
 
 test('the fish, the crumbs and the four dishes are real catalog entries tagged for Duskcrown, with inline-SVG icons (no emoji)', () => {
   for (const id of ['glimmerfin', 'lanternkoi', 'glowcap-crumbs']) {

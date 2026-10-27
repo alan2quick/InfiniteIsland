@@ -213,4 +213,4 @@ days; the menu as in the table; the stable hint plus a first-time toast on the h
 - [x] Step 74b — Offline time (the clock catches up while closed / hidden) and Carle's hungry week: the caterpillar appears after Capray, seven days of feeding from the three islands (on its own sapling near the fire; stops at the placeholder cocoon after day 7; `clock.flushCatchUp()` fires the load catch-up; 45 new tests; browser look NOT verified, see the changelog)
 - [x] Step 74c — Carle's cocoon days, the hatch, and Carle as a flying pet (host-timed shared-skip scenes, three live/offline dawns, per-player invitations, stable, pose id 2; Node verified, browser visuals pending)
 - [ ] Step 74d — The Frostpine wolf quest, Snowsong (to design)
-- [ ] Step 74e — Ground-pet following (to design)
+- [ ] Step 74e — Ground-pet following: moved into Step 76a (plan/76-hermit-crab.md), built with the Emberleaf crab

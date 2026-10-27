@@ -52,7 +52,7 @@ export function createMarlo({ scene, players, avatars = null, world, dialog, par
   if (NEW_GAME) { try { localStorage.removeItem(INTRO_KEY); } catch { /* ignore */ } }
 
   const m = { id: 'marlo', name: MARLO.name, species: 'otter', position, shown: false, group: null, model: null, collider: null, interactable: null, idle: 'stand' };
-  let repairBeat = null, rowProvider = null;
+  let repairBeat = null, rowProvider = null, rubyRows = null;
   let time = 0, yaw = spot.yaw, focus = null, stayAwake = false, popT = -1;
   let cycleI = 0, cycleT = 0, forced = null;
   let floatK = 0, spyK = 0, dozeK = 0, waveK = 0, sleepy = 0, nodT = -1, hopT = -1, tok = 0, tokN = 0, zT = 1.5, blinkT = 3, blinkPhase = -1;
@@ -86,6 +86,7 @@ export function createMarlo({ scene, players, avatars = null, world, dialog, par
       ...(boat.state.at === 'duskcrown' && rowProvider ? rowProvider(p).map((r) => ({ label: r.label, icon: SPARKLE_SVG, onSelect: pages(r.lines, 3) })) : []),
       ...(shown.repair ? repairRows(boat.state).map(row => ({ ...row, icon: BRIDGE_SVG, onSelect: () => dialog.showPages([row.detail], { name: MARLO.name, onFinish: back(p, 0) }) })) : []),
       ...(shown.boat ? [{ label: "How's the boat?", icon: BRIDGE_SVG, detail: hint(), onSelect: (c, d) => dialog.showPages(boatPages(boat.state), { name: MARLO.name, onFinish: back(p, 0) }) }] : []),
+      ...(rubyRows ? rubyRows(p).map(r => ({ label: r.label, icon: SPARKLE_SVG, onSelect: pages(r.lines, 3) })) : []),
       { label: 'Who are you?', icon: QUEST_SVG, onSelect: pages(MARLO_SCRIPT.who, 1) },
       { label: 'Tell me about clams', icon: SPARKLE_SVG, onSelect: pages(MARLO_SCRIPT.clams, 2) },
       { label: 'Bye', icon: LEAVE_SVG, onSelect: () => { dialog.close(); say(MARLO_SCRIPT.bye); } },
@@ -265,6 +266,7 @@ export function createMarlo({ scene, players, avatars = null, world, dialog, par
     get at() { return at; },
     setRepairBeat(t) { repairBeat = t; },
     setStayAwake(v) { stayAwake = !!v; },
+    setRubyProvider(fn) { rubyRows = fn; },
     setRowProvider(fn) { rowProvider = typeof fn === 'function' ? fn : null; },
     get introSeen() { return heard; },
     resetIntro() { heard = false; try { localStorage.removeItem(INTRO_KEY); } catch { /* ignore */ } },

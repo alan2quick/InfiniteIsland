@@ -19,12 +19,13 @@ export const PETS_KEY = 'infinite-island.pets.v1';
 
 export function createPetsDomain({ sync, params = new URLSearchParams() }) {
   const testpet = params.has('testpet');
-  const saveOn = !testpet && sync.isHost;
+  const transient = testpet || params.has('testruby');
+  const saveOn = !transient && sync.isHost;
   let unlocked = [];
   let known = sync.isHost;
   if (sync.isHost) {
-    if (NEW_GAME && !testpet) clearSave(PETS_KEY);
-    else if (!testpet) unlocked = normaliseUnlocked(loadSave(PETS_KEY)?.unlocked);
+    if (NEW_GAME && !transient) clearSave(PETS_KEY);
+    else if (!transient) unlocked = normaliseUnlocked(loadSave(PETS_KEY)?.unlocked);
     if (testpet) unlocked = mergeUnlocked(unlocked, ['capray']);
   }
   const unlockListeners = new Set(), changeListeners = new Set();

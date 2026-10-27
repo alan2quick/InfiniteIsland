@@ -30,7 +30,7 @@ import { actorKey } from '../net/worldSync.js';
 import { validateRepair, repairSave, leakSchedule, bilgeAt, floatResult, beatAt, tarHeat, repairReady, patched } from '../game/boatRepairLogic.js';
 
 export function createBoat({ sync, hud = null, sfx = null, clock = null, params = new URLSearchParams() }) {
-  const testboat = params.has('testboat');
+  const testboat = (params.has('testboat') || params.has('testruby'));
   const saveOn = !testboat && sync.isHost;
   let state = freshBoat();
   if (sync.isHost) {

@@ -9,6 +9,11 @@
 //   lab.clear()                    removes and disposes everything
 //   lab.summary()                  { count, drawCalls, triangles, items: [{ id, anim, drawCalls, triangles, size: { x, y, z }, pos }] }
 //   lab.update(dt)                 once per tick; does nothing while empty
+// follow('snowsong', owner = players.p1) uses the same pure ground follower; clear() stops it.
+import { groundFollowStep, nearestGroundSpot } from '../game/groundPetLogic.js';
+import { heelPoint } from '../game/petLogic.js';
+import { isWalkable } from './terrain.js';
+import { overlapsAny } from './colliders.js';
 import * as THREE from 'three';
 import { Baker, castMesh, xf } from '../player/character.js';
 import { petMaterial } from '../npc/pets.js';
@@ -34,7 +39,7 @@ function buildPost(height) {
   return mesh;
 }
 
-export function createPetLab({ scene, players, heightAt = () => 0, camera = null }) {
+export function createPetLab({ scene, players, heightAt = () => 0, camera = null, walkable = isWalkable, blocked = overlapsAny }) {
   const items = [];
   let time = 0;
 
@@ -95,6 +100,17 @@ export function createPetLab({ scene, players, heightAt = () => 0, camera = null
       const x = p.x + Math.sin(p.facing) * 2.5, z = p.z + Math.cos(p.facing) * 2.5;
       return summarise(add(key, x, z, opts));
     },
+    follow(id, owner = players.p1) {
+      const key = keyOf(id);
+      if (key !== 'snowsong') throw new Error('petLab.follow supports snowsong');
+      if (!owner) return null;
+      lab.clear();
+      const heel = heelPoint({ ...owner.position, facing: owner.facing || 0 }, owner.index ?? 0);
+      const spot = nearestGroundSpot(heel, { heightAt, walkable, blocked });
+      const e = add(key, spot?.x ?? heel.x, spot?.z ?? heel.z);
+      e.owner = owner; e.ground = { x: e.model.root.position.x, y: e.model.root.position.y, z: e.model.root.position.z, yaw: owner.facing || 0 };
+      return lab.summary();
+    },
     lineup(opts = {}) {
       lab.clear();
       const p = p1pos(), keys = ['carle:caterpillar', 'carle:cocoon', 'carle:butterfly', 'snowsong'];
@@ -120,7 +136,15 @@ export function createPetLab({ scene, players, heightAt = () => 0, camera = null
       time += dt;
       for (const e of items) {
         if (e.spin) e.model.root.rotation.y += dt * 0.6;
-        e.model.update(dt, time - e.t0, { anim: e.anim });
+        let speed = 1;
+        if (e.owner) {
+          const heel = heelPoint({ ...e.owner.position, facing: e.owner.facing || 0 }, e.owner.index ?? 0);
+          const result = groundFollowStep(e.ground, heel, dt, { heightAt, walkable, blocked });
+          e.model.root.visible = !!result.target && !e.owner.downed && !e.owner.away;
+          e.model.root.position.set(e.ground.x, e.ground.y, e.ground.z); e.model.root.rotation.y = e.ground.yaw || 0;
+          speed = result.speed; e.anim = speed > 0.05 ? 'walk' : 'idle';
+        }
+        e.model.update(dt, time - e.t0, { anim: e.anim, speed });
       }
     },
     get count() { return items.length; },

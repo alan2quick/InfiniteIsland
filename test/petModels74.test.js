@@ -17,8 +17,8 @@ const range = (v, lo, hi, what) => assert.ok(v >= lo && v <= hi, `${what} ${v.to
 const meshesOf = (m) => { const out = []; m.root.traverse((o) => { if (o.isMesh) out.push(o); }); return out; };
 
 test('Carle is promoted into the registry; the stage models and Snowsong remain in the WIP table', () => {
-  assert.deepEqual(PET_IDS, ['capray', 'carle']);
-  assert.deepEqual(PETS.map((p) => p.id), ['capray', 'carle']);
+  assert.deepEqual(PET_IDS, ['capray', 'carle', 'ruby']);
+  assert.deepEqual(PETS.map((p) => p.id), ['capray', 'carle', 'ruby']);
   assert.deepEqual(WIP_KEYS, ['carle:caterpillar', 'carle:cocoon', 'carle:butterfly', 'snowsong']);
   assert.equal(Object.keys(PET_MODELS_WIP).length, 4);
   assert.throws(() => createWipPetModel('ghost'));
@@ -208,4 +208,17 @@ test('the pet lab: show / lineup / clear / summary / update, only while somethin
   assert.equal(lab.summary().count, 4);
   lab.clear(); assert.equal(lab.count, 0); assert.equal(scene.children.length, 0); assert.equal(lab.summary().count, 0);
   const geos = []; scene.traverse((o) => { if (o.geometry) geos.push(o); }); assert.equal(geos.length, 0);
+});
+
+
+test('pet lab: Snowsong follows an explicit owner through ground terrain without entering PET_IDS', () => {
+  const scene = new THREE.Scene(), owner = { index: 2, position: new THREE.Vector3(0, 0, 0), facing: 0 };
+  const lab = createPetLab({ scene, players: { p1: owner }, heightAt: (x) => x * 0.02, walkable: () => true, blocked: () => false });
+  assert.equal(lab.follow('snowsong').count, 1); assert.ok(!PET_IDS.includes('snowsong'));
+  owner.position.x = 8;
+  for (let i = 0; i < 300; i++) lab.update(1 / 60);
+  const item = lab.summary().items[0];
+  assert.ok(item.pos.x > 8); assert.ok(Math.abs(item.pos.y - item.pos.x * 0.02) < 0.02); assert.equal(item.anim, 'idle');
+  assert.throws(() => lab.follow('butterfly'));
+  lab.clear(); assert.equal(scene.children.length, 0);
 });

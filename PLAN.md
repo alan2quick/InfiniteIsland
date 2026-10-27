@@ -212,7 +212,8 @@ Keep PLAN.md and CLAUDE.md short: long text goes to the topic file, the changelo
 | 73 | Capray, the first pet | done (0.73.1) | [plan/73-capray.md](plan/73-capray.md) |
 | 74 | Home and Frostpine pets (caterpillar → cocoon → butterfly; grey / arctic wolf) | 74a done (models + `__game.petLab`, 0.85.4); 74b–c done (offline time, Carle's quest line and Carle as a pet, 0.85.6), 74d–e to design | [plan/74-home-frost-pets.md](plan/74-home-frost-pets.md) |
 | 75 | Tool racks by each campfire (per-player cycled tool sets) | done (0.85.7) | [plan/75-tool-racks.md](plan/75-tool-racks.md) |
-| 76–79 | (numbers not used) | | |
+| 76 | Ruby, the Emberleaf hermit crab ("The Shell Ladder") + ground-pet following | done (0.85.10) | [plan/76-hermit-crab.md](plan/76-hermit-crab.md) |
+| 77–79 | (numbers not used) | | |
 | 80–84 | Party Games | 80a–e done (80e committed at 0.85.0) | [plan/80-party-games.md](plan/80-party-games.md) |
 | 81 | Party Games II | done (0.81.1) | [plan/81-party-games-2.md](plan/81-party-games-2.md) |
 | 82 | Party Glade living pass | done (0.82.4) | [plan/82-living-pass.md](plan/82-living-pass.md) |
@@ -220,7 +221,7 @@ Keep PLAN.md and CLAUDE.md short: long text goes to the topic file, the changelo
 
 ### Open steps
 
-- [ ] Step 74d–e — Snowsong's Frostpine quest and ground-pet following (to design) — [plan/74-home-frost-pets.md](plan/74-home-frost-pets.md)
+- [ ] Step 74d — Snowsong's Frostpine quest (to design; ground following is built, Step 76a) — [plan/74-home-frost-pets.md](plan/74-home-frost-pets.md)
 - [ ] Step 68f — Playtest fixes, star chart — [plan/68-boat.md](plan/68-boat.md)
 - [ ] Step 68g — Playtest fixes, repair and story — [plan/68-boat.md](plan/68-boat.md)
 - [ ] Step 53b — Wildroot Ramparts and bosses (storybook) — [plan/47-53-storybook.md](plan/47-53-storybook.md)

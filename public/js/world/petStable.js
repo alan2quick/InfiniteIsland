@@ -143,7 +143,7 @@ export function createPetStable({ scene, players, avatars = null, world = null, 
       onSelect: () => choose(p, id),
     }));
     out.push({ label: 'No pet', icon: LEAVE_SVG, detail: cur ? 'Leave it here' : 'Chosen', onSelect: () => choose(p, null) });
-    for (const l of LOCKED_PETS.filter((l) => l.id !== 'home' || !domain.has('carle'))) out.push({ label: '???', icon: ICONS['pet-locked'], detail: l.hint, disabled: true });
+    for (const l of LOCKED_PETS.filter((l) => (l.id !== 'home' || !domain.has('carle')) && (l.id !== 'ember' || !domain.has('ruby')))) out.push({ label: '???', icon: ICONS['pet-locked'], detail: l.hint, disabled: true });
     return out;
   }
   function choose(p, id) {
@@ -191,6 +191,13 @@ export function createPetStable({ scene, players, avatars = null, world = null, 
     const visible = built && (!world || world.regions.isFull('duskcrown'));
     if (group) group.visible = visible;
     updateModel(dt, visible);
+    const wantRuby = visible && !popping && domain.has('ruby') && ![...players.list, ...(avatars?.list || [])].some((p) => pets.petOf(p) === 'ruby');
+    if (wantRuby && !resting.has('ruby')) { const r = createPetModel('ruby'); group.add(r.root); resting.set('ruby', r); }
+    const ruby = resting.get('ruby');
+    if (ruby) {
+      ruby.root.visible = wantRuby;
+      if (wantRuby) { ruby.root.position.set(1.55, 0, 0.45); ruby.root.rotation.y = -0.7; ruby.update(dt, time, { anim: 'idle' }); }
+    }
     const wantCarle = visible && !popping && domain.has('carle') && ![...players.list, ...(avatars?.list || [])].some((p) => pets.petOf(p) === 'carle');
     if (wantCarle && !resting.has('carle')) { const m = createPetModel('carle'); group.add(m.root); resting.set('carle', m); }
     const m = resting.get('carle');

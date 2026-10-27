@@ -26,7 +26,7 @@ const cove = coveLayout(), dusk = duskDockLayout();
 const launched = () => ({ ...freshBoat(), unlocked: true, repair: true, parts: { planks: true, sail: true, rudder: true, compass: true }, nails: [2, 2, 2, 2], planks: 8, seams: [true, true, true], floated: true, sights: [true, true, true], launched: true });
 const at = (p, y = 0.3) => ({ x: p.x, y, z: p.z });
 
-test('the version is 0.85.9', () => { assert.equal(VERSION, '0.85.9'); });
+test('the version is 0.85.10', () => { assert.equal(VERSION, '0.85.10'); });
 
 test('boat state: at / discovered default, normalise and stay consistent with the voyage', () => {
   const f = freshBoat();
