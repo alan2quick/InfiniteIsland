@@ -61,3 +61,18 @@ test('equal distances go to the most recently registered / restored entry; surfa
   assert.equal(findNearest({ x: 50, z: 50 }), null);
   assert.equal(a.lastDistance, 0);
 });
+
+
+test('toolrack wins in its front approach only; ordinary ranking, filters and reach stay intact', () => {
+  clearInteractables();
+  const rack=addInteractable({type:'toolrack',position:{x:0,z:0},radius:0.72});
+  const pickup=addInteractable({type:'item',position:{x:0,z:1.5},radius:0.55});
+  const bush=addInteractable({type:'bush',position:{x:0.3,z:1.5},radius:0.7});
+  assert.equal(findNearest({x:0,z:1.5}),rack,'pickup and bush cannot steal repeated rack presses');
+  assert.equal(findNearest({x:0,z:1.5},0.1),bush,'priority does not extend reach');
+  assert.equal(findNearest({x:0,z:1.5},2.2,it=>it!==rack),bush,'eligible filter still applies');
+  rack.canInteract=()=>false;assert.equal(findNearest({x:0,z:1.5}),bush);rack.canInteract=null;
+  pickup.position={x:1.6,z:0};assert.equal(findNearest({x:1.6,z:0}),pickup,'walking to the side permits pickup');
+  pickup.position={x:0,z:-1.5};assert.equal(findNearest({x:0,z:-1.5}),pickup,'behind the rack uses normal nearest');
+  removeInteractable(rack);pickup.position={x:0,z:1.5};assert.equal(findNearest({x:0,z:1.5}),bush,'non-rack tie behaviour is unchanged');
+});

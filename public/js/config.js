@@ -2,7 +2,7 @@
 
 // Game version, shown on the title card. The client can't read package.json (only public/ is deployed), so this is
 // the source of truth: bump it together with "version" in package.json. Minor = last completed PLAN.md step.
-export const VERSION = '0.85.6';
+export const VERSION = '0.85.7';
 
 // Held-mouse direction: world-unit dead bands, optional pooled ground ring.
 export const MOUSE_STEER = { dead: 0.6, sideDead: 0.4, ring: true };
@@ -359,6 +359,17 @@ export const CAMPFIRE_ISLANDS = [...new Set(FIRES.map((f) => f.island))];
 /** Is (x, z) inside any fire's keep-clear zone (+ `pad`, e.g. half a prop's radius)? Props, herbs, dig spots and tool pickups use it. */
 export const nearAnyFire = (x, z, pad = 0) => FIRES.some((f) => Math.hypot(x - f.x, z - f.z) < f.clear + pad);
 // Hat rack (Step 32a): appears after the first feast beside the welcome sign; world x/z stay reserved even while it is hidden.
+// Step 75: session-only tool sets; the id order is a wire contract.
+export const TOOL_RACK = {
+  kinds: ['axe', 'hammer', 'sword', 'shovel', 'rod'],
+  // The larger Frost / Ember rings reserve whole camp areas; racks are intentional camp furniture.
+  nearClear: 5, radii: [5.5, 6, 6.5, 6.25, 5.75, 6.1, 6.2, 6.3, 6.4, 5, 4.5], angleStep: 2, radius: 0.72, room: 0.8,
+  fallbackRadii: [7, 7.5, 8, 8.5, 9, 9.5, 10, 11, 12, 14, 16],
+  maxSlope: 0.3, maxRise: 0.25, dryHeight: 0.3, remoteSlack: 2.5,
+  displayScale: 0.24, outline: 0.025,
+  interactClearance: 2.5, frontReach: 2.1, frontHalfWidth: 1.2,
+  dropDistances: [1.8, 2, 1.6], dropAngles: [45, -45, 30, -30, 60, -60, 15, -15, 0],
+};
 export const HAT_RACK = { x: -0.6, z: 9.8, radius: 0.65 };
 export const SIGNPOST = { x: -4.2, z: 6.8 };
 export const ITEM_PICKUP_LOCK = 0.6;

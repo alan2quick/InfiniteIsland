@@ -1,3 +1,5 @@
+// Rack API: configureRacks(access), cycleRack(player, fire), rackStock(slot, fire), rackDecision(player, fire), resetRacks() (host only).
+// Rack wire: request rack {fire}; event rack {actor, fire, put, drop:{id,spot,yaw}|null, take, from, line}; rackReset {}.
 // Equippable items: ordinary ground pickups on home and Frostpine, plus host-spawned special lightsabers; equipping into a player's right
 // hand, Animal-Crossing style swapping (the held item is tossed to where the new one lay) and the swing action.
 // Every player holds at most one item and each item is held by at most one player (`rec.holder`).
@@ -30,6 +32,7 @@
 //     when two players press Interact on the same pickup in the same frame the first one wins and the other press does nothing
 //   * a player's pickups are ignored for LOCK seconds after one happens, and a swap always ends with exactly one item in hand
 import * as THREE from 'three';
+import { DEFS } from '../items/spawns.js';
 import { buildItemModel } from '../items/models.js';
 import { HOLD_ARM_X, HOLD_ARM_Z } from '../player/player.js';
 import { getHeight, isWalkable, getGroundType, getSlope, streamDistance } from './terrain.js';
@@ -42,6 +45,8 @@ import { DUNGEON, WEAPONS } from '../game/dungeonLogic.js';
 import { SUPPLY } from '../game/areas/wildroot.js';
 import { AREAS } from '../game/areaLogic.js';
 import { TOOLS, ISLAND_SWINGS } from '../items/tools.js';
+import { RACK_COUNT, rackId, rackInfo, decideCycle } from '../game/toolRackLogic.js';
+import { TOOL_RACK } from '../config.js';
 import { duskHearthLayout } from './islands/duskHearth.js';
 
 const HOVER = 0.7;             // height of the item's centre above the ground while it floats
@@ -65,16 +70,6 @@ const easeOutQuad = (u) => 1 - (1 - u) * (1 - u);
 const easeInOut = (u) => u * u * (3 - 2 * u);
 const easeOutBack = (u) => { const c = 1.9; const v = u - 1; return 1 + (c + 1) * v * v * v + c * v * v; };
 
-/** Hand-picked spots (nudged to the nearest valid one at start-up). */
-const DEFS = [
-  { kind: 'axe',        at: [4.5, 16.5],    roll: Math.PI },      // ~5u from spawn, visible from the first frame (the campfire plaza is east of the spawn)
-  { kind: 'sword',      at: [29.1, 39.5] },                       // south-east beach
-  { kind: 'hammer',     at: [-7.5, -21.1] },                      // top of the plateau
-  { kind: 'axe',        at: [15, 14] },                        // by the pond
-  { kind: 'hammer',     at: [-42.3, 8.4] },                    // west beach
-  { kind: 'shovel',     at: [-26, -4] },                       // west meadow
-  { kind: 'shovel',     at: [1.7, -3.3] },                       // by the stream
-];
 
 function makeBlobTexture() {
   const c = document.createElement('canvas');
@@ -96,6 +91,7 @@ const vec = (v) => ({ x: r3(v.x), y: r3(v.y), z: r3(v.z) });
 
 export function createItems({ scene, players, particles, hud, sfx = null, sync, frost = null, ember = null }) {
   const snd = (name, opts) => { if (sfx) sfx.play(name, opts); };
+  let rackAccess = null; // Supplied by toolRacks after the static placement plan exists.
   let time = 0;
   const heldMap = new Map();                  // LOCAL Player -> record it holds (state 'toHand' or 'held'); items held by other screens' players are state 'remote'
   const locks = new Map();                    // actor key -> seconds during which that player's further pickups are ignored
@@ -134,13 +130,13 @@ export function createItems({ scene, players, particles, hud, sfx = null, sync, 
     }
     return true;
   };
-  function findSpot(x, z) {
-    for (let r = 0; r <= 9; r += 0.5) {
+  function findSpot(x, z, accept = spotOk, limit = 9) {
+    for (let r = 0; r <= limit; r += 0.5) {
       const n = r === 0 ? 1 : 12;
       for (let i = 0; i < n; i++) {
         const a = (i / n) * TAU;
         const xx = x + Math.cos(a) * r, zz = z + Math.sin(a) * r;
-        if (spotOk(xx, zz)) return new THREE.Vector3(xx, getHeight(xx, zz), zz);
+        if (accept(xx, zz)) return new THREE.Vector3(xx, getHeight(xx, zz), zz);
       }
     }
     return null;
@@ -738,9 +734,17 @@ export function createItems({ scene, players, particles, hud, sfx = null, sync, 
     const pageRecs = [];
     for (const e of pageTools.values()) if (heldMap.get(e.rec.holder) === e.rec) pageRecs.push(e.rec);
     for (const rec of pageRecs.length ? records.concat(pageRecs) : records) {
-      if (rec.enabled === false) continue;
+      if (rec.enabled === false || rec.state === 'rack') continue;
       switch (rec.state) {
         case 'ground': case 'landing': updateGround(rec, dt); break;
+        case 'toRack': {
+          rec.t += dt; const u = clamp01(rec.t / TO_HAND_TIME);
+          rec.pivot.position.lerpVectors(rec.p0, rec.rackTarget, easeInOut(u));
+          rec.pivot.position.y += Math.sin(u * Math.PI) * 0.3;
+          rec.pivot.scale.setScalar(1 - u * 0.8);
+          if (u >= 1) putRack(rec);
+          break;
+        }
         case 'remote': break;                                   // held by another screen's player: hidden
         case 'toHand': updateToHand(rec, dt); break;
         case 'tossing': updateToss(rec, dt); break;
@@ -860,6 +864,105 @@ export function createItems({ scene, players, particles, hud, sfx = null, sync, 
     register(rec);
     records.push(rec);
   }
+
+  // Eighty lightweight reservations: meshes only exist after the first take. No rack state ever reaches a save.
+  const rackBase = records.length;
+  for (let n = 0; n < RACK_COUNT; n++) {
+    const rack = rackInfo(rackBase, rackBase + n);
+    records.push({ id: rackBase + n, kind: rack.kind, name: rack.kind, rack, state: 'rack', holderKey: null,
+      holder: null, spot: new THREE.Vector3(), home: new THREE.Vector3(), interactable: null });
+  }
+  function materialise(rec) {
+    if (rec.model) return rec;
+    const built = makeRecord({ kind: rec.kind }, rec.home);
+    Object.assign(rec, built, { id: rec.id, rack: rec.rack, state: 'rack' });
+    rec.ground.visible = false;
+    return rec;
+  }
+  const rackPlace = (r) => (r.state === 'rack' || r.state === 'toRack') ? 'rack' : r.holderKey ? 'held' : 'out';
+  function rackStock(owner, fire) {
+    return Object.fromEntries(TOOL_RACK.kinds.map((kind) => {
+      const id = rackId(rackBase, fire, owner, kind);
+      return [kind, id === null ? null : rackPlace(records[id])];
+    }));
+  }
+  function rackDecision(player, fire) {
+    const held = heldByKey(keyOf(player));
+    return decideCycle(held && { id: held.id, kind: held.kind, own: held.rack?.fire === fire && held.rack.owner === player.index },
+      rackStock(player.index, fire), rackAccess?.kinds() || []);
+  }
+  function putRack(rec) {
+    if (rec.model) {
+      if (rec.holder && heldMap.get(rec.holder) === rec) { heldMap.delete(rec.holder); rec.holder.holding = false; }
+      const trail = trails.get(rec.holder);
+      if (trail) { disposeTrail(trail); trails.delete(rec.holder); }
+      unregister(rec); rec.pivot.removeFromParent(); rec.pivot.visible = false; rec.ground.visible = false;
+    }
+    rec.holder = rec.holderKey = null; rec.state = 'rack';
+  }
+  function applyRack(d) {
+    const key = actorKey(d.actor), player = localPlayerOfKey(key);
+    const pos = rackAccess?.spot(d.fire);
+    if (d.put !== null) {
+      const rec = records[d.put];
+      if (rec?.rack) {
+        if (pos) particles.burst('sparkle', pos, { count: 5, radius: 0.4 });
+        // A cosmetic return flight: stock changes atomically with the event, never on an animation timer.
+        if (rec.model && pos) {
+          rec.pivot.updateWorldMatrix(true, false);
+          const from = rec.pivot.getWorldPosition(new THREE.Vector3());
+          const q = rec.pivot.getWorldQuaternion(new THREE.Quaternion());
+          if (!rec.holder) from.set(d.from?.x ?? pos.x, (d.from?.y ?? pos.y) + 1, d.from?.z ?? pos.z);
+          putRack(rec); scene.add(rec.pivot); rec.pivot.visible = true; rec.pivot.position.copy(from); rec.pivot.quaternion.copy(q);
+          rec.p0.copy(from); rec.rackTarget = new THREE.Vector3(pos.x, pos.y + 0.8, pos.z); rec.t = 0; rec.state = 'toRack';
+        } else putRack(rec);
+      }
+    }
+    if (d.drop) applyDrop({ ...d.drop, from: d.from || pos });
+    if (d.take !== null) {
+      const rec = materialise(records[d.take]);
+      if (pos) { rec.home.set(pos.x, pos.y, pos.z); rec.spot.copy(rec.home); }
+      rec.pivot.visible = true; scene.add(rec.pivot);
+      rec.pivot.position.copy(rec.home); rec.pivot.position.y += 0.8;
+      rec.holderKey = key;
+      if (player) { rec.holder = player; beginToHand(rec); heldMap.set(player, rec); player.holding = true; player.hop?.(); }
+      else goRemote(rec);
+      snd('equip');
+      rackAccess?.label(rec.name, player, d.actor);
+    }
+    if (d.line && player) hud.toast(d.line);
+    locks.set(key, LOCK);
+  }
+  function rackDropSpot(actor, rack, rec) {
+    const dx = actor.pos.x - rack.x, dz = actor.pos.z - rack.z;
+    const away = Math.atan2(dz, dx);
+    const valid = (x, z) => isWalkable(x, z) && getHeight(x, z) >= TOOL_RACK.dryHeight && getSlope(x, z) <= TOOL_RACK.maxSlope
+      && !/water|wet/.test(getGroundType(x, z)) && !overlapsAny(x, z, 0.55)
+      && Math.hypot(x - rack.x, z - rack.z) > INTERACT_RADIUS + TOOL_RACK.radius
+      && getInteractables().every((it) => it.type === 'toolrack' || Math.hypot(x - it.position.x, z - it.position.z) >= 0.55 + it.radius);
+    // Intentional camp drops may land inside the larger camp clearing; ordinary pickup placement excludes it.
+    for (const distance of TOOL_RACK.dropDistances) for (const degrees of TOOL_RACK.dropAngles) {
+      const angle = away + degrees * Math.PI / 180;
+      const spot = findSpot(actor.pos.x + Math.cos(angle) * distance, actor.pos.z + Math.sin(angle) * distance, valid, 0);
+      if (spot) return spot;
+    }
+    return findSpot(actor.pos.x + Math.cos(away) * 2, actor.pos.z + Math.sin(away) * 2, valid) || findSpot(rec.home.x, rec.home.z, valid) || rec.home.clone();
+  }
+  function handleRack(d, actor) {
+    if (!actor || !Number.isInteger(actor.index) || actor.index < 0 || actor.index > 3 || !rackAccess?.unlocked(d.fire)) return { reject: 'locked' };
+    const key = actorKey(actor), p = localPlayerOfKey(key), pos = rackAccess.spot(d.fire);
+    if (!pos || !actor.pos || !Number.isFinite(actor.pos.x) || !Number.isFinite(actor.pos.z) || Math.hypot(actor.pos.x - pos.x, actor.pos.z - pos.z) > INTERACT_RADIUS + TOOL_RACK.radius + (actor.screen === sync.screenId ? 0 : TOOL_RACK.remoteSlack)) return { reject: 'far' };
+    if (actor.screen === sync.screenId && !p) return { reject: 'gone' };
+    if ((locks.get(key) || 0) > 0 || p?.frozen || p?.away || p?.leaving || players.frozenAll || !rackAccess.allowed(actor)) return { reject: 'locked' };
+    const held = heldByKey(key);
+    const decision = decideCycle(held && { id: held.id, kind: held.kind, own: held.rack?.fire === d.fire && held.rack.owner === actor.index }, rackStock(actor.index, d.fire), rackAccess.kinds());
+    const spot = decision.drop === null ? null : vec(rackDropSpot(actor, pos, held));
+    const data = { actor: { screen: actor.screen, index: actor.index }, fire: d.fire, put: decision.put,
+      drop: decision.drop === null ? null : { id: decision.drop, spot, yaw: r3(Math.random() * TAU) },
+      take: decision.take ? rackId(rackBase, d.fire, actor.index, decision.take) : null, from: vec(actor.pos), line: decision.line };
+    applyRack(data); sync.emit('items', 'rack', data); return true;
+  }
+  function resetRacks() { for (const r of records) if (r.rack) putRack(r); locks.clear(); }
 
   function applySpecial(d) {
     if (records[d.id] || d.id !== records.length || d.kind !== 'lightsaber') return false;
@@ -1003,13 +1106,18 @@ export function createItems({ scene, players, particles, hud, sfx = null, sync, 
   });
 
   sync.register('items', {
-    snapshot: () => ({ items: records.map((r) => ({ id: r.id, enabled: r.enabled !== false, holder: r.holderKey, spot: r.holderKey ? null : vec(r.spot), gone: r.state === 'gone', ethereal: r.ethereal ? { kind: r.kind, color: r.color, roll: r.roll, home: vec(r.home) } : null, special: r.special ? { kind: r.kind, color: r.color, home: vec(r.home) } : null })) }),
+    hashView: () => records.map((r) => ({ id: r.id, holder: r.holderKey, spot: r.holderKey || r.rack && rackPlace(r) === 'rack' ? null : vec(r.spot), enabled: r.enabled !== false, gone: r.state === 'gone', place: r.rack ? rackPlace(r) : null })),
+    snapshot: () => ({ items: records.map((r) => ({ id: r.id, enabled: r.enabled !== false, holder: r.holderKey, spot: r.holderKey ? null : vec(r.spot), rack: r.rack || null, place: r.rack ? rackPlace(r) : null, gone: r.state === 'gone', ethereal: r.ethereal ? { kind: r.kind, color: r.color, roll: r.roll, home: vec(r.home) } : null, special: r.special ? { kind: r.kind, color: r.color, home: vec(r.home) } : null })) }),
     applySnapshot(snap) {
       for (const e of (snap && snap.items) || []) {
         if (!records[e.id] && e.ethereal) applyEthereal({ id: e.id, ...e.ethereal, holder: null });
         if (!records[e.id] && e.special) applySpecial({ id: e.id, ...e.special, spot: e.special.home });
         const rec = records[e.id];
         if (!rec) continue;
+        if (rec.rack) {
+          if (e.place === 'rack') { putRack(rec); continue; }
+          materialise(rec);
+        }
         if (e.gone) { poof(rec); continue; }
         if (rec.dungeonSlot !== undefined) {
           rec.enabled = e.enabled !== false;
@@ -1029,13 +1137,16 @@ export function createItems({ scene, players, particles, hud, sfx = null, sync, 
       }
     },
     applyEvent(kind, d) {
-      if (kind === 'pickup') applyPickup(d);
+      if (kind === 'rack') applyRack(d);
+      else if (kind === 'rackReset') resetRacks();
+      else if (kind === 'pickup') applyPickup(d);
       else if (kind === 'drop') applyDrop(d);
       else if (kind === 'spawnSpecial') applySpecial(d);
       else if (kind === 'ethereal') applyEthereal(d);
       else if (kind === 'dungeonSupply') applyDungeonSupply(d);
     },
     handleRequest(kind, d, actor) {
+      if (kind === 'rack') return handleRack(d, actor);
       if (kind === 'pickup') return handlePickup(d, actor);
       if (kind === 'drop') return handleDrop(d, actor);
       return { reject: 'unknown-kind' };
@@ -1058,6 +1169,11 @@ export function createItems({ scene, players, particles, hud, sfx = null, sync, 
     spawnSpecial,
     restoreEthereal,
     dungeonSupply,
+    rackBase,
+    configureRacks(access) { rackAccess = access; },
+    rackStock, rackDecision,
+    cycleRack(player, fire) { return sync.request('items', 'rack', { fire }, sync.actorFor(player)); },
+    resetRacks() { if (!sync.isHost) return false; resetRacks(); sync.emit('items', 'rackReset', {}); return true; },
     heldBy(player) { return heldMap.get(player) || null; },
     /** Remote attacks already start their arm swing; reuse that weapon's existing ribbon. */
     combatTrail(player, kind, charged = false) {

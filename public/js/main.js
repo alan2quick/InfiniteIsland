@@ -93,6 +93,8 @@ import { HATS } from './player/hats.js';
 import { TAILS } from './player/tails.js';
 import { GARLANDS } from './player/garlands.js';
 import { createGarlandStand } from './world/garlandStand.js';
+import { toolRackPlan, saplingReserve } from './world/toolRackPlan.js';
+import { createToolRacks } from './world/toolRacks.js';
 import { createHatRack } from './world/hatRack.js';
 import { createTailStump } from './world/tailStump.js';
 import { createNpcs } from './world/npcs.js';
@@ -512,6 +514,10 @@ const carle = createCarle({ sync, plan: carlePlan, inventory, pets: petsDomain, 
 const carleWorld = createCarleWorld({
   scene, players, world: worldVis, sync, carle, plan: carlePlan, domain: petsDomain, inventory, thoughts, particles, sfx, hud, dialog, cinematic, camera, pets, floatText, heightAt: getHeight,
 });
+// Plan racks after createGathering and garden plot registration, reserving all later camp stages too.
+const toolRacks = createToolRacks({ plan: toolRackPlan({ reserved: [saplingReserve(carlePlan.collider)] }), scene, players, items, quests, sync, boat, world: worldVis, particles, sfx, table: slotTable, cinematic, followCam, params,
+  floatLabel: (text, at, by) => invBar.label(text, at, by && players.multi ? by.colors.ui : null),
+});
 dayNight.flushCatchUp();                                                          // Step 74b: the clock's load catch-up (the game was closed) reaches the listeners only now that they all exist
 const beachFinds = createBeachFinds({ scene, collection, sync, world: worldVis });
 // The bridge-opening cutscene (Step 28c): takes over the final stage of a bridge (hook of world/bridges.js) on every screen
@@ -879,6 +885,7 @@ function tick(realDt) {
   harvest.update(dt);
   gathering.update(dt);
   campfires.update(dt, camera, renderer.domElement.height);  // every fire: fuel, flames / embers, toss + cooking tasks, floating status; then the shared light + crackle
+  toolRacks.update(dt);
   hatRack.update(dt);                         // pop-in / pop-onto-peg animations
   rootgate.update(dt, simTime);               // the Rootgate's brambles shrinking away after the first feast
   caveMouth.update(dt, simTime);              // the cave mouth's mist and its trophy's pop-in
@@ -952,6 +959,7 @@ function tick(realDt) {
       source: p.actions.activeSource, color: p.colors.ui, label: p.colors.name,
     });
   }
+  for (const p of players.list) { const t = targets.get(p); if (t?.type === 'toolrack') { const pr = prompts.find((q) => q.key === p.index); if (pr) pr.text = toolRacks.prompt(p, t.fire); } }
   hud.update(dt, { camera, multi: players.multi, prompts });
   // ambient visuals (advance with the tick so __game.step drives them too)
   title.update(dt);
@@ -1341,6 +1349,7 @@ const tdoongzDebug = {
 const partyDebug = party;
 
 window.__game = {
+  toolRacks,
   version: VERSION, party: partyDebug, dusk: duskDebug, boat: boatDebug, tdoongz: tdoongzDebug, hats, tails, pets: petsDebug, petLab, capray: caprayDebug, carle: carleDebug, petStable, garlands: {
     list: GARLANDS.map((g) => g.name), set: (p, i) => garlandStand.wear(typeof p === "number" ? players.list.find((a) => a.index === p) : p, i),
     cycle: (p = players.p1) => garlandStand.cycle(p), get unlocked() { return garlandStand.unlocked; },

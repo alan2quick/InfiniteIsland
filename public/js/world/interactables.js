@@ -13,7 +13,9 @@
 // items) live in a coarse spatial grid keyed by their position at add / restore time, so a query only visits the few cells around the
 // player (in practice: the player's region). Ground items ('item', the tools) mutate their `position` in place when they are tossed or
 // dropped, so they sit in a small always-scanned list instead. Ties on equal distance go to the most recently added / restored entry, exactly
-// like the old linear scan over the registration-ordered array (`seq`).
+// like the old linear scan over the registration-ordered array (`seq`). A reachable toolrack wins only in its narrow +Z front approach.
+
+import { TOOL_RACK } from '../config.js';
 
 const GRID_CELL = 16;                        // u; wider than every static footprint, so a query needs about 3 x 3 cells
 const DYNAMIC_TYPES = new Set(['item', 'critter', 'tdoong']);     // types whose `position` may be mutated while registered ('critter': Frostpine's wandering animals, Step 34a; 'tdoong': the wandering Tdoongz, Step 64a)
@@ -93,13 +95,18 @@ export function clearInteractables() {
  */
 export function findNearest(pos, maxDist = 2.2, eligible = null) {
   let best = null;
-  let bestD = maxDist;
+  let bestD = maxDist, bestPriority = 0;
   const consider = (it) => {
     if (it.canInteract && !it.canInteract(pos)) return;
     if (eligible && !eligible(it)) return;
     const dx = pos.x - it.position.x, dz = pos.z - it.position.z;
     const d = Math.max(0, Math.sqrt(dx * dx + dz * dz) - it.radius);
-    if (d < bestD || (d === bestD && (best === null || it.seq > best.seq))) { bestD = d; best = it; }
+    if (d > maxDist) return;
+    // Repeated presses in front of a rack cycle tools even if a pickup landed nearby.
+    const priority = it.type === 'toolrack' && dz >= 0 && Math.abs(dx) <= TOOL_RACK.frontHalfWidth && Math.hypot(dx, dz) <= TOOL_RACK.frontReach ? 1 : 0;
+    if (priority > bestPriority || priority === bestPriority && (d < bestD || d === bestD && (best === null || it.seq > best.seq))) {
+      bestD = d; best = it; bestPriority = priority;
+    }
   };
   const reach = maxDist + _maxR;
   const x0 = Math.floor((pos.x - reach) / GRID_CELL), x1 = Math.floor((pos.x + reach) / GRID_CELL);

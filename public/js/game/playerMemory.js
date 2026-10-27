@@ -8,7 +8,7 @@ const zones = new Set(['home', 'frost', 'ember', 'story', 'duskcrown', 'ritual',
 // ('story' = Storybook Cay AND a storybook page: pages are session-only, so a reload lands at the book stand)
 
 export function rememberedTool(tool) {
-  if (!tool || !Object.hasOwn(TOOLS, tool.kind)) return null;
+  if (!tool || tool.rack || !Object.hasOwn(TOOLS, tool.kind)) return null;
   return {
     kind: tool.kind,
     color: typeof tool.color === 'string' && /^#[0-9a-f]{6}$/i.test(tool.color) ? tool.color : null,
