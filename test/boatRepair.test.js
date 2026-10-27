@@ -9,7 +9,7 @@ import { beatAt, judgeBeat, streakHit, validateStreak, tarHeat, validateRepair, 
 import { coveLayout } from '../public/js/world/islands/emberCove.js';
 import { getHeight, isWalkable } from '../public/js/world/terrain.js';
 import { courseAt, clearCourses, registerCourse, setHopClock, stepHop, surfaceAt, padPos, validateCourse } from '../public/js/game/hopLogic.js';
-import { repairRows, boatPages } from '../public/js/game/marloScript.js';
+import { repairRows, boatPages, questRowsShown } from '../public/js/game/marloScript.js';
 const storage = new Map();
 globalThis.localStorage = { getItem: k => storage.get(k) ?? null, setItem: (k,v) => storage.set(k,v), removeItem: k => storage.delete(k) };
 const { createBoat } = await import('../public/js/world/boat.js');
@@ -87,6 +87,10 @@ test('Marlo progress, activity hints, cheers and voyage hint follow party state'
   const s=ready();assert.match(repairRows(s)[0].detail,/Four/);s.planks=8;s.seams.fill(true);
   assert.match(repairRows(s)[0].detail,/Eight/);assert.match(repairRows(s)[1].detail,/Tar-tight/);assert.match(repairRows(s)[2].detail,/45 seconds/);
   s.floated=true;assert.match(boatPages(s)[0],/Come back at night/);s.sights.fill(true);assert.deepEqual(boatPages(s),["Ready to see what's past the horizon?"]);s.launched=true;assert.match(boatPages(s)[0],/new dock/);
+});
+test("Marlo's finished boat rows go away: repair rows once she floats, How's the boat? after the voyage",()=>{
+  const s=ready();s.repair=false;assert.deepEqual(questRowsShown(s),{repair:false,boat:true});s.repair=true;assert.deepEqual(questRowsShown(s),{repair:true,boat:true});
+  s.floated=true;assert.deepEqual(questRowsShown(s),{repair:false,boat:true});s.launched=true;s.at='duskcrown';assert.deepEqual(questRowsShown(s),{repair:false,boat:false});
 });
 test('replica repair rejects locked, wrong order and far; Marlo starts once after all parts',async()=>{
   const p=pair();assert.equal((await p.request('repair',{},L.marlo)).reason,'locked');

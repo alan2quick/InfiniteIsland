@@ -19,7 +19,7 @@ const { createPetsDomain, PETS_KEY } = await import('../public/js/game/petsDomai
 const { createPetModel, PETS, petMaterial, petUniforms } = await import('../public/js/npc/pets.js');
 const { createPets, STORAGE_KEY } = await import('../public/js/world/pets.js');
 
-test('the version is 0.85.7', () => { assert.equal(VERSION, '0.85.7'); });
+test('the version is 0.85.9', () => { assert.equal(VERSION, '0.85.9'); });
 
 // ---- ids and the wire ---------------------------------------------------------------------------------------------------------------------------------------------------------
 test('ids: Capray first, pose ids are 1 + index, 0 / junk decode as none, the model registry has the same order', () => {

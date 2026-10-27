@@ -18,7 +18,7 @@
 import { TOOL_RACK } from '../config.js';
 
 const GRID_CELL = 16;                        // u; wider than every static footprint, so a query needs about 3 x 3 cells
-const DYNAMIC_TYPES = new Set(['item', 'critter', 'tdoong']);     // types whose `position` may be mutated while registered ('critter': Frostpine's wandering animals, Step 34a; 'tdoong': the wandering Tdoongz, Step 64a)
+const DYNAMIC_TYPES = new Set(['item', 'critter', 'tdoong', 'caprayfeed']);     // types whose `position` may be mutated while registered ('critter': Frostpine's wandering animals, Step 34a; 'tdoong': the wandering Tdoongz, Step 64a; 'caprayfeed': the offering spot follows the wild ray round its pond, Step 73b)
 
 const _items = [];                           // every registered interactable (public getInteractables() array, registration order)
 const _grid = new Map();                     // cell key -> static interactables

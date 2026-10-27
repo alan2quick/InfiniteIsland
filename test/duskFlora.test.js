@@ -92,7 +92,7 @@ test('small assets bound their footprints, use glow roles and stay within the wh
       for (let k = 0; k < pos.count; k++) assert.ok(Math.hypot(pos.getX(k), pos.getZ(k)) <= DUSK_SMALL.footprints[kind] + 0.001, `${kind} footprint`);
     }
   }
-  const v = buildDuskSmallVisuals(island, P); assert.ok(v.summary().triangles < 140000); assert.ok(v.summary().drawCalls <= 100);
+  const v = buildDuskSmallVisuals(island, P); assert.ok(v.summary().triangles < 140000); assert.ok(v.summary().drawCalls <= 102);      // (+2: the pickable glowcap clumps' own golden layer and hull, one chunk, Step 72b playtest fix)
   v.group.traverse((o) => { assert.ok(!o.isLight); if (o.isMesh) assert.equal(o.castShadow, false); }); v.dispose();
 });
 

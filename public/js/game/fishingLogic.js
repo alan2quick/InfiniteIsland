@@ -3,6 +3,7 @@
 // { id, x, z, rx, rz, depth, deep, lagoon } (world/islands/duskHearth.js duskFishPonds: the `dusk-pond-NN` circles and the lagoon's ellipse).
 //
 //   Spots (host):    createSpotSim(rng, ponds, cfg?) -> sim           tickSpots(sim, dt, rng, ponds, cfg?) -> changed (spots live life[0]..life[1] s, then move to another pond after gap[0]..gap[1] s;
+//                    cfg.minChance > 0 (Capray waits for a Lanternkoi): new spots go to deep ponds as orange 'chance' spots until there are that many, a common one moves on early to make room;
 //                    spotList(sim) -> [{ id, pond, x, z, kind, by, ph }]   a claimed spot never expires while somebody is fishing it)        claimSpot(sim, id, key) / releaseSpot(sim, id, { move })
 //                    pondS(p, x, z) (0 centre .. 1 edge)  pickSpotPond(rng, ponds, used, cfg?)  spotKindFor(rng, pond, cfg?)  spotPoint(rng, pond, kind, cfg?)
 //   Casting:         aimCast(pond, from, facing, dist, cfg?) -> { x, z }      nearestSpot(spots, x, z, snap) -> spot | null      bobberFor(ponds, pos, facing, cfg?) -> { x, z, pond } | null (avatars)
@@ -49,15 +50,21 @@ export function createSpotSim(rng, ponds, cfg = FISHING) {
   }
   return sim;
 }
+const chanceCount = (sim) => sim.slots.filter((s) => s.spot && s.spot.kind === 'chance').length;
 function appear(sim, slot, rng, ponds, cfg) {
   const used = new Set(sim.slots.filter((s) => s.spot).map((s) => s.spot.pond));
-  const pond = pickSpotPond(rng, ponds, used, cfg), kind = spotKindFor(rng, pond, cfg), pt = spotPoint(rng, pond, kind, cfg);
+  const short = cfg.minChance > 0 && chanceCount(sim) < cfg.minChance, deep = short ? ponds.filter((p) => p.deep) : null;    // too few orange spots: this one goes to deep water
+  const pond = pickSpotPond(rng, deep && deep.length ? deep : ponds, used, cfg), kind = short && pond.deep ? 'chance' : spotKindFor(rng, pond, cfg), pt = spotPoint(rng, pond, kind, cfg);
   slot.spot = { id: `fish-${++sim.serial}`, pond: pond.id, x: pt.x, z: pt.z, kind, by: null, ph: r2(rng() * TAU), until: sim.clock + between(rng, cfg.life) };
 }
 /** Advance the schedule by `dt`; returns true when the visible list changed (a spot left or appeared). */
 export function tickSpots(sim, dt, rng, ponds, cfg = FISHING) {
   sim.clock += dt;
   let changed = false;
+  if (cfg.minChance > 0 && chanceCount(sim) + sim.slots.filter((s) => !s.spot).length < cfg.minChance) {      // `minChance` (a quest wants a Lanternkoi): move one common spot on early to make room
+    const free = sim.slots.filter((s) => s.spot && !s.spot.by && s.spot.kind === 'common').sort((a, b) => a.spot.until - b.spot.until)[0];
+    if (free) free.spot.until = Math.min(free.spot.until, sim.clock);
+  }
   for (const slot of sim.slots) {
     if (slot.spot) {
       if (slot.spot.by) continue;                                 // somebody is fishing it: it stays

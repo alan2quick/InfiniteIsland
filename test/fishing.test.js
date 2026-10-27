@@ -28,7 +28,7 @@ const ponds = duskFishPonds(), byId = new Map(ponds.map((p) => [p.id, p]));
 const hearth = duskHearthLayout();
 const bank = (pond, a = 0.4) => ({ x: pond.x + Math.cos(a) * (pond.rx * 1.05 + 0.4), y: 0.3, z: pond.z + Math.sin(a) * (pond.rz * 1.05 + 0.4) });
 
-test('the version is 0.85.7', () => { assert.equal(VERSION, '0.85.7'); });
+test('the version is 0.85.9', () => { assert.equal(VERSION, '0.85.9'); });
 
 test('the marsh hearth is a FIRES entry with its own domain, menu, save key and island; the other fires are untouched', () => {
   const dusk = FIRES.find((f) => f.id === 'dusk');
@@ -185,7 +185,7 @@ test('rollSchedule: deterministic, 0-3 nibbles before the bite, the bite 2-8 s a
     assert.equal(a.bites.length, 1); assert.equal(a.bites[0].win, 0.6); assert.ok(a.bites[0].at >= 2 && a.bites[0].at <= 8);
     assert.ok(a.nibbles.length <= 3); for (let i = 0; i < a.nibbles.length; i++) { assert.ok(a.nibbles[i] >= FISHING.nibbleFrom && a.nibbles[i] <= a.bites[0].at - FISHING.biteGap + 1e-9); if (i) assert.ok(a.nibbles[i] - a.nibbles[i - 1] >= FISHING.nibbleGap[0] - 0.011); }
     const k = rollSchedule(mulberry32(seed), 'lanternkoi');
-    assert.deepEqual(k.bites.map((x) => x.win), [0.4, 0.35, 0.3]); for (let i = 1; i < 3; i++) assert.ok(k.bites[i].at > k.bites[i - 1].at + k.bites[i - 1].win);
+    assert.deepEqual(k.bites.map((x) => x.win), FISHING.windows.lanternkoi); for (let i = 1; i < 3; i++) assert.ok(k.bites[i].at > k.bites[i - 1].at + k.bites[i - 1].win);
     assert.ok(!('species' in scheduleView(k))); assert.ok(castEnd(scheduleView(k)) > k.bites[2].at + k.bites[2].win);
   }
   const rng = mulberry32(3); let koi = 0; for (let i = 0; i < 4000; i++) { assert.equal(rollSpecies(rng, 'common'), 'glimmerfin'); if (rollSpecies(rng, 'chance') === 'lanternkoi') koi++; }
@@ -381,4 +381,21 @@ test('the fish are in the catalog, the rod has an icon, the line flag rides the 
   assert.equal(idle.flags & 256, 0); assert.equal(out.flags & 256, 256);
   assert.equal(decodePose(encodePose({ ...base, _lineOut: true, moving: true, _pose: [1] })).flags, 1 | 8 | 256);
   assert.equal(decodePose(encodePose(base).slice(0, 12)).flags & 256, 0, 'a 12-field packet from an older build');
+});
+
+test('spots: while a quest wants a Lanternkoi (cfg.minChance) the host keeps at least that many orange spots on deep ponds within one spot life + gap (playtest fix)', () => {
+  const want = { ...FISHING, chanceOdds: 1, minChance: FISHING.wantChance };
+  for (let seed = 1; seed <= 20; seed++) {
+    const rng = mulberry32(seed), sim = createSpotSim(rng, ponds);
+    let full = 0, n = 0;
+    for (let t = 0; t < 400; t += 0.25) {
+      tickSpots(sim, 0.25, rng, ponds, want);
+      if (t < 20) continue;
+      const list = spotList(sim), chance = list.filter((s) => s.kind === 'chance'), empty = sim.slots.filter((s) => !s.spot).length;
+      assert.ok(chance.length + empty >= FISHING.wantChance, `seed ${seed} t ${t}: ${chance.length} orange + ${empty} pending`);       // (a slot in its gap is on its way to deep water)
+      for (const s of chance) assert.ok(ponds.find((p) => p.id === s.pond).deep, 'orange spots are on deep ponds');
+      n++; if (chance.length >= FISHING.wantChance) full++;
+    }
+    assert.ok(full / n > 0.8, `seed ${seed}: two orange spots ${(100 * full / n).toFixed(0)}% of the time`);
+  }
 });

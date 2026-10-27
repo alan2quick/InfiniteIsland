@@ -3,6 +3,7 @@
 //   MARLO_SCRIPT.intro / .greet / .who / .clams / .dusk (Step 71, at the Duskcrown dock) / .bye / .doze / .wake   fixed lines
 //   boatPages(boat) -> string[]     what he says to "How's the boat?": it follows the saved boat state (which parts are back), so it needs no extra memory
 //   nextHint(boat) -> string        the one-line pointer shown under the menu ("Next: ...")
+//   questRowsShown(boat) -> {repair, boat}   which boat rows the menu shows (finished rows go away)
 //   PART_HINTS                      where the open courses lead (Step 68b)
 export const PART_HINTS = {
   planks: 'my planks washed up on the big reef rock out in the tide pools',
@@ -70,6 +71,11 @@ export function nextHint(boat) {
   if (!parts.rudder) return 'Next: cross the cooling lava pool on the lower flank for the rudder. Rest on still basalt.';
   if (!parts.compass) return 'Next: climb the slippery sea-stack headland for the compass. Stop gently at the shell bell.';
   return boat.launched ? 'Set sail at the new dock when the next tide is ready.' : boat.floated ? (boat.sights?.every(Boolean) ? "Ready to see what's past the horizon?" : 'Come back at night: spyglasses atop the sail tree, compass headland and crow\'s nest.') : boat.repair ? 'Nail the planks, carry hot tar, then come aboard for a leak test.' : "Let's patch her up, crew!";
+}
+
+/** Which boat-quest rows his menu shows: the repair rows only while the repair runs (until she floats); "How's the boat?" until the voyage (then the quest is over). */
+export function questRowsShown(s) {
+  return { repair: !!s?.repair && !s.floated, boat: !s?.launched };
 }
 
 // These progress rows are rebuilt from party state, so an open menu follows other screens' work.

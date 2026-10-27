@@ -34,6 +34,16 @@ export function getSmallAsset(kind) {
     add(ball, C.violet, { p: [x, h, z], s: [0.28, 0.16, 0.28] }, true, true);
     add(petal, C.pale, { p: [x + 0.06, h + 0.12, z + 0.07], s: [0.045, 0.018, 0.045] }, true);
   }
+  else if (kind === 'crumb') {          // Step 72b playtest fix: the PICKABLE glowcap clumps (islands/duskCrumbs.js) read apart from the violet ambient ones: fat golden caps with cream spots,
+    for (let i = 0; i < 3; i++) {       // a glowing orange gill rim and a ring of glowing crumbs on the ground (the item they give)
+      const x = (i - 1) * 0.36, z = Math.sin(i * 2.4) * 0.22, h = 0.34 + i * 0.16, r = 0.3 + 0.04 * i;
+      add(G.cyl6, C.pale, { p: [x, h / 2, z], s: [0.075, h, 0.075] });
+      add(ball, '#ffb347', { p: [x, h, z], s: [r, r * 0.62, r] }, true, true);
+      add(ball, C.orange, { p: [x, h - r * 0.22, z], s: [r * 0.92, r * 0.16, r * 0.92] }, true);
+      for (let k = 0; k < 4; k++) { const a = k * 1.7 + i; add(petal, C.cream, { p: [x + Math.cos(a) * r * 0.5, h + r * 0.5, z + Math.sin(a) * r * 0.5], s: [0.05, 0.02, 0.05] }, true); }
+    }
+    for (let k = 0; k < 7; k++) { const a = k * TAU / 7 + 0.3, d = 0.55 + (k % 3) * 0.12; add(stone, k % 2 ? '#ffd98a' : '#ffb347', { p: [Math.cos(a) * d, 0.04, Math.sin(a) * d], r: [k, k * 2, 0], s: [0.07, 0.05, 0.07] }, true); }
+  }
   else if (kind === 'bulb') for (let i = 0; i < 3; i++) {
     const x = (i - 1) * 0.23, z = Math.sin(i * 2) * 0.15, h = 0.8 + i * 0.23;
     add(stem, C.teal, { p: [x, h / 2, z], s: [0.025, h, 0.025] });

@@ -26,7 +26,7 @@ import { ICONS } from '../public/js/ui/icons.js';
 const island = ISLANDS.find((i) => i.id === 'duskcrown'), mod = getIslandModule('duskcrown');
 const DISHES = ['glimmerfin-skewer', 'marsh-chowder', 'dusk-wrap', 'lantern-supper'];
 
-test('the version is 0.85.7', () => { assert.equal(VERSION, '0.85.7'); });
+test('the version is 0.85.9', () => { assert.equal(VERSION, '0.85.9'); });
 
 test('the fish, the crumbs and the four dishes are real catalog entries tagged for Duskcrown, with inline-SVG icons (no emoji)', () => {
   for (const id of ['glimmerfin', 'lanternkoi', 'glowcap-crumbs']) {
@@ -161,7 +161,7 @@ test('crumb gathering records are appended LAST (after Frostpine\'s mushrooms an
   assert.deepEqual(dusk.map((r) => [r.x, r.z]), crumbs.clumps.map((c) => [c.x, c.z]));
   assert.ok(gat.plants.herbs.every((r) => r.isl !== 'dusk')); assert.equal(dusk[0].item.prompt, 'Pick'); assert.equal(dusk[0].item.type, 'mushroom');
   const small = buildDuskSmallVisuals(island, buildDuskFlora(island, mod)), m = new THREE.Matrix4(), r0 = dusk[0], c0 = crumbs.clumps[0];
-  const slot = () => { for (const mesh of small.group.children) if (mesh.isInstancedMesh && mesh.name.startsWith('dusk-small-mushroom-') && !mesh.name.endsWith('outline')) for (let i = 0; i < mesh.count; i++) { mesh.getMatrixAt(i, m); const p = new THREE.Vector3().setFromMatrixPosition(m); if (Math.hypot(p.x - c0.x, p.z - c0.z) < 1e-3) return { mesh, i }; } return null; };
+  const slot = () => { for (const mesh of small.group.children) if (mesh.isInstancedMesh && mesh.name.startsWith('dusk-small-crumb-') && !mesh.name.endsWith('outline')) for (let i = 0; i < mesh.count; i++) { mesh.getMatrixAt(i, m); const p = new THREE.Vector3().setFromMatrixPosition(m); if (Math.hypot(p.x - c0.x, p.z - c0.z) < 1e-3) return { mesh, i }; } return null; };
   const det = () => { const s = slot(); s.mesh.getMatrixAt(s.i, m); return m.determinant(); };
   assert.ok(det() > 0.1, 'visible');
   const actor = { screen: 's1', index: 1, pos: { x: r0.x, z: r0.z } };

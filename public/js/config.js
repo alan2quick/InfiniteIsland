@@ -2,7 +2,7 @@
 
 // Game version, shown on the title card. The client can't read package.json (only public/ is deployed), so this is
 // the source of truth: bump it together with "version" in package.json. Minor = last completed PLAN.md step.
-export const VERSION = '0.85.7';
+export const VERSION = '0.85.9';
 
 // Held-mouse direction: world-unit dead bands, optional pooled ground ring.
 export const MOUSE_STEER = { dead: 0.6, sideDead: 0.4, ring: true };
@@ -755,10 +755,12 @@ export const FISHING = {
   commonS: 0.6,                              // common spots lie within this fraction of a pond's radius (the deep bowl)
   chanceOdds: 0.5,                           // a spot at a deep pond (or the lagoon) is a 'chance' spot with this probability
   rareChance: 0.2,                           // a chance spot holds a Lanternkoi with this probability, else a Glimmerfin
+  wantChance: 2,                             // while Capray waits for a Lanternkoi (its stage 4) the host keeps at least this many orange spots, every deep pond's spot turns orange
+                                             //   (a common spot is moved on early to make room) -- a playtest went a whole session without seeing one
   castMin: 3, castMax: 5, snap: 3, inside: 0.9,    // the bobber flies this far (u), snaps onto a spot within `snap`, and stays inside this fraction of the pond's radius (the water's edge is at about 0.95)
   nibbles: [0, 3], nibbleFrom: 0.9, nibbleGap: [0.7, 1.4],   // 0..3 nibbles, the first this many s after the cast, then this far apart (and before the bite)
   bite: [2, 8], biteGap: 0.9,                // the first bite comes 2..8 s after the cast (at least `biteGap` after the last nibble)
-  windows: { glimmerfin: [0.6], lanternkoi: [0.4, 0.35, 0.3] }, fightGap: [0.9, 1.5],   // press windows per bite; a Lanternkoi fights back with two more shorter bites
+  windows: { glimmerfin: [0.6], lanternkoi: [0.5, 0.45, 0.4] }, fightGap: [0.9, 1.5],   // press windows per bite; a Lanternkoi fights back with two more shorter bites
   slack: 0.2,                                // the host forgives this much on a press (latency, the angler's frame time)
   emptyWait: 4,                              // an empty cast reels itself in after this long ("Not even a nibble...")
   timeout: 5,                                // the host drops a cast this long after its last bite window if no reel arrives
@@ -801,7 +803,9 @@ export const CAPRAY = {
   hitReach: 2.6, hitSlack: 1.6,              // a hit swing reaches this far from the stem's surface; remote slack
   shakeReach: 6,                             // a shake is accepted while the ray's LEADER stands within this of the titan's stem
   shakeActorReach: 3.2,                      // ... and the one shaking within this of the stem's surface (remote slack = hitSlack)
-  pity: 0.12, rareCap: 0.8,                  // stage 4: every Glimmerfin caught adds `pity` to the Lanternkoi chance at chance spots (FISHING.rareChance), up to `rareCap` in total
+  pityBase: 0.25, pity: 0.15, rareCap: 1,    // stage 4: the Lanternkoi chance at chance spots is FISHING.rareChance + pityBase + pity per Glimmerfin caught, up to `rareCap` in total (4 Glimmerfin = certain)
+  approach: 9,                               // stages 1-2 / 4: a local player with the fish the ray wants, within this of the pond's edge, makes it swim over to the near shore
+  shore: 0.78,                               // ... where it waits this fraction of the pond's radius out from the middle (the offering prompt sits on the shore beside it)
   scene: { preStart: 500, end: 6.4 },        // the befriend cinematic: host ms before it starts, seconds it lasts (skippable)
   glow: { shy: 0.55, sad: 0.32, perSpore: 0.2, full: 1 },     // the wild ray's glow multiplier: shy by the pond, dim when the titans are dark, +1 step per shower, full when favourite
   dim: 0.85, dimEase: 1.4,                   // a smothered titan's cap glow drops by this fraction; seconds the glow takes to fade back (and to dim when the moss grows in)

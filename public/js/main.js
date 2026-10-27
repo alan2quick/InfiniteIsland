@@ -483,7 +483,7 @@ const party = createParty({ scene, camera, followCam, players, avatars, table: s
 let autoParty = params.has('party') && !joinCode ? party.optsFromParams(params) : null;
 boatVoyageScene.setSail((to, p) => boatSailScene.ask(to, p));
 const duskDock = createDuskDock({ scene, world: worldVis, boat, players, ask: (to, p) => boatSailScene.ask(to, p) });
-const fishing = createFishing({ sync, ponds: duskFishPonds(), inventory, collection, rareBoost: () => capray.rareBoost });                                      // Step 72a: host-authoritative spots + cast / reel (session-only)
+const fishing = createFishing({ sync, ponds: duskFishPonds(), inventory, collection, rareBoost: () => capray.rareBoost, wantRare: () => sync.isHost && capray.stage === 4 });                                      // Step 72a: host-authoritative spots + cast / reel (session-only)
 const fishingSpots = createFishingVisuals({ scene, fishing, world: worldVis });                                 // the ripple rings + fish shadows (one instanced draw)
 const fishingPlay = createFishingPlay({ scene, fishing, players, avatars, items, sync, hud, sfx, particles, floatText, world: worldVis, showcase: journalShowcase });   // the angler: cast, nibbles, the press, the bobber + line
 // ---- Pets (Step 73a): the `pets` unlock domain (host-saved) and the cosmetic followers every screen builds for its local players and remote avatars (world/pets.js); ?testpet = Capray unlocked, never saved
@@ -505,7 +505,7 @@ const capray = createCapray({
 });
 const caprayWorld = createCaprayWorld({
   scene, players, avatars, world: worldVis, sync, capray, plan: caprayPlan, domain: petsDomain, pets, items, inventory, thoughts, particles, sfx, hud, dialog, cinematic, camera, floatText,
-  heightAt: getHeight, flora: duskFlora, marlo,
+  heightAt: getHeight, flora: duskFlora, marlo, markerRoot: hudRoot,
 });
 const petStable = createPetStable({ scene, players, avatars, world: worldVis, domain: petsDomain, pets, dialog, particles, sfx, hud, heightAt: getHeight });
 // ---- Carle's quest line (Step 74b): the `carle` domain (host-saved in infinite-island.home.v1), the caterpillar by the home campfire (world/carleWorld.js); it counts dawns on the clock, including the ones that passed while the game was closed
@@ -602,7 +602,7 @@ const musicButton = createMusicButton(hudRoot, music, sfx);
 const optionsMenu = createOptionsMenu(hudRoot, { musicButton, muteButton, pairPanel, hud, touch, locked: party.kiosk, juice: dungeon.juice, onFriends: () => (party.active ? hud.toast('Not during the party!', { icon: 'sparkle', duration: 1800 }) : travel.showFriends()), onJournal: () => bagPanel.journal() });
 const bagPanel = createBagPanel(hudRoot, {
   inventory, islands: ISLANDS, collection, dungeon, players, storybook,
-  unlocked: (id) => id === 'home' || !!bridges.entry(id)?.built, region: questRegion,
+  unlocked: (id) => id === 'home' || (id === 'duskcrown' ? !!boat.state.discovered || questRegion() === 'duskcrown' : !!bridges.entry(id)?.built), region: questRegion,   // (Duskcrown has no bridge: its section appears once the boat got there, or while the camera is there under ?duskcrown)
   canOpen: () => !dialog.isOpen && !pairPanel.isOpen && !cinematic.busy && !party.pageMode,
   onOpen: () => { optionsMenu.close(); players.frozenAll = true; keyboard.releaseAll(); touch?.widget.reset(); },
   onClose: () => { players.frozenAll = false; keyboard.releaseAll(); touch?.widget.reset(); },
@@ -955,7 +955,7 @@ function tick(realDt) {
     if (fishingPlay.isFishing(p)) continue;                                  // Step 72a: while a line is out the bobber is the prompt
     const toolAct = getToolAction(items.heldBy(p), t);
     prompts.push({
-      key: p.index, target: t, text: toolAct === 'chop' ? (t.type === 'shademoss' ? 'Clear' : 'Chop') : toolAct === 'break' ? 'Break' : toolAct === 'dig' ? 'Dig' : toolAct === 'strike' ? 'Strike' : toolAct === 'fish' ? 'Cast' : null,
+      key: p.index, target: t, text: toolAct === 'chop' ? (t.type === 'shademoss' ? t.prompt : 'Chop') : toolAct === 'break' ? 'Break' : toolAct === 'dig' ? 'Dig' : toolAct === 'strike' ? 'Strike' : toolAct === 'fish' ? 'Cast' : null,
       source: p.actions.activeSource, color: p.colors.ui, label: p.colors.name,
     });
   }

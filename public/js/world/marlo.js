@@ -28,7 +28,7 @@ import { addInteractable, removeInteractable } from './interactables.js';
 import { createMarloModel } from '../npc/marlo.js';
 import { pickFaceTarget, turnToward } from '../game/npcLogic.js';
 import { NEW_GAME } from '../game/save.js';
-import { MARLO_SCRIPT, boatPages, nextHint, repairRows } from '../game/marloScript.js';
+import { MARLO_SCRIPT, boatPages, nextHint, repairRows, questRowsShown } from '../game/marloScript.js';
 import { coveLayout } from './islands/emberCove.js';
 import { duskDockLayout } from './islands/duskDock.js';
 import { QUEST_SVG, SPARKLE_SVG, LEAVE_SVG, BRIDGE_SVG } from '../ui/icons.js';
@@ -76,6 +76,7 @@ export function createMarlo({ scene, players, avatars = null, world, dialog, par
   const hint = () => nextHint(boat.state);
   function mainChoices(p) {
     const pages = (list, index) => (c, d) => dialog.showPages(list, { name: MARLO.name, onFinish: back(p, index) });
+    const shown = questRowsShown(boat.state);   // finished quest rows go away (the repair rows once she floats, "How's the boat?" after the voyage)
     return [
       ...(boat.state.floated && boat.state.sights.every(Boolean) && !boat.state.launched ? [{ label: "Ready to see what's past the horizon?", icon: BRIDGE_SVG,
         onSelect: () => { const r = voyage?.request(p); const done = res => { if (res?.ok) dialog.close(); }; if (r?.then) r.then(done); else done(r); } }] : []),
@@ -83,8 +84,8 @@ export function createMarlo({ scene, players, avatars = null, world, dialog, par
         onSelect: () => { const r = boat.request('repair', {}, p); const done = res => { if (res?.ok) dialog.close(); }; if (r?.then) r.then(done); else done(r); } }] : []),
       ...(boat.state.at === 'duskcrown' ? [{ label: "What's this place?", icon: QUEST_SVG, onSelect: pages(MARLO_SCRIPT.dusk, 3) }] : []),
       ...(boat.state.at === 'duskcrown' && rowProvider ? rowProvider(p).map((r) => ({ label: r.label, icon: SPARKLE_SVG, onSelect: pages(r.lines, 3) })) : []),
-      ...(boat.state.repair ? repairRows(boat.state).map(row => ({ ...row, icon: BRIDGE_SVG, onSelect: () => dialog.showPages([row.detail], { name: MARLO.name, onFinish: back(p, 0) }) })) : []),
-      { label: "How's the boat?", icon: BRIDGE_SVG, detail: hint(), onSelect: (c, d) => dialog.showPages(boatPages(boat.state), { name: MARLO.name, onFinish: back(p, 0) }) },
+      ...(shown.repair ? repairRows(boat.state).map(row => ({ ...row, icon: BRIDGE_SVG, onSelect: () => dialog.showPages([row.detail], { name: MARLO.name, onFinish: back(p, 0) }) })) : []),
+      ...(shown.boat ? [{ label: "How's the boat?", icon: BRIDGE_SVG, detail: hint(), onSelect: (c, d) => dialog.showPages(boatPages(boat.state), { name: MARLO.name, onFinish: back(p, 0) }) }] : []),
       { label: 'Who are you?', icon: QUEST_SVG, onSelect: pages(MARLO_SCRIPT.who, 1) },
       { label: 'Tell me about clams', icon: SPARKLE_SVG, onSelect: pages(MARLO_SCRIPT.clams, 2) },
       { label: 'Bye', icon: LEAVE_SVG, onSelect: () => { dialog.close(); say(MARLO_SCRIPT.bye); } },

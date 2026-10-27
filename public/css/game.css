@@ -1466,6 +1466,12 @@ html, body {
 .oc-moves li.done .oc-tick { background: #55d96a; }
 .oc-moves li.done .oc-tick::after { content: ''; position: absolute; left: 3px; top: 0; width: 3px; height: 7px; border: solid #fff; border-width: 0 2.5px 2.5px 0; transform: rotate(40deg); }
 .hud-edge-objective { --pc: #ffd54a; }
+/* Step 73b playtest fix: Capray's quest markers (ui/edgeMarkers.js): edge arrows, and an on-screen pin = the label above a downward arrow */
+.hud-edge-capray { --pc: #9ff2ff; }
+.hud-edge.pin .he-label { transform: translate(-50%, -160%); }
+.hud-edge.pin .he-arrow { animation: he-bob 1.1s ease-in-out infinite; }
+@keyframes he-bob { 50% { margin-top: -5px; } }
+@media (prefers-reduced-motion: reduce) { .hud-edge.pin .he-arrow { animation: none; } }
 @media (max-width: 519px), (max-height: 420px) { .objective-chip { top: 64px; width: min(210px, calc(100vw - 28px)); } .oc-label { font-size: 15px; } .oc-badge { font-size: 22px; } }
 
 /* Step 57: weapon tip cards (ui/tipCard.js): one small comic card per player at the bottom of the screen, never blocking the pointer */

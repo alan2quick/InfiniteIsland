@@ -2,7 +2,8 @@
 // befriend scene and the "Bring Capray along?" question. Everything here is COSMETIC and per screen except what the `capray` domain (game/capray.js) decides; every screen derives what it shows from
 // that synced state (leader, stage, fed, moss, spores) and its own players' positions, so nothing about the ray itself is synced.
 //
-//   const cw = createCaprayWorld({ scene, players, avatars, world, sync, capray, plan, domain, pets, items, inventory, thoughts, particles, sfx, hud, dialog, cinematic, camera, floatText, heightAt, flora, marlo? })
+//   const cw = createCaprayWorld({ scene, players, avatars, world, sync, capray, plan, domain, pets, items, inventory, thoughts, particles, sfx, hud, dialog, cinematic, camera, floatText, heightAt, flora, marlo?, markerRoot? })
+//     markerRoot = the HUD root: edge arrows / pins (the objective arrows' look) point at the titans that still need clearing or shaking, and at the pond while somebody carries the fish the ray wants
 //     capray = game/capray.js    plan = world/islands/duskCapray.js    domain = the `pets` unlock domain    flora = world/islands/duskVisuals.js duskFlora (setDim)
 //   cw.update(dt)                       once per tick, AFTER the camera and cinematic.update (the befriend scene owns the camera while it runs), BEFORE pets.update is irrelevant
 //   cw.clearMoss(item, player)          main.js: Interact with an axe / sword / saber on a shademoss target: the swing starts now, the hit request goes out at the impact frame
@@ -12,11 +13,12 @@
 //
 // Wild ray: a normal Capray model (npc/pets.js, 4 draw calls) on a CLONE of the pet material that has its own glow uniform (same shader program: customProgramCacheKey is shared), so its glow can
 // be dim or bright while the followers keep theirs. Where it is: stage 0 shy at the pond's middle (once a rod was picked up) and it darts away when someone comes within CAPRAY.sight (that approach
-// asks the host for stage 1); stages 1-2 by the pond, a bit closer to the shore after each offering; stages 3-4 it follows the LEADER (the player who last offered, cleared or shook) at a glide and
-// hovers under a titan's cap to soak the spores; stage 5 gone. It draws only while Duskcrown is in full detail.
+// asks the host for stage 1); stages 1-2 and 4 in its pond: it drifts round slowly, and swims over to the near shore when a local player carrying the fish it wants comes within CAPRAY.approach;
+// stage 3 it follows the LEADER (the player who last offered, cleared or shook) at a glide and hovers under a titan's cap to soak the spores; stage 5 gone. It draws only while Duskcrown is full.
+// The offering prompt (`caprayfeed`, a DYNAMIC interactable) sits on the shore right beside the ray, wherever it is in the pond (a playtest found the old fixed spot far from it).
 // Shade moss: ONE InstancedMesh (3 instances of a lumpy cluster hugging a titan's stem), VERTEX_TOON (no new program), shrinking one quarter per hit; flora.setDim dims the titan's cap glow and light pool.
-// The interactables (registered once): `caprayfeed` at the shore (prompt "Offer a Glimmerfin" / "Offer a Lanternkoi", offered only while the bag holds the fish the ray wants), `shademoss` and
-// `titanshake` per titan (each offered by canInteract only in its own state).
+// The interactables (registered once): `caprayfeed` on the shore by the ray (prompt "Offer a Glimmerfin" / "Offer a Lanternkoi", offered only while the bag holds the fish the ray wants), `shademoss`
+// ("Clear moss 2/4": the hits so far) and `titanshake` per titan (each offered by canInteract only in its own state).
 // Befriend scene (cinematic.js, host-timed by capray.state.scene.startAt): the camera swings in, the ray's full glow returns and it loops round the feeder, its pod of three rays rises from the pond, the
 // banner "Capray wants to come with you!"; holding Cancel for 1 s skips it everywhere (capray.skip()). The unlock itself is the host's (capray.js).
 import * as THREE from 'three';
@@ -30,6 +32,7 @@ import { edgeDistance } from '../game/fishingLogic.js';
 import { pickShot } from './islands/duskCapray.js';
 import { mulberry32 } from '../utils/rng.js';
 import { ICONS, LEAVE_SVG } from '../ui/icons.js';
+import { createEdgeMarkers } from '../ui/edgeMarkers.js';
 import { actorKey } from '../net/worldSync.js';
 
 const TAU = Math.PI * 2;
@@ -73,7 +76,7 @@ export function mossGeometry() {
 
 export function createCaprayWorld({
   scene, players, avatars = null, world = null, sync, capray, plan, domain, pets, items = null, inventory, thoughts = null, particles, sfx = null, hud = null, dialog, cinematic: cin, camera, floatText = null,
-  heightAt, flora = null, marlo = null,
+  heightAt, flora = null, marlo = null, markerRoot = null,
 }) {
   const snd = (name, opts) => { if (sfx) sfx.play(name, opts); };
   const here = () => !world || world.regions.isFull('duskcrown');
@@ -82,7 +85,10 @@ export function createCaprayWorld({
   const pondY = WATER_LEVEL;
   const pc = { x: pond.x, z: pond.z };
   const toFeed = { x: feed.x - pc.x, z: feed.z - pc.z };
-  let time = 0;
+  const pondR = Math.min(pond.rx, pond.rz);
+  // `dir` = the unit direction from the pond's middle the ray hangs out in (stages 1-2 / 4): towards a local player carrying its fish, else drifting slowly round. The beat and the dart use it too.
+  const dir = { x: toFeed.x / (Math.hypot(toFeed.x, toFeed.z) || 1), z: toFeed.z / (Math.hypot(toFeed.x, toFeed.z) || 1) };
+  let time = 0, approacher = null, hitToast = null;
 
   // ------------------------------------------------------------------ the wild ray's own glow (a material clone)
   const wildGlow = { value: PET.glowDay };
@@ -155,7 +161,7 @@ export function createCaprayWorld({
 
   // ------------------------------------------------------------------ interactables (registered ONCE)
   const iFeed = addInteractable({
-    type: 'caprayfeed', object: null, position: new THREE.Vector3(feed.x, heightAt(feed.x, feed.z), feed.z), radius: 1.5, prompt: 'Offer a Glimmerfin',
+    type: 'caprayfeed', object: null, position: new THREE.Vector3(feed.x, heightAt(feed.x, feed.z), feed.z), radius: 1.3, prompt: 'Offer a Glimmerfin',
     canInteract: () => { const n = needOf(st()); return !!n && here() && inventory.count(n) >= 1; },
     onInteract: (item, by) => { offer(by || players.p1); },
   });
@@ -163,7 +169,7 @@ export function createCaprayWorld({
   for (const t of plan.titans) {
     const pos = () => new THREE.Vector3(t.x, t.y, t.z);
     const a = addInteractable({
-      type: 'shademoss', object: null, position: pos(), radius: t.collR + 0.9, prompt: 'Clear',
+      type: 'shademoss', object: null, position: pos(), radius: t.collR + 0.9, prompt: 'Clear moss',
       canInteract: () => st().stage === 3 && !st().moss[t.index],
       onInteract: (item, by) => { toastWhy('no-tool'); },
     });
@@ -233,8 +239,8 @@ export function createCaprayWorld({
     const s = st();
     if (mode === 'shy') return { x: pc.x, z: pc.z, y: pondY + 0.1 + Math.sin(time * 1.3) * 0.04, slow: 0.4 };
     if (mode === 'pond') {
-      const f = 0.4 + 0.15 * Math.min(3, s.fed);
-      return { x: pc.x + toFeed.x * f, z: pc.z + toFeed.z * f, y: pondY + 0.5 + Math.sin(time * 1.1 + ray.phase) * 0.1, slow: 0.5 };
+      const k = approacher ? CAPRAY.shore : 0.3 + 0.08 * Math.min(3, s.fed);
+      return { x: pc.x + dir.x * pondR * k, z: pc.z + dir.z * pondR * k, y: pondY + 0.5 + Math.sin(time * 1.1 + ray.phase) * 0.1, slow: approacher ? 0.9 : 0.5 };
     }
     // follow: the leader (else the nearest local player, else the pond)
     let lead = capray.leaderPos();
@@ -298,16 +304,15 @@ export function createCaprayWorld({
     if (!b.hearts && u >= 0.95) { b.hearts = true; if (particles) particles.burst('heart', { x: ray.s.x, y: ray.s.y + 0.8, z: ray.s.z }, { count: 5, radius: 0.5 }); snd('chime', { pitch: 1.4, vol: 0.5 }); }
     ray.extraRoll = u > 1.15 ? smooth((u - 1.15) / 0.9) * TAU : 0;
     if (u >= FEED_BEAT) { ray.beat = null; ray.extraRoll = 0; }
-    const n = Math.hypot(toFeed.x, toFeed.z) || 1;
     const rise = smooth(u / 0.45) * (1 - smooth((u - 1.9) / 0.4));
-    const f = 0.9 - 0.04 * Math.min(1, u);
-    return { x: pc.x + toFeed.x * f, z: pc.z + toFeed.z * f, y: pondY + 0.5 + rise * 0.7 + (u > 1.15 && u < 2.05 ? 0.35 * Math.sin((u - 1.15) / 0.9 * Math.PI) : 0), slow: 0.8, look: Math.atan2(toFeed.x / n, toFeed.z / n) };
+    const f = (CAPRAY.shore + 0.08) - 0.04 * Math.min(1, u);
+    return { x: pc.x + dir.x * pondR * f, z: pc.z + dir.z * pondR * f, y: pondY + 0.5 + rise * 0.7 + (u > 1.15 && u < 2.05 ? 0.35 * Math.sin((u - 1.15) / 0.9 * Math.PI) : 0), slow: 0.8, look: Math.atan2(dir.x, dir.z) };
   }
   function dartTarget(dt) {
     const d = ray.dart;
     d.t += dt;
     if (d.t > 0.45) { ray.dart = null; ray.hideUntil = time + 1.1; if (particles) particles.burst('puff', { x: ray.s.x, y: pondY + 0.1, z: ray.s.z }, { count: 5, radius: 0.5, height: 0.1 }); hideRay(); return { x: ray.s.x, z: ray.s.z, y: ray.s.y }; }
-    return { x: pc.x - toFeed.x * 0.45, z: pc.z - toFeed.z * 0.45, y: pondY + 0.18, fast: true, slow: 1.8, scale: 1 - smooth(d.t / 0.45) * 0.4 };
+    return { x: pc.x - dir.x * pondR * 0.45, z: pc.z - dir.z * pondR * 0.45, y: pondY + 0.18, fast: true, slow: 1.8, scale: 1 - smooth(d.t / 0.45) * 0.4 };
   }
   function soakTarget(dt) {
     const k = ray.soak;
@@ -349,6 +354,11 @@ export function createCaprayWorld({
         particles.burst('chip', at, { count: d.final ? 8 : 4, radius: 0.3, color: '#26382f' });
       }
       snd(d.final ? 'timber' : 'chop', { pitch: 0.95 + Math.random() * 0.1, vol: 0.8 });
+      if (!d.final && who && hud) {                                          // (a playtest could not tell the moss needs more hits: say how many, on the hitter's screen)
+        const left = Math.max(1, CAPRAY.hits - (st().hits[d.i] || 0));
+        if (hitToast && hitToast.isConnected) hitToast.remove();             // (one progress toast at a time: each hit replaces the last)
+        hitToast = hud.toast(`Keep chopping! ${left} more ${left === 1 ? 'hit' : 'hits'}.`, { icon: 'sparkle', duration: 1600 });
+      }
       if (d.final) {
         snd('collect', { pitch: 0.9, vol: 0.7 });
         if (particles) particles.burst('sparkle', { x: t.x, y: t.y + 3.5, z: t.z }, { count: 14, radius: t.collR, height: 2.0, color: '#ffd9a0' });
@@ -363,8 +373,8 @@ export function createCaprayWorld({
       ray.glowHold = 1.1;
       showerAt(t);
       const left = st().spores.filter((s) => !s).length;
-      if (hud && st().stage === 4) setTimeout(() => hud.toast('Capray is glowing like a lantern! It wants something special now...', { icon: 'sparkle', duration: 4600 }), 2400);
-      else if (hud && left > 0) hud.toast(`${left} more to go.`, { icon: 'sparkle', duration: 2000 });
+      if (hud && st().stage === 4) setTimeout(() => hud.toast('Capray glows like a lantern and swims home to its pond! It wants a Lanternkoi: look for orange ripples on the deeper ponds.', { icon: 'sparkle', duration: 6000 }), 2400);
+      else if (hud && left > 0) hud.toast(`${left} more ${left === 1 ? 'mushroom' : 'mushrooms'} to go. Follow the arrows!`, { icon: 'sparkle', duration: 2600 });
       return;
     }
     if (kind === 'finish' || kind === 'skip') endRun();
@@ -511,6 +521,50 @@ export function createCaprayWorld({
   // ------------------------------------------------------------------ Marlo's pointers
   if (marlo) marlo.setRowProvider(() => [{ label: st().stage >= 5 ? 'How is Capray?' : 'Anything odd about the marsh?', lines: marloLine(st(), rodSeen || st().stage > 0) }]);
 
+  // ------------------------------------------------------------------ where the ray waits in its pond, and the offering spot beside it
+  function stepPondSpot(dt) {
+    const s = st(), need = needOf(s);
+    approacher = null;
+    if (need && here() && inventory.count(need) >= 1) {
+      let bd = CAPRAY.approach;
+      for (const p of players.list) {
+        if (p.away) continue;
+        const d = edgeDistance(pond, p.position.x, p.position.z);
+        if (d <= bd) { bd = d; approacher = p; }
+      }
+    }
+    if (!ray.beat && !ray.dart) {
+      let tx, tz;
+      if (approacher) { tx = approacher.position.x - pc.x; tz = approacher.position.z - pc.z; }
+      else { const a = Math.atan2(dir.z, dir.x) + dt * 0.16; tx = Math.cos(a); tz = Math.sin(a); }      // drifting slowly round the pond
+      const n = Math.hypot(tx, tz) || 1, k = 1 - Math.exp(-(approacher ? 3 : 8) * dt);
+      dir.x = lerp(dir.x, tx / n, k); dir.z = lerp(dir.z, tz / n, k);
+      const m = Math.hypot(dir.x, dir.z) || 1; dir.x /= m; dir.z /= m;
+    }
+    // the prompt sits on the shore just outside the ray (ground height there), so "where it is" is where you offer
+    const r = ray.shown ? Math.hypot(ray.s.x - pc.x, ray.s.z - pc.z) : 0;
+    const ux = r > 0.3 ? (ray.s.x - pc.x) / r : dir.x, uz = r > 0.3 ? (ray.s.z - pc.z) / r : dir.z;
+    const ex = pc.x + ux * (pond.rx + 0.5), ez = pc.z + uz * (pond.rz + 0.5);
+    iFeed.position.set(ex, Math.max(pondY, heightAt(ex, ez)), ez);
+  }
+
+  // ------------------------------------------------------------------ hint markers: the titans still to clear / shake, the pond while someone carries the fish it wants
+  const markers = markerRoot ? createEdgeMarkers(markerRoot, { camera, cls: 'hud-edge-capray' }) : null;
+  const targets = [];
+  function stepMarkers() {
+    if (!markers) return;
+    targets.length = 0;
+    const s = st(), onIsland = here() && players.list.some((p) => !p.away && edgeDistance(pond, p.position.x, p.position.z) < 260);
+    if (onIsland && !cin.busy && !dialog.isOpen) {
+      const by = (t) => players.list.some((p) => !p.away && Math.hypot(p.position.x - t.x, p.position.z - t.z) < t.collR + 6);     // (standing at it: its own prompt says what to do)
+      if (s.stage === 3) plan.titans.forEach((t, i) => { if (!s.spores[i] && !by(t)) targets.push({ x: t.x, y: t.y + 3.4, z: t.z, label: s.moss[i] ? 'Shake' : 'Shade moss', pin: true }); });
+      const need = needOf(s);
+      const near = players.list.some((p) => !p.away && edgeDistance(pond, p.position.x, p.position.z) < CAPRAY.approach + 4);       // (close by, the ray itself is the marker)
+      if (need && inventory.count(need) >= 1 && !near) targets.push({ x: pc.x, y: pondY + 1.2, z: pc.z, label: 'Capray', pin: false });
+    }
+    markers.update(targets);
+  }
+
   // ------------------------------------------------------------------ per frame
   function update(dt) {
     dt = Math.min(dt, 0.1);
@@ -520,6 +574,7 @@ export function createCaprayWorld({
       else if (items && items.list.some((r) => r.kind === 'rod' && r.state !== 'ground')) rodSeen = true;
     }
     iFeed.prompt = needOf(st()) === 'lanternkoi' ? 'Offer a Lanternkoi' : 'Offer a Glimmerfin';
+    for (const a of iMoss) { const h = st().hits[a.titan.index] || 0; a.prompt = `Clear moss ${h}/${CAPRAY.hits}`; }
     // the sighting: somebody walks up to the pond with (or after) a rod
     sightCooldown = Math.max(0, sightCooldown - dt);
     if (st().stage === 0 && rodSeen && here() && sightCooldown <= 0 && !cin.busy) {
@@ -530,7 +585,9 @@ export function createCaprayWorld({
     stepSwings(dt);
     stepMoss(dt);
     stepShowers(dt);
+    stepPondSpot(dt);
     stepRay(dt);
+    stepMarkers();
     hintBubbles();
     stepAsks();
     wildGlow.value = petUniforms.uGlow.value * ray.glow;
@@ -541,6 +598,7 @@ export function createCaprayWorld({
 
   return {
     update, clearMoss, ask,
+    get markers() { return markers ? markers.summary() : null; },
     get asking() { return asking; },
     get rodSeen() { return rodSeen; },
     get wild() { return { shown: ray.shown, mode: ray.mode, position: { x: +ray.s.x.toFixed(2), y: +ray.s.y.toFixed(2), z: +ray.s.z.toFixed(2) }, glow: +ray.glow.toFixed(2), beat: !!ray.beat, soak: !!ray.soak, dart: !!ray.dart }; },

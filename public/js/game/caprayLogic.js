@@ -151,10 +151,10 @@ export function applyShake(s, i, key = null) {
 export const withLeader = (s, key) => ({ ...s, leader: key });
 
 // ------------------------------------------------------------------------------------------------ derived numbers
-/** The extra Lanternkoi chance (added to FISHING.rareChance) while stage 4 is active: pity (Glimmerfin caught since stage 4 began) x CAPRAY.pity, capped so the TOTAL never passes CAPRAY.rareCap. */
+/** The extra Lanternkoi chance (added to FISHING.rareChance) while stage 4 is active: CAPRAY.pityBase + pity (Glimmerfin caught since stage 4 began) x CAPRAY.pity, capped so the TOTAL never passes CAPRAY.rareCap. */
 export function rareBoost(stage, pity, base = 0) {
   if (stage !== 4) return 0;
-  return Math.max(0, Math.min(CAPRAY.rareCap - base, Math.max(0, pity) * CAPRAY.pity));
+  return Math.max(0, Math.min(CAPRAY.rareCap - base, CAPRAY.pityBase + Math.max(0, pity) * CAPRAY.pity));
 }
 /** The Lanternkoi chance the roll should use. */
 export const rareChance = (stage, pity, base) => base + rareBoost(stage, pity, base);
@@ -172,11 +172,12 @@ export const titanDim = (s, i) => (s.stage === 3 && !s.moss[i] ? 1 : 0);
 export const mossScale = (s, i) => (s.stage < 3 || s.moss[i] ? 0 : Math.max(0, 1 - s.hits[i] / CAPRAY.hits));
 export const mossShown = (s, i) => s.stage === 3 && !s.moss[i];
 
-/** How the stage reads in the world: where the wild ray should be. 'hidden' = not yet seen, 'pond' = shy by the pond, 'follow' = trailing its leader, 'gone' = befriended. */
+/** How the stage reads in the world: where the wild ray should be. 'hidden' = not yet seen, 'pond' = by its pond (waiting for a fish: stages 1-2, and stage 4 once the titans are lit:
+ *  the Lanternkoi is offered at the pond, so it waits there), 'follow' = trailing its leader round the titans, 'gone' = befriended. */
 export function rayPlace(s, rodSeen) {
   if (s.stage === 0) return rodSeen ? 'shy' : 'hidden';
-  if (s.stage <= 2) return 'pond';
-  if (s.stage <= 4) return 'follow';
+  if (s.stage <= 2 || s.stage === 4) return 'pond';
+  if (s.stage === 3) return 'follow';
   return 'gone';
 }
 
@@ -189,7 +190,7 @@ export function marloLine(s, rodSeen = true) {
     case 1: return ['A little ray, I would say. Hungry, shy. A Glimmerfin might win its trust. Slowly, one at a time.'];
     case 2: return ['It is warming to you! Keep the Glimmerfin coming. Three should do it.'];
     case 3: return ['Its light has gone dim, crew. It keeps looking at the big mushrooms. Something is smothering them. An axe or a sword might sort it out, then give the stems a good shake.'];
-    case 4: return ['It is glowing like a lantern! Now it wants something special. A Lanternkoi, from the deep water. Patience, crew. They bite more as you go.'];
+    case 4: return ['It is glowing like a lantern, and it swam home to its pond! Now it wants something special: a Lanternkoi. Watch for ORANGE ripples on the deeper ponds and the lagoon. Patience, crew. They bite more as you go.'];
     default: return ['Your little ray found a good crew, I reckon. The pet stable by the hearth will keep it for you.'];
   }
 }

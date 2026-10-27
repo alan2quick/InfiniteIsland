@@ -33,7 +33,7 @@ const { duskFlora } = await import('../public/js/world/islands/duskVisuals.js');
 const island = ISLANDS.find((i) => i.id === 'duskcrown'), mod = getIslandModule('duskcrown');
 const plan = duskCaprayPlan();
 
-test('the version is 0.85.7', () => { assert.equal(VERSION, '0.85.7'); });
+test('the version is 0.85.9', () => { assert.equal(VERSION, '0.85.9'); });
 
 // ---- pure rules --------------------------------------------------------------------------------------------------------------------------------------------------------------
 test('the stage machine runs in order: sight, three Glimmerfin, hits, showers, the favourite, the Lanternkoi', () => {
@@ -97,17 +97,18 @@ test('validation reasons: sight, feed (stage, fish, bag, reach), hit (tool, reac
 });
 
 test('pity: the Lanternkoi chance rises per Glimmerfin during stage 4 only, capped at the total; the numbers behind the visuals', () => {
-  assert.equal(rareBoost(3, 5), 0); assert.equal(rareBoost(5, 5), 0); assert.equal(rareBoost(4, 0), 0);
-  assert.ok(Math.abs(rareBoost(4, 2) - 2 * CAPRAY.pity) < 1e-9); assert.ok(rareBoost(4, 3) > rareBoost(4, 2));
+  assert.equal(rareBoost(3, 5), 0); assert.equal(rareBoost(5, 5), 0); assert.equal(rareBoost(4, 0), CAPRAY.pityBase, 'stage 4 starts with a head start');
+  assert.ok(Math.abs(rareBoost(4, 2) - (CAPRAY.pityBase + 2 * CAPRAY.pity)) < 1e-9); assert.ok(rareBoost(4, 3) > rareBoost(4, 2));
   assert.ok(Math.abs(rareChance(4, 99, FISHING.rareChance) - CAPRAY.rareCap) < 1e-9, 'capped so the total never passes the cap'); assert.equal(rareChance(2, 99, FISHING.rareChance), FISHING.rareChance);
-  assert.equal(rareBoost(4, -4), 0);
+  assert.equal(rareBoost(4, -4), CAPRAY.pityBase);
+  assert.ok(rareChance(4, 4, FISHING.rareChance) >= 1 - 1e-9, 'four Glimmerfin make the next chance-spot bite a certain Lanternkoi (playtest: none was ever caught)');
   const g = (s) => rayGlow(s);
   assert.equal(g(debugState(1)), CAPRAY.glow.shy); assert.equal(g(debugState(3)), CAPRAY.glow.sad); assert.ok(g(applyShake(normaliseState({ stage: 3, moss: [true, true, false] }), 0)) > CAPRAY.glow.sad);
   assert.equal(g(debugState(4)), CAPRAY.glow.full); assert.equal(g(debugState(5)), CAPRAY.glow.full);
   const s3 = debugState(3);
   assert.deepEqual([0, 1, 2].map((i) => titanDim(s3, i)), [1, 1, 1]); assert.deepEqual([0, 1, 2].map((i) => titanDim(debugState(2), i)), [0, 0, 0]); assert.equal(titanDim(debugState(4), 0), 0);
   assert.equal(mossScale(s3, 0), 1); assert.equal(mossScale(applyHit(s3, 0).state, 0), 0.75); assert.equal(mossScale(debugState(4), 0), 0); assert.equal(mossShown(s3, 1), true); assert.equal(mossShown(debugState(2), 1), false);
-  assert.deepEqual([0, 1, 2, 3, 4, 5].map((n) => rayPlace(debugState(n), true)), ['shy', 'pond', 'pond', 'follow', 'follow', 'gone']); assert.equal(rayPlace(freshState(), false), 'hidden');
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map((n) => rayPlace(debugState(n), true)), ['shy', 'pond', 'pond', 'follow', 'pond', 'gone']); assert.equal(rayPlace(freshState(), false), 'hidden');
   for (let n = 0; n <= 5; n++) assert.ok(marloLine(debugState(n), true).length >= 1 && marloLine(debugState(n), true).every((l) => l.length > 10));
   assert.ok(/rod/i.test(marloLine(freshState(), false)[0]) && /glowing/i.test(marloLine(freshState(), true)[0]));
   assert.equal(LOCKED_PETS.length, 3); assert.ok(LOCKED_PETS.every((p) => p.hint.endsWith('...')));
@@ -270,9 +271,9 @@ test('domain: a second player who shakes while the ray follows somebody else bec
 
 test('domain: pity during stage 4 feeds the fishing roll; the Lanternkoi starts the befriend scene behind cinematics, a replica skips it, the pet unlocks on both screens', async () => {
   const w = pair({ saved: { stage: 4, fed: 3, moss: [true, true, true], spores: [true, true, true], leader: 'host:0' } });
-  assert.equal(w.host.rareBoost, 0); assert.equal(w.replica.rareBoost, 0);
+  assert.equal(w.host.rareBoost, CAPRAY.pityBase); assert.equal(w.replica.rareBoost, 0);
   w.fishing.debug.catch(w.hostP, 'glimmerfin'); w.fishing.debug.catch(w.hostP, 'glimmerfin'); w.fishing.debug.catch(w.hostP, 'lanternkoi');
-  assert.equal(w.host.pity, 2, 'only Glimmerfin count'); assert.ok(Math.abs(w.host.rareBoost - (2 * CAPRAY.pity)) < 1e-9);
+  assert.equal(w.host.pity, 2, 'only Glimmerfin count'); assert.ok(Math.abs(w.host.rareBoost - (CAPRAY.pityBase + 2 * CAPRAY.pity)) < 1e-9);
   // the boost reaches the species roll: with the boost at the top, every chance-spot cast is a Lanternkoi
   const pondDeep = duskFishPonds(island, mod).find((q) => q.deep && !q.lagoon);
   const boosted = createFishing({ sync: new WorldSync({ role: 'host' }), ponds: duskFishPonds(island, mod), rareBoost: () => 1 });
@@ -361,7 +362,7 @@ test('world: interactables are registered once and offered only in their own sta
   w.capray.debug.clear(1); w.step(0.1);
   assert.deepEqual(moss.map((m) => m.canInteract()), [true, false, true]); assert.deepEqual(shake.map((m) => m.canInteract()), [false, true, false]);
   w.capray.debug.shake(1); w.step(0.1); assert.deepEqual(shake.map((m) => m.canInteract()), [false, false, false]);
-  for (const m of moss) { assert.equal(m.type, 'shademoss'); assert.equal(m.prompt, 'Clear'); assert.equal(m.position.x, m.titan.x); assert.equal(m.radius, m.titan.collR + 0.9); }
+  for (const m of moss) { assert.equal(m.type, 'shademoss'); assert.ok(m.prompt.startsWith('Clear moss')); assert.equal(m.position.x, m.titan.x); assert.equal(m.radius, m.titan.collR + 0.9); }
   assert.deepEqual(shake.map((m) => m.prompt), ['Shake', 'Shake', 'Shake']);
   // a pond-side collision with the plain 'pond' interactable would hide casting: the feed spot is only offered when feeding is possible (canInteract above)
   assert.equal(getInteractables().filter((i) => i.type === 'caprayfeed').length >= 1, true);

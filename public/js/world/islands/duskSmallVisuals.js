@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { DUSK_SMALL, DUSK_WATER, WATER_LEVEL } from '../../config.js';
 import { groupIntoChunks } from '../propChunks.js';
-import { duskCrumbRuntime } from './duskCrumbs.js';
+import { duskCrumbRuntime, planDuskCrumbs } from './duskCrumbs.js';
 import { buildRibbonGeometry, waterUniforms } from '../water.js';
 import { duskUniforms } from './duskAtmosphere.js';
 import { materials } from './duskVisuals.js';
@@ -68,9 +68,14 @@ export function buildDuskSmallVisuals(island, plan) {
   const { solidMat, outlineMat, poolMat } = materials(), origin = { x: island.x - 200, z: island.z - 140 };
   const meshes = [], geos = [], layers = {}, slots = new Map();         // slots: flora item -> { mesh, i } (Step 72b: a picked glowcap clump is hidden / regrown by scaling its instance)
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), p = new THREE.Vector3(), scale = new THREE.Vector3();
-  for (const [kind, items] of Object.entries(plan.layers)) {
+  // Step 72b playtest fix: the pickable glowcap clumps get their own golden 'crumb' layer (same flora items, so picking / regrowing still finds their instance slot); everything else is unchanged
+  let crumbSet = null;
+  try { crumbSet = new Set(planDuskCrumbs(island).clumps); } catch { crumbSet = null; }
+  const layerList = Object.entries(plan.layers).flatMap(([kind, items]) => (kind === 'mushroom' && crumbSet && crumbSet.size
+    ? [[kind, items.filter((it) => !crumbSet.has(it))], ['crumb', items.filter((it) => crumbSet.has(it))]] : [[kind, items]]));
+  for (const [kind, items] of layerList) {
     const a = getSmallAsset(kind); layers[kind] = { instances: items.length, chunks: 0, drawCalls: 0, triangles: 0 };
-    for (const [key, list] of groupIntoChunks(items, origin, DUSK_SMALL.chunk)) {
+    for (const [key, list] of groupIntoChunks(items, origin, kind === 'crumb' ? 4096 : DUSK_SMALL.chunk)) {     // (the 16 crumb clumps all sit near the hearth: one chunk)
       const inst = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 2), 2);
       for (let i = 0; i < list.length; i++) inst.setXY(i, 0, 0.5);
       const geo = instanceGeometry(a.geo, inst), mesh = new THREE.InstancedMesh(geo, solidMat, list.length);
