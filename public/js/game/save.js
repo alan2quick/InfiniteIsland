@@ -14,7 +14,7 @@
 const params = new URLSearchParams(typeof location !== 'undefined' ? location.search : '');
 export const NEW_GAME = params.has('newgame');
 
-export let saveEnabled = !(params.get('join')) && !params.has('testruby');      // a replica page (?join=CODE) never saves; see the header
+export let saveEnabled = !(params.get('join')) && !params.has('testruby') && !params.has('mechlab');      // a replica page (?join=CODE) never saves; see the header
 export function setSaveEnabled(on) { saveEnabled = !!on; }
 
 if (NEW_GAME) {

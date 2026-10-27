@@ -17,9 +17,11 @@ import { getHeight } from './terrain.js';
 import { G, VERTEX_TOON, part, combine, makeOutline } from '../render/geo.js';
 import { setHopClock, setHopTerrain, registerCourse, unregisterCourse, hopEvents, padPos, nextOnRoute, hopTime } from '../game/hopLogic.js';
 
-const SIDE = { rock: '#8d8990', stump: '#a97a4c', bamboo: '#d6c06e', crust: '#3c3441', wet: '#6f8497', deck: '#b58a58' };
-const TOP = { rock: '#aaa5aa', stump: '#d9b27a', bamboo: '#efdc8c', crust: '#5a4a52', wet: '#9db4c6', deck: '#d2a870' };
+const SIDE = { rock: '#8d8990', stump: '#a97a4c', bamboo: '#d6c06e', crust: '#3c3441', wet: '#6f8497', deck: '#b58a58', floe: '#9ed7ee' };
+const TOP = { rock: '#aaa5aa', stump: '#d9b27a', bamboo: '#efdc8c', crust: '#5a4a52', wet: '#9db4c6', deck: '#d2a870', floe: '#e3faff' };
 const BOX = new THREE.BoxGeometry(1, 1, 1);
+const FLOE_TOON = VERTEX_TOON.clone();
+FLOE_TOON.transparent = true; FLOE_TOON.opacity = .9;
 const CRUST_TOON = VERTEX_TOON.clone();
 CRUST_TOON.emissive.set('#ff7a35'); CRUST_TOON.emissiveIntensity = HOP_COURSE.crustGlow;
 
@@ -43,7 +45,7 @@ function padParts(pad, at) {
     }
     if (kind === 'stump') parts.push(part(G.cyl8, '#b98a58', { p: [cx, pad.top + 0.005, cz], s: [r * 0.55, 0.05, r * 0.55] }));        // the tree rings
     if (kind === 'crust') parts.push(part(G.cyl8, '#ff8a3d', { p: [cx, pad.top + 0.01, cz], s: [r * 0.5, 0.04, r * 0.5] }));          // the warm cracks (the instanced crust material emits without a light)
-    for (let k = 0; k < 3; k++) {                                                                                                       // pebbles round the foot
+    for (let k = 0; k < (kind === 'floe' ? 0 : 3); k++) {                                                                                                       // pebbles round the foot
       const a = pad.top * 9 + k * 2.1;
       parts.push(part(G.sphereLo, SIDE[kind], { p: [cx + Math.cos(a) * r * 1.02, 0.02, cz + Math.sin(a) * r * 1.02], s: [0.22, 0.14, 0.2], r: [0, a, 0] }));
     }
@@ -64,6 +66,7 @@ export function createHopCourses({ scene, players, particles = null, sfx = null,
   setHopClock(() => sync.hostNow() / 1000);
   setHopTerrain({ height: (x, z) => getHeight(x, z) });
   const instanceMatrix = new THREE.Matrix4(), instancePosition = new THREE.Vector3(), instanceScale = new THREE.Vector3(), instanceRotation = new THREE.Quaternion();
+  const instanceEuler = new THREE.Euler();
   const entries = [];                       // { course, island, group, still, movers: [{pad, mesh}], built }
   const rings = [];                         // one glint ring per local player (pooled)
   let ringGeo = null, ringMat = null;
@@ -131,14 +134,14 @@ export function createHopCourses({ scene, players, particles = null, sfx = null,
     // Clock transforms vary per instance; identical moving caps share one draw.
     for (const [kind, pads] of kinds) {
       const geo = combine(padParts({ kind, top: 0, base: -0.25, r: 1 }, { x: 0, z: 0 }));
-      const mesh = new THREE.InstancedMesh(geo, kind === 'crust' ? CRUST_TOON : VERTEX_TOON, pads.length);
+      const mesh = new THREE.InstancedMesh(geo, kind === 'crust' ? CRUST_TOON : kind === 'floe' ? FLOE_TOON : VERTEX_TOON, pads.length);
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.receiveShadow = true;
       entry.group.add(mesh); entry.movers.push({ pads, mesh });
     }
     if (still.length) {
       const geo = combine(still);
-      entry.still = new THREE.Mesh(geo, VERTEX_TOON);
+      entry.still = new THREE.Mesh(geo, course.pads.every(p => p.kind === 'floe') ? FLOE_TOON : VERTEX_TOON);
       entry.still.receiveShadow = true;
       entry.still.frustumCulled = true;
       entry.still.add(makeOutline(geo, 0.04));
@@ -172,6 +175,8 @@ export function createHopCourses({ scene, players, particles = null, sfx = null,
           const p = padPos(pad, t);
           instancePosition.set(p.x + (p.tremble ? Math.sin(t * 60) * 0.035 : 0), p.top, p.z);
           instanceScale.set(pad.r, 1, pad.r);
+          if (pad.kind === 'floe') instanceRotation.setFromEuler(instanceEuler.set(p.pitch || 0, -(p.rot || 0), p.roll || 0));
+          else instanceRotation.identity();
           instanceMatrix.compose(instancePosition, instanceRotation, instanceScale);
           m.mesh.setMatrixAt(i, instanceMatrix);
         });
@@ -241,7 +246,7 @@ export function createHopCourses({ scene, players, particles = null, sfx = null,
     summary() {
       let calls = 0;
       for (const e of entries) if (e.group) e.group.traverse((o) => { if (o.isMesh && o.visible) calls += 1; });
-      return { courses: entries.map((e) => ({ id: e.course.id, pads: e.course.pads.length, built: e.built })), drawCalls: calls + rings.filter((r) => r.visible).length, rings: rings.filter((r) => r.visible).length };
+      return { courses: entries.map((e) => ({ id: e.course.id, pads: e.course.pads.length, built: e.built, floes: e.course.pads.filter(p => p.kind === 'floe').map(p => ({ id: p.id, motion: p.motion?.kind || 'still', pose: { ...padPos(p, hopTime()) }, load: p.load || null })) })), drawCalls: calls + rings.filter((r) => r.visible).length, rings: rings.filter((r) => r.visible).length };
     },
   };
 }

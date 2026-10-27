@@ -2,7 +2,7 @@
 
 // Game version, shown on the title card. The client can't read package.json (only public/ is deployed), so this is
 // the source of truth: bump it together with "version" in package.json. Minor = last completed PLAN.md step.
-export const VERSION = '0.85.10';
+export const VERSION = '0.85.11';
 
 // Held-mouse direction: world-unit dead bands, optional pooled ground ring.
 export const MOUSE_STEER = { dead: 0.6, sideDead: 0.4, ring: true };
@@ -969,3 +969,9 @@ export const RUBY = {
   gifts: { obsidian: 3, bamboo: 2, 'spring-water': 1 },
   sizes: [0.48, 0.60, 0.71, 0.82, 0.92, 1], swapSeconds: 3, befriendSeconds: 6,
 };
+
+// Step 74d: reusable mechanics; only the debug mechlab registers consumers for now.
+export const CARRY = { speed: .75, jump: .85, reach: 2.5, dropDistance: 1.1 };
+export const ICE = { grip: 3.2, tilt: .12, sink: .12 };
+export const WARM = { radius: 4, rate: 1 / 30, gift: .25 };   // radius from the fire centre: covers just outside the bench ring (benches at ~2.5 u), where a carried creature is naturally put down
+export const GUIDE = { speed: 3.2, wait: 6, range: 18, lost: 24, reached: 1.8, hopHeight: .8 };

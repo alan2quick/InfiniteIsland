@@ -210,7 +210,7 @@ Keep PLAN.md and CLAUDE.md short: long text goes to the topic file, the changelo
 | 71 | Set sail to Duskcrown | done (0.71.0) | [plan/71-set-sail.md](plan/71-set-sail.md) |
 | 72 | Fishing in the Glowcap Marsh | done (0.72.1) | [plan/72-fishing.md](plan/72-fishing.md) |
 | 73 | Capray, the first pet | done (0.73.1) | [plan/73-capray.md](plan/73-capray.md) |
-| 74 | Home and Frostpine pets (caterpillar → cocoon → butterfly; grey / arctic wolf) | 74a done (models + `__game.petLab`, 0.85.4); 74b–c done (offline time, Carle's quest line and Carle as a pet, 0.85.6), 74d–e to design | [plan/74-home-frost-pets.md](plan/74-home-frost-pets.md) |
+| 74 | Home and Frostpine pets (caterpillar → cocoon → butterfly; grey / arctic wolf) | 74a done (models + `__game.petLab`, 0.85.4); 74b–c done (offline time, Carle's quest line and Carle as a pet, 0.85.6), 74d done (carry, ice floes, warming, guide + `?mechlab`, 0.85.11); 74e open (Snowsong: "Pup on the Ice") | [plan/74-home-frost-pets.md](plan/74-home-frost-pets.md) |
 | 75 | Tool racks by each campfire (per-player cycled tool sets) | done (0.85.7) | [plan/75-tool-racks.md](plan/75-tool-racks.md) |
 | 76 | Ruby, the Emberleaf hermit crab ("The Shell Ladder") + ground-pet following | done (0.85.10) | [plan/76-hermit-crab.md](plan/76-hermit-crab.md) |
 | 77–79 | (numbers not used) | | |
@@ -221,7 +221,7 @@ Keep PLAN.md and CLAUDE.md short: long text goes to the topic file, the changelo
 
 ### Open steps
 
-- [ ] Step 74d — Snowsong's Frostpine quest (to design; ground following is built, Step 76a) — [plan/74-home-frost-pets.md](plan/74-home-frost-pets.md)
+- [ ] Step 74e — "Pup on the Ice": Snowsong's quest line and Snowsong as a pet — [plan/74-home-frost-pets.md](plan/74-home-frost-pets.md)
 - [ ] Step 68f — Playtest fixes, star chart — [plan/68-boat.md](plan/68-boat.md)
 - [ ] Step 68g — Playtest fixes, repair and story — [plan/68-boat.md](plan/68-boat.md)
 - [ ] Step 53b — Wildroot Ramparts and bosses (storybook) — [plan/47-53-storybook.md](plan/47-53-storybook.md)

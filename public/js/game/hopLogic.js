@@ -4,8 +4,10 @@
 // platforms, lava crusts); only while the player stands inside a zone does player.js use the body below, everywhere else its code path is untouched.
 //
 //   COURSE   { id, zone: {x, z, r}, gapY, splashY?, pads: [PAD], links: [{a, b, optional?, wait?}], start: padId, goal: padId, route?: [padId...], hazard?: {x,z,r}, backDown?, approach?: {from:{x,z,y},to:{x,z,y},width} (route: next-pad glint; wait: time a sinking link from its still rest rock) }
-//   PAD      { id, kind: 'rock' | 'stump' | 'bamboo' | 'crust' | 'wet' | 'deck', x, z, r | (w, d, rot), top, cp?: true (a checkpoint), motion?: MOTION }
+//   PAD      { id, kind: 'rock' | 'stump' | 'bamboo' | 'crust' | 'wet' | 'deck' | 'floe', x, z, r | (w, d, rot), top, cp?: true (a checkpoint), motion?: MOTION }
 //   MOTION   { kind: 'sway', axis: [ax, az], amp, period, phase } | { kind: 'sink', period, phase, down, warn } | { kind: 'bob', amp, period, phase }  (pure functions of the SHARED clock, never saved or hashed)
+//   Step 74d motions: {kind:'drift',amp,depth?,period,phase?} (closed ellipse), {kind:'spin',period,phase?}, {kind:'tilt',period}; pad.load = replicated {x,z,sink}.
+//   Floe padPos also returns rot/pitch/roll; padTop(pad,pose,x,z) answers the tilted top. Moving floes disable the landing magnet.
 //   Terrain `T` = { height(x, z) }: a cell whose terrain is lower than `course.gapY` is a GAP (water / lava): you may cross it only in the air, landing in it is a splash.
 //
 //   hopEvents                        presentation hooks (see below) the course runtime sets
@@ -17,8 +19,9 @@
 //   surfaceY(...) = surfaceAt(...).y;  blocks(course, x, z, footY, t) a pad side taller than STEP above the feet is a wall;  gapAt(course, x, z, T)
 //   stepHop(body, input, course, t, dt, T, opts) -> events   the vertical body: the same hop / fall numbers as player.js (HOP_SPEED 5.6, GRAVITY 24); body = {x, z, y, vy, grounded, pad, glide?}; input = {jump, glide?} (held Jump caps an armed sail descent; landing clears glide)
 //   catchFall(course, cb, x, z, y, glided) -> checkpoint pad id | null   Step 68e's gentle catch: a LANDING (not on the slide / stairs, not a glide) more than HOP_COURSE.catchDepth below the last checkpoint pad inside the zone pops the player back onto it (the start checkpoint never catches: it is a step above the ground)
-//   validateCourse(course, T) -> {ok, errors, links}   a bot flies the REAL step along every link at 24 start times across the motions' period, with margins and wet braking; wait links must have a real open window within one period
-import { HOP_COURSE as H, PLAYER_SPEED, PLAYER_DAMPING, PLAYER_HEIGHT } from '../config.js';
+//   validateCourse(course, T, opts = {jumpScale:1,speedScale:1}) -> {ok, errors, links}   a bot flies the REAL step along every link at 24 start times across the motions' period, with margins and wet braking; wait links must have a real open window within one period
+import { rideFloe } from './iceLogic.js';
+import { HOP_COURSE as H, PLAYER_SPEED, PLAYER_DAMPING, PLAYER_HEIGHT, ICE } from '../config.js';
 
 const TAU = Math.PI * 2;
 const frac = (v) => v - Math.floor(v);
@@ -54,9 +57,19 @@ const _pp = { x: 0, z: 0, top: 0, tremble: false, sunk: false };
 /** Where a pad is at time t (a shared object: copy what you keep). */
 export function padPos(pad, t, out = _pp) {
   out.x = pad.x; out.z = pad.z; out.top = pad.top; out.tremble = false; out.sunk = false;
+  out.rot = pad.rot || 0; out.pitch = 0; out.roll = 0;
   const m = pad.motion;
   if (!m) return out;
-  if (m.kind === 'sway') {
+  if (m.kind === 'drift') {
+    // A closed ellipse, phase-locked to the shared host clock.
+    const a = TAU * (t / m.period + (m.phase || 0));
+    out.x += Math.cos(a) * m.amp; out.z += Math.sin(a) * (m.depth ?? m.amp);
+  } else if (m.kind === 'spin') {
+    out.rot += TAU * (t / m.period + (m.phase || 0));
+  } else if (m.kind === 'tilt') {
+    const l = pad.load || { x: 0, z: 0, sink: 0 };
+    out.pitch = l.z; out.roll = -l.x; out.top -= l.sink;
+  } else if (m.kind === 'sway') {
     const o = m.amp * Math.sin(TAU * (t / m.period + (m.phase || 0)));
     out.x += (m.axis ? m.axis[0] : 1) * o; out.z += (m.axis ? m.axis[1] : 0) * o;
   } else if (m.kind === 'bob') {
@@ -76,9 +89,13 @@ export function padPos(pad, t, out = _pp) {
   return out;
 }
 
-function inPad(pad, px, pz, x, z, extra) {
+// Floe top follows its host-counted load, including the side the player stands on.
+export function padTop(pad, pose, x, z) {
+  return pose.top + (x - pose.x) * Math.sin(pose.roll || 0) - (z - pose.z) * Math.sin(pose.pitch || 0);
+}
+function inPad(pad, px, pz, x, z, extra, rot = pad.rot || 0) {
   if (pad.r !== undefined) { const dx = x - px, dz = z - pz, rr = pad.r + extra; return dx * dx + dz * dz <= rr * rr; }
-  const c = Math.cos(pad.rot || 0), s = Math.sin(pad.rot || 0), dx = x - px, dz = z - pz;
+  const c = Math.cos(rot), s = Math.sin(rot), dx = x - px, dz = z - pz;
   return Math.abs(dx * c + dz * s) <= pad.w / 2 + extra && Math.abs(-dx * s + dz * c) <= pad.d / 2 + extra;
 }
 const padRadius = (pad) => (pad.r !== undefined ? pad.r : Math.min(pad.w, pad.d) / 2);
@@ -87,7 +104,7 @@ export function padsAt(course, x, z, t, extra = 0) {
   const out = [];
   for (const pad of course.pads) {
     const p = padPos(pad, t);
-    if (inPad(pad, p.x, p.z, x, z, extra)) out.push({ pad, x: p.x, z: p.z, top: p.top, tremble: p.tremble, sunk: p.sunk });
+    if (inPad(pad, p.x, p.z, x, z, extra, p.rot)) out.push({ pad, x: p.x, z: p.z, top: p.top, tremble: p.tremble, sunk: p.sunk });
   }
   return out;
 }
@@ -98,8 +115,8 @@ export function surfaceAt(course, x, z, t, fromY, T = terrainSource) {
   const lim = fromY + HOP.step + 1e-9;
   for (const pad of course.pads) {
     const p = padPos(pad, t);
-    if (p.sunk || (course.hazard?.kind === 'lava' && p.top <= course.hazard.y) || p.top <= best || p.top > lim || !inPad(pad, p.x, p.z, x, z, 0)) continue;
-    best = p.top; id = pad.id;
+    if (p.sunk || (course.hazard?.kind === 'lava' && p.top <= course.hazard.y) || p.top <= best || p.top > lim || !inPad(pad, p.x, p.z, x, z, 0, p.rot)) continue;
+    best = pad.kind === 'floe' ? padTop(pad, p, x, z) : p.top; id = pad.id;
   }
   const ramp = backDownY(course, x, z);
   if (ramp !== null && ramp <= lim && ramp > best) { best = ramp; id = null; }
@@ -118,7 +135,7 @@ export function blocks(course, x, z, footY, t) {
   const lim = footY + HOP.step + 1e-9;
   for (const pad of course.pads) {
     const p = padPos(pad, t);
-    if (!p.sunk && (pad.base === undefined || pad.base + p.top - pad.top <= footY + PLAYER_HEIGHT) && p.top > lim && inPad(pad, p.x, p.z, x, z, 0)) return true;
+    if (!p.sunk && (pad.base === undefined || pad.base + p.top - pad.top <= footY + PLAYER_HEIGHT) && p.top > lim && inPad(pad, p.x, p.z, x, z, 0, p.rot)) return true;
   }
   return false;
 }
@@ -162,7 +179,7 @@ export const splashY = (course) => (course.splashY !== undefined ? course.splash
  */
 export function stepHop(body, input, course, t, dt, T = terrainSource, opts = {}) {
   const ev = {};
-  if (input && input.jump && body.grounded) { body.vy = HOP.speed; body.grounded = false; ev.jumped = true; }
+  if (input && input.jump && body.grounded) { body.vy = HOP.speed * (opts.jumpScale ?? 1); body.grounded = false; ev.jumped = true; }
   if (body.grounded) {
     const s = surfaceAt(course, body.x, body.z, t, body.y, T);
     if (s.y >= body.y - 0.08) { body.y = s.y; body.pad = s.pad; return ev; }    // standing (a pad that rises or sinks a little carries the feet)
@@ -197,8 +214,8 @@ function nearestPad(course, x, z, t, magnet, fromY) {
   for (const pad of course.pads) {
     const p = padPos(pad, t);
     if (p.sunk || p.top > fromY + HOP.step) continue;
-    if (inPad(pad, p.x, p.z, x, z, 0)) return null;                            // already over a pad: no pull
-    if (pad.r === undefined) continue;                                         // (round pads only)
+    if (inPad(pad, p.x, p.z, x, z, 0, p.rot)) return null;                            // already over a pad: no pull
+    if (pad.r === undefined || (pad.kind === 'floe' && pad.motion)) continue;                                         // (round pads only)
     const dx = x - p.x, dz = z - p.z, d = Math.hypot(dx, dz) - pad.r;
     if (d > 0 && d <= magnet && d < bd) { bd = d; const k = (pad.r - 0.05) / Math.hypot(dx, dz); best = { pad, top: p.top, sx: p.x + dx * k, sz: p.z + dz * k }; }
   }
@@ -211,7 +228,7 @@ function nearestPad(course, x, z, t, magnet, fromY) {
 const FLIGHT_DT = 1 / 60;
 
 /** Fly one hop from pad `a` to pad `b`, starting at time t0, aiming 0.3 u inside b's near rim. Returns { ok, why, speed, flight }. */
-export function simulateLink(course, a, b, t0, T = terrainSource) {
+export function simulateLink(course, a, b, t0, T = terrainSource, opts = {}) {
   const mg = H.margin, ra = padRadius(a), rb = padRadius(b);
   let tf = 0.45, last = null;
   for (let iter = 0; iter < 4; iter++) {
@@ -224,11 +241,11 @@ export function simulateLink(course, a, b, t0, T = terrainSource) {
     const run = aim - takeoff;
     if (run < 0) { last = { ok: true, speed: 0, flight: tf }; break; }
     const speed = run / tf;
-    if (speed > PLAYER_SPEED * mg.speed) return { ok: false, why: `gap too wide (needs ${speed.toFixed(1)} u/s)`, speed, flight: tf };
+    if (speed > PLAYER_SPEED * mg.speed * (opts.speedScale ?? 1)) return { ok: false, why: `gap too wide (needs ${speed.toFixed(1)} u/s)`, speed, flight: tf };
     const body = { x: A.x + dx * takeoff, y: A.top, z: A.z + dz * takeoff, vy: 0, grounded: true, pad: a.id };
     let t = t0, jumped = false, n = 0;
     for (; n < 240; n++) {
-      const ev = stepHop(body, { jump: !jumped }, course, t, FLIGHT_DT, T, { magnet: 0 });
+      const ev = stepHop(body, { jump: !jumped }, course, t, FLIGHT_DT, T, { ...opts, magnet: 0 });
       jumped = true;
       t += FLIGHT_DT;
       body.x += dx * speed * FLIGHT_DT; body.z += dz * speed * FLIGHT_DT;
@@ -236,16 +253,17 @@ export function simulateLink(course, a, b, t0, T = terrainSource) {
       if (n > 2 && body.grounded) break;
     }
     let landed = body.pad === b.id;
-    if (landed && b.kind === 'wet') {
+    if (landed && (b.kind === 'wet' || b.kind === 'floe')) {
       // Release the stick on landing: use the player's exponential wet damping,
       // then keep stepping gravity so an overshoot is caught as a real fall.
       const landing = { ...body };
       let vx = dx * speed, vz = dz * speed;
       for (let stop = 0; stop < 120; stop++) {
-        const damping = Math.exp(-PLAYER_DAMPING * H.wetDamping * FLIGHT_DT);
+        const damping = Math.exp(-(b.kind === 'floe' ? ICE.grip : PLAYER_DAMPING * H.wetDamping) * FLIGHT_DT);
         vx *= damping; vz *= damping;
         body.x += vx * FLIGHT_DT; body.z += vz * FLIGHT_DT;
-        stepHop(body, {}, course, t + stop * FLIGHT_DT, FLIGHT_DT, T, { magnet: 0 });
+        if (b.kind === 'floe' && b.motion) { const at = t + stop * FLIGHT_DT; const before = { ...padPos(b, at) }, after = { ...padPos(b, at + FLIGHT_DT) }; Object.assign(body, rideFloe(body, before, after)); }
+        stepHop(body, {}, course, t + stop * FLIGHT_DT, FLIGHT_DT, T, { ...opts, magnet: 0 });
         if (!body.grounded || body.pad !== b.id) { landed = false; break; }
       }
       Object.assign(body, landing);          // the flight estimate excludes the braking interval
@@ -265,7 +283,7 @@ export function simulateLink(course, a, b, t0, T = terrainSource) {
 }
 
 /** Structural checks + the bot along every link at 24 start times; also the static limits at the worst moments. */
-export function validateCourse(course, T = terrainSource) {
+export function validateCourse(course, T = terrainSource, opts = {}) {
   const errors = [], lim = H.limits, byId = new Map();
   for (const p of course.pads) {
     if (byId.has(p.id)) errors.push(`duplicate pad ${p.id}`);
@@ -300,21 +318,21 @@ export function validateCourse(course, T = terrainSource) {
       worstGap = Math.max(worstGap, Math.hypot(pb.x - pa.x, pb.z - pa.z) - padRadius(a) - padRadius(b));
       worstRise = Math.max(worstRise, pb.top - pa.top);
       if (!fail) {
-        let r = simulateLink(course, a, b, t0, T);
+        let r = simulateLink(course, a, b, t0, T, opts);
         if (l.wait) {
-          r = { ok: false, why: 'no safe sinking window' };
+          r = { ok: false, why: 'no safe motion window' };
           for (let w = 0; w <= 120; w++) {
             const at = t0 + w * period / 120;
             const ap = { ...padPos(a, at) }, bp = { ...padPos(b, at + 0.45) };
-            if (ap.top < a.top - 0.01 || bp.top < b.top - 0.01) continue;
-            r = simulateLink(course, a, b, at, T);
+            if ((a.motion?.kind === 'sink' && ap.top < a.top - 0.01) || (b.motion?.kind === 'sink' && bp.top < b.top - 0.01)) continue;
+            r = simulateLink(course, a, b, at, T, opts);
             if (r.ok) break;
           }
         }
         if (!r.ok) fail = r;
       }
     }
-    if (worstGap > lim.gap + 1e-6) errors.push(`link ${l.a}-${l.b}: gap ${worstGap.toFixed(2)} u is over the limit ${lim.gap}`);
+    if (!(l.wait && (a.motion?.kind === 'drift' || b.motion?.kind === 'drift')) && worstGap > lim.gap + 1e-6) errors.push(`link ${l.a}-${l.b}: gap ${worstGap.toFixed(2)} u is over the limit ${lim.gap}`);
     if (worstRise > lim.rise + 1e-6) errors.push(`link ${l.a}-${l.b}: rise ${worstRise.toFixed(2)} u is over the limit ${lim.rise}`);
     if (fail) errors.push(`link ${l.a}-${l.b}: ${fail.why}`);
     results.push({ a: l.a, b: l.b, gap: +worstGap.toFixed(2), rise: +worstRise.toFixed(2), ok: !fail });

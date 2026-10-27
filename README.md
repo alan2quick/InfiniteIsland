@@ -875,12 +875,18 @@ Debug: `?bridges=open` shows both bridges finished and walkable from the start o
 
 ## Debug flags
 
+**Step 74d mechanics lab:** load `?mechlab` (both screens for multiplayer; central game-state saves are disabled). Nothing is added to ordinary play and the frozen lake keeps normal traction. `__game.mechlab.goto('carry' | 'floes' | 'warm' | 'guide')` moves this screen's first player to a test. E picks up the snowball; E again puts it down, Space hops with it. Carrying slows walking, shortens hops, hides the tool/pet and prevents swinging. The five sea floes slide, drift, spin and tilt; time the first gap. At `goto('warm')`, put the snowball down facing the lit camp fire and wait 30 seconds, or use the warm gift hook. At `goto('guide')`, press E by the WIP wolf, then follow the waypoint dots, hop onto the stump and cross the narrow slippery log. It waits for the group and catches lost/fallen followers. The camp fire starts lit in this lab.
+
+Debug APIs (Player arguments can be any local Player, e.g. `__game.player`): `__game.carry.summary()`, `pick(player,'snowball')`, `drop(player)`; `__game.warm.summary()`, `give('snowball',n=1)` (host debug, .25 warmth per gift, only put down by a lit fire); `__game.guide.summary()`, `start('wolf')`, `reset('wolf')`. `__game.mechlab.guide.start('wolf',player)` selects another local starter. `__game.boat.hop.summary()` includes floe poses/motions/loads; `__game.mechlab.summary()` includes the layout and all four systems. These hooks are active only in `?mechlab`; they create no quest, pup, waterfall or Snowsong pet unlock. Use `__game.step(.1,300)` to step 30 seconds. Actual browser appearance, sound and two-screen play still need review.
+
+
 **Travel and regroup.** Choose **Join a friend** in Options to bring every player on this screen beside a player on another screen. Only unlocked islands with a clear, walkable destination are offered; water, lava and colliders are excluded. Friends stay in place. A house-marked **Homeward post** near each far bridge landing returns this screen to the campfire. A bridge tether stop shows a named **Wait for P2!** bubble. Feasts still gather players from every screen.
 
 Add these to the URL:
 
 | Flag | Effect |
 |---|---|
+| `?mechlab` | Step 74d carry / ice-floe / warm / guide test area beside Frostpine camp and coast; saves disabled. See APIs above. |
 | `?debug` | Free orbit camera (mouse drag / wheel) instead of the follow camera; the player can still be moved with the keyboard. |
 | `?touch` | Force the on-screen touch controls on a desktop browser. |
 | `?time=night` | Set the starting time (`dawn`, `noon`, `dusk`, `night` or a numeric hour also work). |

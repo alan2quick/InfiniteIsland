@@ -120,7 +120,7 @@ export function createPets({
   }
 
   function eligible(owner, local) {
-    if (owner.away || owner.downed || owner.leaving) return false;
+    if (owner.carrying || owner.away || owner.downed || owner.leaving) return false;
     if (!local && owner.root && !owner.root.visible) return false;               // a remote owner that is culled / waiting for its first pose
     if (storybook && storybook.contains(owner)) return false;
     return true;

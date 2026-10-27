@@ -130,6 +130,7 @@ import { createCapray } from './game/capray.js';                  // Step 73b: C
 import { createCaprayWorld } from './world/caprayWorld.js';
 import { createPetStable } from './world/petStable.js';
 import { duskCaprayPlan } from './world/islands/duskCapray.js';
+import { createMechlab } from './world/mechlab.js';
 import { createRuby } from './game/ruby.js';
 import { createRubyWorld } from './world/rubyWorld.js';
 import { rubyPlan } from './world/islands/emberRuby.js';
@@ -541,6 +542,7 @@ link.on('controller-disconnected', () => {
   // a phone that was playing gets its own "P2's phone disconnected" toast from the PlayerManager
   if (link.connected && !players.phones().some((p) => p.label)) hud.toast('Phone controller disconnected', { icon: 'phone' });
 });
+const mechlab = params.has('mechlab') ? createMechlab({ scene, players, avatars, sync, hop: hopCourses, items, fire: campfires.get('frost'), world: worldVis, particles, followCam, sfx }) : null;
 const targets = new Map();              // Player -> its nearest interactable this tick (drives that player's prompt bubble)
 const prompts = [];
 const dropHolds = new Map();
@@ -862,6 +864,7 @@ function tick(realDt) {
         if (a.interactPressed) fishingPlay.press(p); else if (a.cancelPressed) fishingPlay.cancel(p);
         continue;
       }
+      if (mechlab?.drive(p, a)) continue;
       if (a.interactPressed && t) {
         const toolAction = getToolAction(held, t);
         if (toolAction === 'fish') fishingPlay.cast(p, t.pond);
@@ -925,6 +928,7 @@ function tick(realDt) {
   feast.update(dt);                           // the feast scene (cutscene): overrides the player poses + camera while it runs
   boatVoyageScene.update(dt);
   boatSailScene.update(dt); duskDock.update(dt);       // Step 71: the crossing (it owns the camera while it runs) and Duskcrown's dock
+  mechlab?.update(dt);
   pets.update(dt);                            // Step 73a: the pets follow their owners (after the crossing placed the crew's visuals)
   petLab.update(dt);                          // Step 74a: the debug pet lab (does nothing while empty)
   ruby.update(dt); rubyWorld.update(dt);
@@ -960,6 +964,7 @@ function tick(realDt) {
       if (pr) prompts.push({ key: p.index, target: pr.target, text: pr.text, button: pr.button, source: p.actions.activeSource, color: p.colors.ui, label: p.colors.name });
       continue;
     }
+    if (p.carrying) { prompts.push({ key: p.index, target: { position: p.position, radius: .4, type: 'carryable' }, text: 'Put down', source: p.actions.activeSource, color: p.colors.ui, label: p.colors.name }); continue; }
     if (!t || !isLive(t)) continue;
     if (fishingPlay.isFishing(p)) continue;                                  // Step 72a: while a line is out the bobber is the prompt
     const toolAct = getToolAction(items.heldBy(p), t);
@@ -1369,6 +1374,7 @@ const partyDebug = party;
 
 window.__game = {
   toolRacks,
+  mechlab, carry: mechlab?.carry, warm: mechlab?.warm, guide: mechlab ? { summary: mechlab.guide.summary, start: (id = 'wolf') => mechlab.guide.start(id, players.list[0]), reset: mechlab.guide.reset } : null,
   version: VERSION, party: partyDebug, dusk: duskDebug, boat: boatDebug, tdoongz: tdoongzDebug, hats, tails, pets: petsDebug, petLab, capray: caprayDebug, carle: carleDebug, ruby: rubyDebug, petStable, garlands: {
     list: GARLANDS.map((g) => g.name), set: (p, i) => garlandStand.wear(typeof p === "number" ? players.list.find((a) => a.index === p) : p, i),
     cycle: (p = players.p1) => garlandStand.cycle(p), get unlocked() { return garlandStand.unlocked; },

@@ -34,6 +34,8 @@
 //   player.setColors({hat,cuff,shirt,pants})  // recolour the merged body meshes live (no rebuild)
 //   player.dispose()                  // remove from the scene and free per-player GPU resources
 import * as THREE from 'three';
+import { CARRY } from '../config.js';
+import { slideVelocity, rideFloe } from '../game/iceLogic.js';
 import {
   PLAYER_HITSTUN, COMBAT, HOP_COURSE, PLAYER_SPEED, PLAYER_WALK_SPEED, PLAYER_ACCEL, PLAYER_DAMPING, PLAYER_RADIUS,
   TURN_SPEED, WALK_THRESHOLD,
@@ -230,7 +232,7 @@ export class Player {
       return true;
     }
     if (this._hopY > 0.02 || this._hopVel > 0) return false;
-    this._hopVel = hopSpeed;
+    this._hopVel = hopSpeed * (this.carrying ? CARRY.jump : 1);
     this._sq = -0.16;
     this._sqVel = 0;
     return true;
@@ -258,7 +260,7 @@ export class Player {
 
   /** Item swing: arm winds up, slashes across the body, recovers (~0.36s). Returns false if a swing is in progress. */
   swing(dur = SWING_DUR, keys = null) {
-    if (this._swingT >= 0 || this.hurting) return false;
+    if (this.carrying || this._swingT >= 0 || this.hurting) return false;
     this._swingT = 0;
     this._swingDur = dur;
     this._swingKeys = keys || this.swingKeys;
@@ -350,7 +352,7 @@ export class Player {
   }
 
   _leaveCourse() {
-    this._course = null; this._cb = null; this._courseWalk = null; this._courseJump = false; this._splashing = false; this._wet = false; this._gliding = false;
+    this._course = null; this._cb = null; this._courseWalk = null; this._courseJump = false; this._splashing = false; this._wet = false; this._ice = false; this._gliding = false;
     this._air = 0; this.groundProbe = this._savedProbe; this._savedProbe = null;
   }
 
@@ -367,16 +369,16 @@ export class Player {
     const before = cb.pad ? { ...padPos(course.pads.find((q) => q.id === cb.pad), t - dt) } : null;
     cb.x = p.x; cb.z = p.z;
     const glided = !!cb.glide;                                  // (a landing clears it: the catch below must know the sail's descent was a glide)
-    const ev = stepHop(cb, { jump: this._courseJump, glide: this._glideHeld }, course, t, dt, HOP_TERRAIN);
+    const ev = stepHop(cb, { jump: this._courseJump, glide: this._glideHeld }, course, t, dt, HOP_TERRAIN, { jumpScale: this.carrying ? CARRY.jump : 1 });
     this._courseJump = false;
     if (ev.shift) { this._noGuard = true; this._step(ev.shift.x, ev.shift.z); this._noGuard = false; cb.x = p.x; cb.z = p.z; }
     if (cb.grounded && cb.pad) {
       const pad = course.pads.find((q) => q.id === cb.pad);
       if (pad.cp) cb.checkpoint = pad.id;
-      if (pad.motion && before) { const now = padPos(pad, t); this._noGuard = true; this._step(now.x - before.x, now.z - before.z); this._noGuard = false; }
-      this._wet = pad.kind === 'wet';
+      if (pad.motion && before) { const now = padPos(pad, t); this._noGuard = true; if (pad.kind === 'floe') { const ride = rideFloe(p, before, now); this._step(ride.x - p.x, ride.z - p.z); } else this._step(now.x - before.x, now.z - before.z); this._noGuard = false; }
+      this._wet = pad.kind === 'wet'; this._ice = pad.kind === 'floe' || !!pad.slippery;
     } else {
-      this._wet = false;
+      this._wet = false; this._ice = false;
       // Riding the slide / stairs ends the checkpoint's catch: whatever ground follows is walked, never a trap (the start checkpoint cannot catch)
       if (cb.grounded && backDownY(course, p.x, p.z) !== null) cb.checkpoint = course.start;
     }
@@ -539,9 +541,11 @@ export class Player {
         ? PLAYER_WALK_SPEED * (mag / WALK_THRESHOLD)
         : lerp(PLAYER_WALK_SPEED, PLAYER_SPEED, (mag - WALK_THRESHOLD) / (1 - WALK_THRESHOLD));
     }
-    targetSpeed *= this.speedScale;
+    targetSpeed *= this.speedScale * (this.carrying ? CARRY.speed : 1);
     const v = this.velocity;
-    if (hasInput) {
+    if (this._ice) {
+      Object.assign(v, slideVelocity(v, { x: hasInput ? mx / mag * targetSpeed : 0, z: hasInput ? mz / mag * targetSpeed : 0 }, dt));
+    } else if (hasInput) {
       const tx = (mx / mag) * targetSpeed, tz = (mz / mag) * targetSpeed;
       const dx = tx - v.x, dz = tz - v.z;
       const len = Math.hypot(dx, dz);
@@ -775,6 +779,7 @@ export class Player {
     }
     P.armR.rotation.x = armRx;
     P.armR.rotation.z = armRz;
+    if (this.carrying) { P.armL.rotation.x = P.armR.rotation.x = -1.25; P.armL.rotation.z = .2; P.armR.rotation.z = -.2; }
 
     // Body bob (two bounces per cycle) + sway
     const bob = Math.abs(s) * 0.09 * sw;

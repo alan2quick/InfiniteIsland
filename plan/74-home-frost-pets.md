@@ -202,15 +202,141 @@ shared hatch skip, equal hashes).
 **Decided (user, 2026-10-26):** in-game time that also passes while the game is closed (above); one feeding per in-game day; 3 cocoon
 days; the menu as in the table; the stable hint plus a first-time toast on the home island point players to it.
 
-### Later sub-steps
+### Steps 74d-e — "Pup on the Ice": Snowsong's quest line
 
-- 74d — the Frostpine wolf quest (Snowsong), and adding `snowsong` to the registry. To design.
-- 74e — ground-pet following (walking on the terrain, going round colliders) for Snowsong. Carle never needs it because it flies.
+**Decisions (user, 2026-10-27):**
+- The Frostpine wolf's quest is **option C, "Pup on the Ice"**.
+- It should bring in **new mechanics that can be reused later**. Each one is built as a general system first (74d), then the quest uses
+  it (74e).
+- Players reaching it are **advanced**: they have unlocked Duskcrown, so they know hopping, the hop courses, cooking and the camp. The
+  rescue and the run are tuned harder than the earlier pet quests.
+- Ground-pet following already exists (Step 76a, `game/groundPetLogic.js`), so Snowsong becomes a ground pet.
+
+#### Step 74d — four reusable mechanics (each pure-rules-first, Node-tested, documented in docs/ARCHITECTURE.md)
+1. **Carrying a creature** (`game/carryLogic.js` + runtime).
+   - A player can pick up a small creature or object marked `carryable` (Interact "Pick up"). It sits in their arms on the hand / chest
+     anchor, both arms raised.
+   - While carrying, the player walks at `CARRY.speed` (about 75%), cannot swing a tool (the held item is hidden, like the storybook page
+     tool), and can still hop with a shorter jump.
+   - Interact again puts it down in front. A fall into water (a hop-course splash) drops it at the checkpoint with a puff.
+   - Host-authoritative: who carries what is synced, like the storybook `lifts` map (`game/pageCoopLogic.js` validateLift is the pattern).
+     Only one carrier per creature; a leaving player drops it.
+   - While a player carries, their own pet is hidden so pets and creatures don't stack.
+   - Reusable for any later "bring this here" quest.
+2. **Drifting ice floes** (an extension of the hop courses, `game/hopLogic.js`).
+   - A new pad kind `floe`: a flat, white-blue, slightly translucent ice slab that floats at sea level.
+   - New motions:
+     - `drift`: the floe moves slowly along a closed loop path.
+     - `spin`: the floe turns slowly round its centre, carrying the player round with it.
+     - `tilt`: the floe dips under a player's weight toward the side they stand on, and sinks a little if two players stand on one edge.
+   - All of these are pure functions of the shared host clock, like sway / sink / bob, so every screen sees the same floe in the same
+     place.
+   - **Slippery footing** on `floe` pads: walking keeps some momentum (a short slide when you stop), controlled by `ICE.grip`. The same
+     rule can later be switched on for the frozen lake's `ice` ground; it is off there in this step, so solo play on Frostpine is
+     unchanged.
+   - The course validator must prove every link is reachable at some time in the drift cycle (`wait` links like the sinking crust).
+3. **Warming station** (`game/warmLogic.js`).
+   - A generic "warm this up" progress for a creature or object near a lit campfire (that fire's fuel > 0).
+   - Warmth rises while it sits within the fire's ring, and in big steps with warm gifts.
+   - Visuals: frost on the creature melts as a vertex-colour / glow blend, it shivers less, and steam puffs rise.
+   - Host-counted. It never depends on time of day.
+   - Reusable for later cold rescues.
+4. **Follow-the-leader guide** (`game/guideLogic.js` + runtime).
+   - A creature runs ahead along an authored path of waypoints. It stops and waits, wagging and barking, when the nearest player falls
+     more than `GUIDE.wait` u behind, and runs on when they catch up.
+   - Waypoints can be jumps the guide leaps (marked `hop`), log balances (narrow and slippery) or a slide.
+   - A player who falls or gets lost is caught and poofed to the last waypoint they reached, like the hop-course catch.
+   - It paces itself to the slowest active player within range, so local multiplayer works.
+   - Reusable for later chases and escorts.
+
+**Tests:**
+- The carry validation: one carrier, put-down spots, the water drop.
+- Floe motion purity, with the same pose on every screen at the same host time.
+- The drift-cycle reachability validator.
+- The slide momentum maths.
+- The warmth curve.
+- The guide's wait / run / catch rules.
+- A host + replica pair for the carry and the guide.
+
+**Debug:** `__game.carry`, `__game.guide` and floe summaries in the hop-course debug, plus a small test course for each mechanic
+(`?mechlab` puts a carryable snowball, a 5-floe course, a warm spot and a short guide path near the Frostpine camp; nothing is saved).
+
+#### Step 74e — the quest line and Snowsong as a pet
+**Gate:** the quest opens once `pets.questlinesOpen`. In practice players have Duskcrown by then.
+
+**The stages** (host-authoritative `snowsong` domain; pure rules `game/snowsongLogic.js`; saved in `infinite-island.frostpine.v1` under a
+`snowsong` key through `game/frostSave.js`):
+0. **The cry.** On Frostpine's north shore, a thin, wobbly howl is heard as players come within range; it plays as a small sound and a
+   bubble. Out on the sea, about 25 to 35 u off the shore, a grey-and-white **wolf pup** shivers on a drifting ice floe. Stage 1.
+1. **The floe field (the rescue).** An advanced ice-floe hop course leads out to the pup's floe:
+   - 10 to 14 floes, mixing `drift`, `spin` and `tilt`.
+   - Two `wait` links, where you time the hop as a floe drifts close.
+   - Slippery footing on every floe.
+   - The pup's floe drifts too, so the last hop is timed.
+   - The course follows the hop-course rules (checkpoints, the catch-and-poof, a glint on the next floe), but with fewer assists: no
+     landing magnet on drifting floes.
+2. **The carry back.** "Pick up" the pup and carry it back across a SHORTER return route of floes; the floes have drifted to new places.
+   Carrying shortens the jump, so the return route is built for it. A splash puts the pup back on the last checkpoint floe with you.
+   Reaching the shore with the pup completes the stage.
+3. **Warm by the fire.** Carry it to the **Frostpine camp fire**. The fire must be lit; if it's out, the line is "It needs a real fire.
+   Add some logs!" Put the pup down by the fire and warm it on the warming station:
+   - it sits shivering, frosted
+   - give it a **Birch-Bark Blanket** (a new camp craft: 3 Birch Logs at the camp), a **Snowberry Tea** (an existing dish) and a
+     **warm crystal** (a Crystal set in the fire's ring for a moment, then given)
+   - each gift raises its warmth a big step
+   - at full warmth the frost melts away, it shakes off the snow, sneezes, and bounds up
+4. **The run.** It barks and races off: the follow-the-leader guide along a long, demanding route through the Frostpine woods and up
+   the foothills to the plateau:
+   - jumps over fallen pines, a log balance across a gully, a slippery floe-like stretch, a snowbank slide, and three tighter hop
+     sections
+   - it waits for laggards, so nobody can lose it for good
+   - checkpoints keep it fair
+5. **The frozen waterfall.** The route ends at a **frozen waterfall**, a new set piece on the plateau's cliff edge: a tall cascade of
+   blue-white ice, with a little cave behind it. The pup's **mother**, a big grey-and-white wolf (the 74a model scaled about 1.6x), waits
+   there. A host-timed cinematic (`game/cinematic.js`, about 7 s, shared skip):
+   - the pup runs to her, they nuzzle, and the mother looks at the players
+   - she howls; her two other pups and the pup answer
+   - she nudges the pup and its two siblings toward the party; that makes three, plus the pup, for 4 players
+   - banner "Snowsong wants to come with you!"
+   - `pets.unlock('snowsong')`
+   - every screen asks each local player "Bring Snowsong along?"
+   Afterwards the mother rests at the frozen waterfall as decoration, and howls now and then at night, with no interactable.
+
+**Snowsong as a pet:**
+- `PET_IDS` gains `'snowsong'` (pose id 4), built from the 74a wolf model with `move: 'ground'`.
+- Idles:
+  - sit and tilt the head at the owner
+  - a short howl, more often at night and on Frostpine
+  - chase its tail
+  - roll in snow (snow ground only)
+  - flop down asleep by the owner at night
+- It trots to keep up and runs in bursts on catch-up.
+- The stable lists it and replaces the "Tracks in the Frostpine snow..." silhouette.
+
+**Debug:** `__game.snowsong.{ summary(), stage(n), rescue(), carry(), warm(), run(), finish(), reset(), goto(stage?) }` and
+`?testsnowsong` (the quest is open, nothing is saved).
+
+**Tests:**
+- The stage machine, request validation and save normalisation.
+- The floe course passes the validator through the drift cycle.
+- The return route works with the carry jump.
+- The warming gifts, and the lit-fire requirement.
+- The guide route's reachability on the real Frostpine terrain.
+- The waterfall placement clear of the camp's final stages and the critter dens.
+- A host + replica pair through the carry, the warming and the cinematic skip.
+- Pose id 4.
+- Capray, Carle and Ruby unchanged.
+
+**Budget:**
+- The floe field: about 4 to 6 draw calls (one InstancedMesh per motion kind plus the still floes).
+- The frozen waterfall: about 3 draw calls.
+- Shown only while Frostpine is in full detail.
+- No new lights.
 
 ## Progress
 
 - [x] Step 74a — Models: caterpillar, cocoon, Carle-style butterfly, grey / arctic wolf, and the `__game.petLab` viewer (0.85.4: one skinned mesh each, 2 draw calls, +1 shader program (skinned pet-toon); browser look not verified, see the changelog)
 - [x] Step 74b — Offline time (the clock catches up while closed / hidden) and Carle's hungry week: the caterpillar appears after Capray, seven days of feeding from the three islands (on its own sapling near the fire; stops at the placeholder cocoon after day 7; `clock.flushCatchUp()` fires the load catch-up; 45 new tests; browser look NOT verified, see the changelog)
 - [x] Step 74c — Carle's cocoon days, the hatch, and Carle as a flying pet (host-timed shared-skip scenes, three live/offline dawns, per-player invitations, stable, pose id 2; Node verified, browser visuals pending)
-- [ ] Step 74d — The Frostpine wolf quest, Snowsong (to design)
-- [ ] Step 74e — Ground-pet following: moved into Step 76a (plan/76-hermit-crab.md), built with the Emberleaf crab
+- [x] Step 74d — Reusable mechanics: carrying creatures, drifting ice floes + slippery footing, the warming station, the follow-the-leader guide (session-only `?mechlab`, four host domains, 26 new Node tests; browser verification pending)
+- [ ] Step 74e — "Pup on the Ice": Snowsong's quest line on Frostpine and Snowsong as a pet (ground-pet following was built in Step 76a)

@@ -87,7 +87,7 @@ export function createBoatRepair({ scene, players, avatars = null, world = null,
   function updatePots(full, t) {
     const visible = new Set();
     for (const p of [...players.list, ...(avatars?.list || [])]) {
-      const key = `${p.screen || sync.screenId}:${p.index}`, heat = tarHeat(boat.state.tar[key], t);
+      const key = `${players.list.includes(p) ? sync.screenId : p.screen}:${p.index}`, heat = tarHeat(boat.state.tar[key], t);
       if (p._offhandModel) p._offhandModel.visible = !heat;
       if (!heat || !full || !p.parts?.offhandSocket) continue;
       visible.add(p);
