@@ -2,7 +2,7 @@
 
 // Game version, shown on the title card. The client can't read package.json (only public/ is deployed), so this is
 // the source of truth: bump it together with "version" in package.json. Minor = last completed PLAN.md step.
-export const VERSION = '0.85.11';
+export const VERSION = '0.86.0';
 
 // Held-mouse direction: world-unit dead bands, optional pooled ground ring.
 export const MOUSE_STEER = { dead: 0.6, sideDead: 0.4, ring: true };
@@ -975,3 +975,90 @@ export const CARRY = { speed: .75, jump: .85, reach: 2.5, dropDistance: 1.1 };
 export const ICE = { grip: 3.2, tilt: .12, sink: .12 };
 export const WARM = { radius: 4, rate: 1 / 30, gift: .25 };   // radius from the fire centre: covers just outside the bench ring (benches at ~2.5 u), where a carried creature is naturally put down
 export const GUIDE = { speed: 3.2, wait: 6, range: 18, lost: 24, reached: 1.8, hopHeight: .8 };
+
+// Step 86a: Homesteading (the customisable home island). `budget` is the MEASURED native total in points (never computed at runtime, so a content change cannot silently change a save):
+// 35 trees x3 + 8 palms x3 + 20 rocks x2 + 25 bushes x2 + 12 herbs + 3 mushroom clusters + 6 dig spots = 240. `decoBudget` = the 20 native interactable flowers + a 40 allowance. A test pins the native counts.
+// Every placeable kind lives in `kinds` (cost = about 5x one harvest of its signature item, trees use 5 fruit + 4 logs; see plan/86-homesteading.md). `island` = whose loot/look it has, `budget` = 'main' | 'deco',
+// `cls` = the weight class, `ground` = allowed ground types, `r` = footprint for the spot check, `grows` = planted as a sprout and watered into a tree, `native` = a kind the home island has today (the last-native guard),
+// `todo` = the asset/placement is not built yet (86d / 86e); `place()` rejects those with 'not-yet'. Foreign kinds stay in the table so the budget/cost numbers can be tuned in one place.
+const HK_WEIGHTS = { tree: 3, palm: 3, bamboo: 3, rock: 2, bush: 2, herb: 1, mushroom: 1, glowcap: 1, digspot: 1 };
+const HK = (island, budget, cls, cost, o = {}) => ({ island, budget, cls, weight: budget === 'deco' ? 1 : HK_WEIGHTS[cls], cost, ground: ['grass'], r: 0.6, ...o });
+export const HOMESTEAD = {
+  weights: HK_WEIGHTS,
+  budget: 240,
+  decoBudget: 60,
+  native: { trees: 35, palms: 8, rocks: 20, bushes: 25, berryBushes: 7, herbs: 12, mushrooms: 3, digSpots: 6, flowers: 20 },
+  placedIdBase: 1000000,          // a placed object's interactable id (= harvest target id) is placedIdBase + pid, so it is the same on every screen and never shifts a native id
+  layerCap: 64,                   // instanced layers (placed herbs, flowers per colour) hold at most this many
+  waterRange: 6,                  // the host accepts a REMOTE actor's water request from this far
+  waterLock: 1.5,                 // Step 86d: s after a watering during which the same tree cannot be watered again (the growth effect plays; one held press must not skip a stage)
+  // Step 86d: keep-clear zones (the 86a review planted a tree at (1.3, 15.9) whose canopy hid the player at the spawn camera). Tall kinds (tree / palm / bamboo) get the bigger numbers.
+  keepClear: {
+    spawn: { small: 4.2, tall: 7.5 },          // radius around SPAWN
+    spawnLane: { halfWidth: 5, length: 12 },   // tall kinds: the strip SOUTH of SPAWN (the camera looks north, so a canopy there stands between the lens and the player)
+    approach: { small: 2.2, tall: 3.4 },       // half width of the walkway spawn -> home campfire
+    fireLane: { halfWidth: 4, length: 9 },     // tall kinds: south of the home campfire (same camera reasoning)
+  },
+  // Step 86f: one cap per budget. Measured in 86e: a foreign tree / rock layer costs about 3 draw calls (body + outline + shadow), a decoration layer 1-2, a dig patch 2. Worst case = 6 x 3 + 8 x 1.5 = 30 extra draw calls
+  // (86e measured +30 for 12 mixed plantings). A kind past its cap is refused until every copy of one planted kind of that budget is gone.
+  foreignKindCap: { main: 6, deco: 8 },
+  foreignCap: 32,                 // Step 86e: instances per foreign TREE / ROCK layer; small foreign kinds use layerCap
+  nightGlow: { from: 0.3, to: 0.8, max: 0.6 },   // Step 86e: Duskcrown decorations glow SOFTLY and only at night at home: strength = max x smoothstep(from, to, nightness) (one shared uniform)
+  islandNames: { frost: 'Frostpine', ember: 'Emberleaf', dusk: 'Duskcrown' },
+  clearance: 0.9,                 // a placed object keeps this much free space between its footprint and any other interactable's surface
+  kinds: {
+    appleTree: HK('home', 'main', 'tree', { apple: 5, log: 4 }, { r: 1.5, native: true, grows: true, label: 'Apple tree', inland: [11, 80] }),
+    cherryTree: HK('home', 'main', 'tree', { peach: 5, log: 4 }, { r: 1.5, native: true, grows: true, label: 'Cherry blossom tree', inland: [11, 80], note: 'the blossom tree drops PEACHES (there is no cherry item); the spec lists peach and cherry trees, the island has this one' }),
+    palm: HK('home', 'main', 'palm', { coconut: 5, log: 3 }, { r: 1.1, native: true, grows: true, label: 'Coconut palm', ground: ['sand', 'grass'], inland: [1.5, 80], minH: 0.2 }),
+    rock: HK('home', 'main', 'rock', { stone: 8 }, { r: 1.1, native: true, label: 'Rock', ground: ['grass', 'sand'], inland: [4, 80] }),
+    berryBush: HK('home', 'main', 'bush', { berry: 12 }, { r: 1.0, native: true, label: 'Berry bush', inland: [10.8, 80] }),
+    plainBush: HK('home', 'main', 'bush', {}, { r: 1.0, native: true, label: 'Bush', inland: [10.8, 80] }),
+    herb: HK('home', 'main', 'herb', { herb: 5 }, { r: 0.5, native: true, label: 'Herb', inland: [11, 80] }),
+    mushroom: HK('home', 'main', 'mushroom', { mushroom: 8 }, { r: 0.6, native: true, label: 'Mushrooms', inland: [11, 80] }),
+    digSpot: HK('home', 'main', 'digspot', { potato: 8 }, { r: 0.7, native: true, fixed: true, label: 'Dig spot', ground: ['grass', 'sand'], inland: [4, 80] }),
+    // decorations: free, own budget, no guard, small interactables that never collide
+    flowerPink: HK('home', 'deco', 'flower', {}, { r: 0.25, label: 'Pink flower', color: 0, inland: [8, 80] }),
+    flowerWhite: HK('home', 'deco', 'flower', {}, { r: 0.25, label: 'White flower', color: 1, inland: [8, 80] }),
+    flowerPurple: HK('home', 'deco', 'flower', {}, { r: 0.25, label: 'Purple flower', color: 2, inland: [8, 80] }),
+    flowerBlue: HK('home', 'deco', 'flower', {}, { r: 0.25, label: 'Blue flower', color: 3, inland: [8, 80] }),
+    lilyPad: HK('home', 'deco', 'flower', {}, { r: 0.4, label: 'Lily pad', ground: ['water'], spot: 'pond' }),
+    reed: HK('home', 'deco', 'flower', {}, { r: 0.5, label: 'Reeds', ground: ['sand', 'grass'], spot: 'shore' }),
+    // ---- Step 86e: every other island's kinds. `asset` = the island's own geometry (world/homesteadForeign.js), `variant` = lootTable.js LOOT[variant] (a tree / rock gives ITS island's loot), `item` = what a bush / herb / mushroom gives,
+    // `look` = the dig mound ('frost' = a snowy white mound with ice glints and a snow ring, 'volcanic' = a dark mound; gathering.js digLoot(island) rolls the finds), `ring` = the ghost's canopy ring, `sprout` = the sprout's tint,
+    // `scale` = [min, max] instance scale, `trunk` = the collider radius per unit scale. Costs follow "about 5x one harvest" (a log-only tree is 5x its fell, rocks are 8 stone + one rare).
+    // Frostpine
+    sprucePine: HK('frost', 'main', 'tree', { pinecone: 5, 'pine-log': 4 }, { r: 1.4, grows: true, label: 'Spruce', variant: 'spruce', asset: 'frost:spruce', scale: [0.6, 0.82], ring: 1.9, sprout: '#9fe0d0', trunk: 0.5, inland: [11, 80] }),
+    birch: HK('frost', 'main', 'tree', { 'birch-log': 10 }, { r: 1.2, grows: true, label: 'Birch', variant: 'birch', asset: 'frost:birch', scale: [0.62, 0.85], ring: 1.6, sprout: '#e4ff9a', trunk: 0.35, inland: [11, 80] }),
+    lingonBush: HK('frost', 'main', 'bush', { lingonberry: 15 }, { r: 1.0, label: 'Lingonberry bush', item: 'lingonberry', asset: 'frost:lingonBush', berries: 'frost:lingonBerries', scale: [1.0, 1.4], inland: [10.8, 80] }),
+    mint: HK('frost', 'main', 'herb', { mint: 5 }, { r: 0.5, label: 'Mountain mint', item: 'mint', asset: 'frost:mint', scale: [1.7, 2.1], prompt: 'Pick mountain mint', inland: [11, 80] }),
+    chanterelle: HK('frost', 'main', 'mushroom', { chanterelle: 8 }, { r: 0.6, label: 'Chanterelles', item: 'chanterelle', asset: 'frost:chanterelle', scale: [1.3, 1.7], prompt: 'Pick chanterelles', inland: [11, 80] }),
+    snowDigSpot: HK('frost', 'main', 'digspot', { 'snow-truffle': 8 }, { r: 0.7, fixed: true, ground: ['grass', 'sand'], label: 'Snowy dig spot', look: 'frost', digLabel: 'snowy spot', inland: [4, 80] }),
+    graniteRock: HK('frost', 'main', 'rock', { stone: 8, crystal: 1 }, { r: 1.1, ground: ['grass', 'sand'], label: 'Granite rock', variant: 'granite', asset: 'frost:granite', scale: [0.8, 1.35], tag: 'granite', inland: [4, 80] }),
+    // Emberleaf
+    bananaTree: HK('ember', 'main', 'tree', { banana: 15 }, { r: 1.4, grows: true, label: 'Banana tree', variant: 'banana', asset: 'ember:banana', scale: [0.95, 1.2], ring: 1.9, sprout: '#e8ff7a', trunk: 0.3, inland: [11, 80] }),
+    breadfruitTree: HK('ember', 'main', 'tree', { breadfruit: 5, 'breadfruit-log': 4 }, { r: 1.5, grows: true, label: 'Breadfruit tree', variant: 'breadfruit', asset: 'ember:breadfruit', scale: [0.7, 0.95], ring: 2.5, sprout: '#c2f08a', trunk: 0.5, inland: [11, 80] }),
+    jungleTree: HK('ember', 'main', 'tree', { log: 16 }, { r: 1.5, grows: true, label: 'Jungle tree', variant: 'jungle', asset: 'ember:jungle', scale: [0.7, 0.95], ring: 2.6, sprout: '#5fe08f', trunk: 0.5, inland: [11, 80] }),
+    bamboo: HK('ember', 'main', 'bamboo', { bamboo: 12 }, { r: 0.9, grows: true, label: 'Bamboo', variant: 'bamboo', asset: 'ember:bamboo', scale: [0.85, 1.1], ring: 1.2, sprout: '#d2f59a', trunk: 0.55, inland: [11, 80] }),
+    pineapple: HK('ember', 'main', 'herb', { pineapple: 5 }, { r: 0.5, label: 'Pineapple', item: 'pineapple', asset: 'ember:pineapple', scale: [0.8, 1.0], prompt: 'Pick pineapple', inland: [11, 80] }),
+    basaltRock: HK('ember', 'main', 'rock', { ash: 8, obsidian: 1 }, { r: 1.1, ground: ['grass', 'sand'], label: 'Basalt rock', variant: 'basalt', asset: 'ember:basalt', scale: [0.7, 1.15], tag: 'basalt', inland: [4, 80] }),
+    taroDigSpot: HK('ember', 'main', 'digspot', { taro: 8 }, { r: 0.7, fixed: true, ground: ['grass', 'sand'], label: 'Taro dig spot', look: 'volcanic', digLabel: 'taro spot', inland: [4, 80] }),
+    // Duskcrown (the Crownlands have nothing to place: their acacias and baobabs are shader trees with no interactables, and there is no small prop)
+    glowcapClump: HK('dusk', 'main', 'glowcap', { 'glowcap-crumbs': 8 }, { r: 0.6, label: 'Glowcap clump', item: 'glowcap-crumbs', asset: 'dusk:crumb', scale: [0.9, 1.15], prompt: 'Pick glowcaps', glows: true, inland: [11, 80] }),
+    // decorations from the other islands (free, deco budget, boing instances; a solid one has a small collider)
+    edelweiss: HK('frost', 'deco', 'flower', {}, { r: 0.25, label: 'Edelweiss', asset: 'frost:edelweiss', scale: [1.1, 1.5], prompt: 'Boing', inland: [8, 80] }),
+    gentian: HK('frost', 'deco', 'flower', {}, { r: 0.25, label: 'Gentian', asset: 'frost:gentian', scale: [1.1, 1.5], prompt: 'Boing', inland: [8, 80] }),
+    heatherTuft: HK('frost', 'deco', 'flower', {}, { r: 0.3, label: 'Heather tuft', asset: 'frost:tuft', scale: [1.0, 1.4], prompt: 'Boing', inland: [8, 80] }),
+    iceSpire: HK('frost', 'deco', 'flower', {}, { r: 0.45, label: 'Ice spire', ground: ['grass', 'sand'], asset: 'frost:spire', scale: [0.55, 0.7], prompt: 'Boing', inland: [4, 80] }),
+    snowmanRed: HK('frost', 'deco', 'flower', {}, { r: 0.5, label: 'Snowman (red scarf)', ground: ['grass', 'sand'], asset: 'frost:snowman0', scale: [0.62, 0.7], prompt: 'Boing', collider: 0.4, inland: [4, 80] }),
+    snowmanBlue: HK('frost', 'deco', 'flower', {}, { r: 0.5, label: 'Snowman (blue scarf)', ground: ['grass', 'sand'], asset: 'frost:snowman1', scale: [0.62, 0.7], prompt: 'Boing', collider: 0.4, inland: [4, 80] }),
+    snowmanGreen: HK('frost', 'deco', 'flower', {}, { r: 0.5, label: 'Snowman (green scarf)', ground: ['grass', 'sand'], asset: 'frost:snowman2', scale: [0.62, 0.7], prompt: 'Boing', collider: 0.4, inland: [4, 80] }),
+    hibiscus: HK('ember', 'deco', 'flower', {}, { r: 0.25, label: 'Hibiscus', asset: 'ember:hibiscus', scale: [1.1, 1.5], prompt: 'Smell', inland: [8, 80] }),
+    plumeria: HK('ember', 'deco', 'flower', {}, { r: 0.25, label: 'Plumeria', asset: 'ember:plumeria', scale: [1.1, 1.5], prompt: 'Smell', inland: [8, 80] }),
+    fern: HK('ember', 'deco', 'flower', {}, { r: 0.4, label: 'Fern', asset: 'ember:fern', scale: [0.9, 1.3], prompt: 'Boing', inland: [8, 80] }),
+    tikiTorch: HK('ember', 'deco', 'flower', {}, { r: 0.5, label: 'Tiki statue', ground: ['grass', 'sand'], asset: 'ember:tiki', scale: [0.6, 0.7], prompt: 'Boing', collider: 0.3, inland: [4, 80] }),
+    glowShroom: HK('dusk', 'deco', 'flower', {}, { r: 0.3, label: 'Glowing mushrooms', asset: 'dusk:glowcap', scale: [0.9, 1.2], prompt: 'Boing', glows: true, inland: [8, 80] }),
+    glowBulb: HK('dusk', 'deco', 'flower', {}, { r: 0.3, label: 'Glow bulbs', asset: 'dusk:bulb', scale: [0.9, 1.2], prompt: 'Boing', glows: true, inland: [8, 80] }),
+    mossMound: HK('dusk', 'deco', 'flower', {}, { r: 0.4, label: 'Moss mound', ground: ['grass', 'sand'], asset: 'dusk:moss', scale: [1.0, 1.4], prompt: 'Boing', inland: [4, 80] }),
+    marshFlower: HK('dusk', 'deco', 'flower', {}, { r: 0.3, label: 'Marsh flowers', asset: 'dusk:flower', scale: [1.2, 1.6], prompt: 'Smell', inland: [8, 80] }),
+  },
+};

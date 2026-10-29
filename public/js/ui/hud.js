@@ -2,7 +2,7 @@
 //
 //   const hud = createHud(document.getElementById('hud'));
 //   hud.update(dt, { camera, multi, prompts })   // every frame, after the camera moved
-//       prompts: [{ key: playerIndex, target: interactable, text?: 'Chop' (overrides target.prompt), button?: 'cancel' (shows the Cancel glyph: storybook pages), source: 'keyboard'|'gamepad'|...
+//       prompts: [{ key: playerIndex, target: interactable, text?: 'Chop' (overrides target.prompt), line2?: { glyph: 'key' | 'pad', key: 'R', text, dim? } (Step 86c: a second line above the bubble; 86d: attached to it), button?: 'cancel' (shows the Cancel glyph: storybook pages), source: 'keyboard'|'gamepad'|...
 //                   color: '#5fc4ff', label: 'P2' }]   -> one bubble per entry (key 0..3). With `multi` the bubbles get the player's colour
 //                   (border + a small "P2" badge); solo play looks like it always did. Bubbles that would overlap on screen (e.g. two
 //                   players at the same tree) are stacked upward.
@@ -106,11 +106,21 @@ export function createHud(root) {
     const label = document.createElement('span');
     label.className = 'hud-prompt-label';
     bubble.append(glyph, label, badge);
-    pop.appendChild(bubble);
+    const line2 = document.createElement('div');              // Step 86c: an optional second line above the bubble (Homesteading's Shape action: "R  Chop down for good"); Step 86d: a child of the bubble, so it stays attached at every target height
+    line2.className = 'hud-prompt-line2';
+    line2.hidden = true;
+    const l2g = document.createElement('span');
+    l2g.className = 'glyph key';
+    l2g.textContent = 'R';
+    const l2t = document.createElement('span');
+    l2t.className = 'hud-prompt-line2-text';
+    line2.append(l2g, l2t);
+    bubble.append(line2);
+    pop.append(bubble);
     el.appendChild(pop);
     root.appendChild(el);
     bubbles.push({
-      el, pop, bubble, badge, glyph, label,
+      el, pop, bubble, badge, glyph, label, line2, l2g, l2t, shownLine2: '',
       visible: false, shownId: null, shownText: '', shownGlyph: '', shownColor: null, multi: false, suppress: 0,
       w: 120, x: 0, y: 0, ty: 0, sy: NaN,
     });
@@ -140,6 +150,7 @@ export function createHud(root) {
     b.el.hidden = true;
     b.shownId = null;
     b.shownText = '';
+    b.shownLine2 = '';
     b.sy = NaN;                      // snap to its stack slot when it reappears
   }
 
@@ -311,7 +322,14 @@ export function createHud(root) {
           if (multi) { b.el.style.setProperty('--pc', p.color); b.badge.textContent = p.label || ''; }
           remeasure = true;
         }
-        if (remeasure) b.w = b.bubble.offsetWidth || b.w;      // width only changes with text / glyph / badge
+        const l2 = p.line2 || null, l2key = l2 ? `${l2.glyph}|${l2.key}|${l2.text}|${l2.dim ? 1 : 0}` : '';
+        if (l2key !== b.shownLine2) {
+          b.shownLine2 = l2key;
+          b.line2.hidden = !l2;
+          if (l2) { b.l2g.className = `glyph ${l2.glyph}`; b.l2g.textContent = l2.key; b.l2t.textContent = l2.text; b.line2.classList.toggle('dim', !!l2.dim); }
+          remeasure = true;
+        }
+        if (remeasure) b.w = Math.max(b.bubble.offsetWidth, b.line2.hidden ? 0 : b.line2.offsetWidth) || b.w;      // width only changes with text / glyph / badge
         b.x = (v.x * 0.5 + 0.5) * w;
         b.y = (-v.y * 0.5 + 0.5) * h;
         active.push(b);

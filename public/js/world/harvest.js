@@ -32,7 +32,12 @@
 // Target state machine
 //   tree / palm:  idle -> falling (topple, bounce, sink; stump appears) -> stump (regrow timer) -> growing (sapling scales up) -> idle
 //   rock:         idle -> shattered (shards fly, bounce, shrink) -> gone (regrow timer) -> emerging (rises out of the ground) -> idle
+// Step 86a (Homesteading): a target can also be 'removed' (a permanent tombstone: harvest.retire(group)). It is hidden, its interactable / collider / stump are gone, its regrowth timer is cancelled and it
+// never appears in a snapshot or regrows; its id stays reserved, so no other id shifts. Objects the players plant at runtime join with harvest.adopt(group) (their interactable id is a fixed
+// HOMESTEAD.placedIdBase + pid, the same on every screen) and leave with harvest.forget(group).
 // While a target is not 'idle' its interactable and collider are removed from the registries (the same interactable object is put
+// Step 86c (Shape): harvest.removeForGood(group, { dx, dz, tool, actor, onDone }) is ONE final hit that never regrows: it runs the normal chip + fell / shatter animation (applyHit with final: true, so the host's drops are the
+// normal full-chop / full-break drops), and when the animation ends the target is retired for good (stump gone, state 'removed') and onDone() runs. A target that is already down is retired at once.
 // back on regrowth so references such as group.userData.interactable stay valid). Geometry is never rebuilt per hit: trees / rocks
 // are hidden and restored, stumps come from a small pool that shares one geometry + material, shards from a pool sharing one too.
 import * as THREE from 'three';
@@ -434,7 +439,8 @@ export function createHarvest({ scene, players, items, particles, hud, sfx = nul
         particles.burst('puff', { x: T.crown.x, y: T.crown.y, z: T.crown.z }, { count: 5, radius: 0.8 });
         particles.burst('leaf', T.crown, { count: 5, radius: 0.9, ring: true, height: 0.3, speed: 0.7 });
         T.state = 'stump';
-        if (sync.isHost) regrow.set(T.id, time + TREE_REGROW);
+        if (T.forever) retire(T.g);                          // Step 86c: removed for good, no regrowth
+        else if (sync.isHost) regrow.set(T.id, time + TREE_REGROW);
       }
     }
   }
@@ -543,7 +549,8 @@ export function createHarvest({ scene, players, items, particles, hud, sfx = nul
     if (alive === 0 && T.t > 0.4) {
       T.shards.length = 0;
       T.state = 'gone';
-      if (sync.isHost) regrow.set(T.id, time + ROCK_REGROW);
+      if (T.forever) retire(T.g);                            // Step 86c: removed for good, no regrowth
+      else if (sync.isHost) regrow.set(T.id, time + ROCK_REGROW);
     }
   }
 
@@ -597,7 +604,7 @@ export function createHarvest({ scene, players, items, particles, hud, sfx = nul
 
   /** Replica (snapshot): put the target in its felled / broken state right now, no animation. */
   function instantDown(T) {
-    if (isDown(T)) return;
+    if (isDown(T) || T.state === 'removed') return;
     removeFromWorld(T);
     tracker.reset(T.id);
     T.t = 0;
@@ -614,7 +621,7 @@ export function createHarvest({ scene, players, items, particles, hud, sfx = nul
 
   /** Replica (snapshot): the target is standing again, no animation. */
   function instantUp(T) {
-    if (!isDown(T)) return;
+    if (!isDown(T)) return;                              // (a 'removed' tombstone is not down: it stays gone)
     settle(T);
     removeStump(T);
     T.g.quaternion.identity();
@@ -625,6 +632,63 @@ export function createHarvest({ scene, players, items, particles, hud, sfx = nul
     if (T.type !== 'rock') props.setWobble(T.g, true);
     restoreToWorld(T);
     T.state = 'idle';
+  }
+
+  // ------------------------------------------------------------------ Homesteading (Step 86a)
+  /** Remove target group `g` for good (a tombstone): hidden, unregistered, never regrows. Safe at any time (idle, felled, mid-animation) and idempotent. */
+  function retire(g) {
+    const it = g.userData.interactable;
+    if (!it) return false;
+    itemById.set(it.id, it);
+    const T = getT(it);
+    if (T.state === 'removed') return true;
+    const done = T.onDone;
+    T.onDone = null; T.forever = false;
+    settle(T);
+    removeStump(T);
+    regrow.cancel(T.id);
+    tracker.reset(T.id);
+    for (const [pl, p] of [...pendings]) if (p.T === T) pendings.delete(pl);
+    removeFromWorld(T);
+    T.state = 'removed';
+    T.t = 0;
+    g.quaternion.identity();
+    g.rotation.set(0, T.yaw, 0);
+    g.scale.copy(T.baseScale);
+    g.position.copy(T.basePos);
+    g.visible = false;
+    if (T.type !== 'rock') props.setWobble(g, false);
+    if (done) done();
+    return true;
+  }
+  /** Step 86c: one final hit, for good. Plays the normal chop + fell / shatter (the host rolls the normal drops in it), then retires the target and calls `onDone`. */
+  function removeForGood(g, d = {}) {
+    const it = g.userData.interactable;
+    if (!it) return false;
+    itemById.set(it.id, it);
+    const T = getT(it);
+    if (T.state === 'removed') { if (d.onDone) d.onDone(); return true; }
+    if (T.state !== 'idle') { T.onDone = d.onDone || null; retire(g); return true; }       // already felled / broken / being removed: just finish it
+    T.forever = true;
+    T.onDone = d.onDone || null;
+    if (sync.isHost && T.type === 'rock' && collectFind && d.actor) collectFind('break', T.g.position, d.actor, d.tool);
+    applyHit({ id: T.id, dx: d.dx || 0, dz: d.dz || 1, final: true, saber: false, toolKind: d.tool || 'axe', actor: d.actor || null });
+    if (T.state === 'idle') retire(g);                                                     // (applyHit refused: do not leave it half removed)
+    return true;
+  }
+  /** A runtime-planted tree / palm / rock group (userData.interactable set, fixed id): make it a harvest target. */
+  function adopt(g) {
+    const it = g.userData.interactable;
+    if (it) itemById.set(it.id, it);
+  }
+  /** A planted group is being deleted: retire it and drop every record of it. */
+  function forget(g) {
+    const it = g.userData.interactable;
+    if (!it) return;
+    retire(g);
+    const T = targets.get(g);
+    if (T) { tById.delete(T.id); targets.delete(g); }
+    itemById.delete(it.id);
   }
 
   // ------------------------------------------------------------------ update
@@ -688,6 +752,7 @@ export function createHarvest({ scene, players, items, particles, hud, sfx = nul
   return {
     hit,
     update,
+    retire, adopt, forget, removeForGood,
     get pending() { return pendings.size > 0; },
     pendingFor(player) { return pendings.has(player); },
     /** A player left: forget its pending hit. */

@@ -18,6 +18,8 @@
 //   text / choices may also be FUNCTIONS (re-evaluated by dialog.refresh(): labels, counts and disabled flags that change while the menu is open).
 //   choices: [{ label, detail?, icon? (svg string), chips?: [{ icon, have, need }] (ingredient icons with have/need counts),
 //               disabled?, onSelect(choice, dialog) }]  or a function returning that array (re-evaluated by dialog.refresh()).
+//               Step 86d (Homesteading's palette): `pips: n` draws n small leaf icons (a size weight), `tabs: [{ label, active }]` makes the row a segmented tab switch (selecting it runs onSelect, which flips the tab and calls dialog.refresh()),
+//               `reason` is a short sentence under a disabled row (why it is greyed out).
 //   The owner moves the highlighted row with move up / down (stick, d-pad, W/S, arrows, phone stick: the first push moves at once and holding
 //   repeats every ~0.25 s after a short delay), Interact selects, Cancel runs `onCancel(dialog)` (or closes). Tapping / clicking a row selects it.
 //   Selecting a disabled row shakes it (and calls its `onDisabled`); otherwise `onSelect` runs and is responsible for closing the dialog or
@@ -33,6 +35,7 @@ const NAV_DEAD = 0.5;          // |stick| above this counts as a push
 const NAV_FIRST = 0.35;        // s before a held direction starts repeating
 const NAV_REPEAT = 0.25;       // s between repeats
 
+const LEAF_PIP = '<svg class="hc-pip" viewBox="0 0 24 24" width="1em" height="1em" aria-hidden="true"><path d="M5 19C4 10 9 4 20 4c0 11-5 16-13 15z" fill="#7fd35c" stroke="#2b2340" stroke-width="2.4" stroke-linejoin="round"/><path d="M5 19 13 11" stroke="#2b2340" stroke-width="2" stroke-linecap="round"/></svg>';
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 export class Dialog {
@@ -219,16 +222,24 @@ export class Dialog {
   _renderMenu() {
     const m = this.menu;
     if (!m) return;
+    const keepScroll = this.menuEl.scrollTop;                       // Step 86f: re-rendering resets the scroll; keep it, then bring the selected row into the menu's own viewport
     this.menuEl.innerHTML = m.choices.map((c, i) => {
       const chips = (c.chips || []).map((k) =>
         `<span class="hc-chip${k.have >= k.need ? ' ok' : ' no'}"><span class="hc-chip-ic">${k.icon}</span><span class="hc-chip-n">${k.have}/${k.need}</span></span>`).join('');
-      return `<div class="hud-choice${i === m.sel ? ' sel' : ''}${c.disabled ? ' disabled' : ''}" data-i="${i}" role="menuitem"${c.disabled ? ' aria-disabled="true"' : ''}>
+      const tabs = c.tabs ? `<span class="hc-tabs">${c.tabs.map((t) => `<span class="hc-tab${t.active ? ' on' : ''}">${esc(t.label)}</span>`).join('')}</span>` : '';
+      const pips = c.pips ? `<span class="hc-pips" title="Island room it takes">${LEAF_PIP.repeat(c.pips)}</span>` : '';
+      return `<div class="hud-choice${i === m.sel ? ' sel' : ''}${c.disabled ? ' disabled' : ''}${c.tabs ? ' tabrow' : ''}" data-i="${i}" role="menuitem"${c.disabled ? ' aria-disabled="true"' : ''}>
         <span class="hc-ptr"></span>${c.icon ? `<span class="hc-icon">${c.icon}</span>` : ''}
-        <span class="hc-label">${esc(c.label)}</span>${chips ? `<span class="hc-chips">${chips}</span>` : ''}${c.detail ? `<span class="hc-detail">${esc(c.detail)}</span>` : ''}
+        ${c.tabs ? tabs : `<span class="hc-label">${esc(c.label)}</span>`}${chips ? `<span class="hc-chips">${chips}</span>` : ''}${pips}${c.detail ? `<span class="hc-detail">${esc(c.detail)}</span>` : ''}${c.reason ? `<span class="hc-reason">${esc(c.reason)}</span>` : ''}
       </div>`;
     }).join('');
     const row = this.menuEl.children[m.sel];
-    if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest' });
+    this.menuEl.scrollTop = keepScroll;
+    if (row && row.getBoundingClientRect) {
+      const mr = this.menuEl.getBoundingClientRect(), rr = row.getBoundingClientRect();
+      if (rr.top < mr.top) this.menuEl.scrollTop -= mr.top - rr.top + 4;
+      else if (rr.bottom > mr.bottom) this.menuEl.scrollTop += rr.bottom - mr.bottom + 4;
+    } else if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest' });
   }
 
   _moveSel(dir) {

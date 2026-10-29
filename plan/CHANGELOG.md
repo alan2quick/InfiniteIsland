@@ -1,5 +1,200 @@
 # Changelog: per-step implementation notes
 
+**Step 86f — Homesteading polish; Step 86 complete (2026-10-28, 0.86.0).** Built by a Sonnet sub-agent. The main session reviewed it in the Browser pane (2026-10-28).
+- **Changed:** `config.js`, `homesteadLogic.js`, `homesteadPalette.js`, `homesteadShape.js`, `homesteadForeign.js`, `homesteadWorld.js`, `islands/duskSmallAssets.js` (adds a `glowcap` asset; existing roles are unchanged), `ui/dialog.js`, `css/game.css`, `audio/sfx.js`, `tdoongzScript.js`, `main.js`, README, docs/ARCHITECTURE.md. **New:** `test/homestead86f.test.js` (5 tests).
+- **Rough edges fixed:**
+  - **Home basalt** is its own recoloured copy (`HOME_BASALT`): a slate body with a wider, brighter orange crack and a side crack. Emberleaf's cached basalt is untouched, and a test checks its colours and vertex count.
+  - **Glowing mushroom → "glowcap sprouts"** (`getSmallAsset('glowcap')`): periwinkle / sky / lilac caps, a cyan rim and white spots on the stronger glow role (4). The glow is 0 by day and soft at night (`nightGlow` max 0.6, unchanged).
+  - **`foreignKindCap: { main: 6, deco: 8 }`** replaces the single 12. Each tab gets its own greyed reason, and the worst case is estimated at about +30 draw calls.
+  - **Palette:** rows stay on one line (ellipsis, smaller chips and pips). `Dialog._renderMenu` keeps the scroll and brings the selected row into view.
+  - **Entry toast:** shortened to "Homesteading! R: plant or remove" (X on a pad).
+- **Sounds:** every voice is at or below 0.17 (the feast jingle's loudest note).
+  - `plant` 0.26 → 0.17. `pour` 0.17 → 0.12.
+  - `sproutgrow` 0.15 with an upward lean. `treegrow` 0.12 / 0.12 / 0.14 + a rustle of 0.1 + an octave sparkle tail.
+  - A new soft `poof` (0.1 + a 0.08 bloop) replaces the pitched `pop` on removal.
+- **Nabong:** her "Homesteading" row rotates through 4 tip sets (a session counter): where to start, watering, the leaf pips / budget, other islands' plants and the kind limits. After the review the main session reworded the budget tip: flowers use their own room, so "a little herb only one! Flowers have their very own room."
+- **Docs:** a full README Homesteading section with a cheat sheet, and the ARCHITECTURE module index for all eleven homestead modules.
+- **Browser review (main session), on `?homestead&newgame` + `unlockIslands()`:**
+  - Basalt reads as slate with an orange crack next to the speckled granite.
+  - At 23:30 (glow 0.59) the glowcap sprouts clearly glow lavender with cyan rims. By day their caps are plain periwinkle / lilac.
+  - With basalt, granite, mint, chanterelles, snowy and taro dig spots in use, a 7th gathering kind (pineapple) returned `kind-cap`. Its palette row read "Too many kinds of trees and rocks from other islands (6): remove every copy of one first". A decoration (edelweiss) still placed.
+  - The palette list (1775 px of rows in a 330 px view) scrolled with the selection: after 14 presses down, the selected Chanterelles row was in view. Rows were one line.
+  - Nabong's tip row showed three different tips on three visits.
+  - No console errors.
+- **Tests:** `npm test` gives **1670 pass, 0 fail**.
+- **Not fixed / not verified:**
+  - **The entry toast is still clipped by the clock.** Toasts stack centred at the top, and the clock sits over that column at 1024×768, so even the shorter text loses its middle. This is the general toast-placement rough edge (PLAN backlog); moving the toast stack below the top HUD would fix it for every toast.
+  - Sounds by ear, real phones / touch for the palette, a host + replica run with foreign plantings, and real-device GPU cost.
+
+**Step 86e — every island's kinds and decorations for Homesteading (2026-10-28, 0.85.16).** Built by a Sonnet sub-agent. The main session reviewed it in the Browser pane (2026-10-28).
+- **New:** `world/homesteadForeign.js` (the foreign instanced layers, proxies, night glow) and `test/homesteadForeign.test.js` (15 tests).
+- **Changed:** `config.js`, `homestead.js`, `homesteadLogic.js`, `homesteadPalette.js`, `homesteadPlace.js`, `homesteadWorld.js`, `props.js` (`makeSprout`), `gathering.js` (dig looks, `notePatch`, generic `adoptPlaced`), `main.js`, docs, README. Two homestead tests were adjusted for the foreign kinds.
+- **Kinds (30 gathering + decorations, 45 in total with home):**
+  - Frostpine: spruce (5 pinecones + 4 pine logs), birch (10 birch logs), lingonberry bush (15), mint (5), chanterelles (8), snowy dig spot (8 snow truffles), granite (8 stone + 1 crystal).
+  - Emberleaf: banana (15), breadfruit (5 + 4 breadfruit logs), jungle tree (16 logs), bamboo (12), pineapple (5), basalt (8 ash + 1 obsidian), taro dig spot (8 taro).
+  - Duskcrown: glowcap clump (8 crumbs).
+  - Free decorations: edelweiss, gentian, heather tuft, ice spire, snowmen (red / blue / green scarf), hibiscus, plumeria, fern, tiki torch, glowing mushrooms, glow bulbs, moss mound, marsh flowers. The snowmen and tiki have small colliders.
+  - Skipped: the Crownlands (its acacias / baobabs are shader trees with no interactables, and it has no small prop) and Emberleaf's coconut palm (home has one).
+- **Listing:**
+  - Frostpine / Emberleaf use `bridges.entry(id).built`, and Duskcrown uses `boat.state.discovered`. Both flags only ever turn on, so a listed kind stays listed.
+  - A toast shows only when an island joins during the session; islands already unlocked at load are known silently. There is no new save state.
+  - The host refuses unlisted kinds (`not-yet`).
+- **Foreign trees / rocks** are slots in one instanced layer per kind, each with a hidden proxy using the big islands' instance → proxy binding, so harvest, regrow and growth reuse existing code with `LOOT[variant]`. Dig patches are gathering mounds with a per-patch island and look, digging `DIG[island]`.
+- **Telling kinds apart:** the snowy dig spot is a white mound with glints and a snow ring; taro is a dark mound with an ash ring. Mint is paler and about 1.9× bigger. Granite is speckled with no snow cap; basalt has an orange crack. Prompts read "Dig (snowy spot)", "Dig (taro spot)", "Pick mountain mint", "Break (granite)".
+- **Night glow:** the Duskcrown kinds share one home-owned `uGlow` uniform, `nightGlow(nightness)`: 0 by day, at most 0.6 at night.
+- **`HOMESTEAD.foreignKindCap` = 12** distinct foreign kinds in use (gathering and decorations together). A 13th is refused (`kind-cap`) and greyed in the palette.
+- **Browser review (main session), on `?homestead&racks&newgame` + `unlockIslands()`:**
+  - The island list went `home` → `home, frost, ember, dusk`, and `kinds()` listed 45.
+  - Planted (after removing 8 rocks): birch, snowy dig spot, basalt, glowing mushroom, granite, mint, banana, edelweiss, red snowman, tiki torch, glow bulb and taro dig spot. All rendered and read as their kinds.
+  - Harvests:
+    - The birch chopped with the axe for 3 birch logs and no plain logs.
+    - Basalt broke with the hammer for 2 ash + 3 stone.
+    - The taro spot dug 2 taro.
+    - The snowy spot's first dig gave a crystal (the 10 % roll). Later refills gave 1–2 snow truffles each, with one more crystal in 5 digs.
+    - The patch refills **in place** about 40 s later, but only while no player stands on it (as for every dig spot).
+  - Night glow: the glow uniform was 0 at noon and 0.59 at 23:30. The glow bulbs read as softly lit.
+  - **Draw calls, measured** (manual `renderer.render` of the same pose at (-22, 20.5), noon): **208 → 238 (+30)** with the 12 plantings (10 foreign layers + 2 dig patches; 8 rocks removed). The in-game loop showed 231 at the same pose. This meadow view is already over the ~200 guideline before anything is planted, and the cap allows about +36–40 in the worst case.
+  - No console errors.
+- **Tests:** `npm test` gives **1665 pass, 0 fail**.
+- **Rough edges found (for 86f):**
+  - Basalt reads almost pure black by day; only a small orange glint shows. It needs a lighter body or a brighter crack.
+  - The glowing-mushroom decoration barely reads as glowing at night (pinkish caps); the glow bulbs are fine.
+  - The 12-kind cap counts decorations too, so a player with many decoration kinds can't add new trees. Consider separate caps for gathering and decorations, or a lower total that keeps the worst case near +25.
+  - The debug `place` skips cost and listing, so the real palette path for foreign kinds (costs, `not-yet`, the cap greying) was only covered by the Node tests.
+  - Not verified: a host + replica run with foreign plantings, the palette scrolling with 24 / 21 rows, audio, real devices.
+
+**Step 86d — placing and growth, home kinds (2026-10-28, 0.85.15).** Built by a Sonnet sub-agent. The main session reviewed it in the Browser pane (2026-10-28).
+- **New:**
+  - `game/homesteadPlace.js`: the palette, the preview flow and the watering press.
+  - `game/homesteadPalette.js`: pure palette rows and greying reasons.
+  - `game/homesteadSpot.js`: the keep-clear zones and the pond / shore tests.
+  - `world/homesteadGhost.js`: the ghost and its reason tag.
+  - `world/homesteadFx.js`: the splash arc, boing, ground ring and growth burst.
+  - `test/homesteadPlace.test.js`: 19 tests.
+- **Changed:** `config.js`, `props.js`, `homesteadWorld.js`, `homestead.js`, `homesteadShape.js`, `islandVisuals.js`, `dialog.js`, `hud.js`, `game.css`, `tools.js`, `sfx.js`, `main.js`, docs, README. One 86a assertion now checks the sprout's group name instead of a 0.2 scale.
+- **Palette:**
+  - It is a menu on the shared dialog: a Gathering | Decorations tab row, then one row per kind with a cost chip (item icon + have / need, or "Free"), leaf pips and a red reason.
+  - Shape opens it with no target. It also opens with empty hands next to a target, where the prompt reads "Plant something".
+  - A second local player's palette queues (one dialog), but previews run in parallel.
+- **spotCheck reasons:** `water`, `cliff`, `ground`, `edge`, `spawn`, `fire`, `reserved`, `path`, `blocked`, `crowded`, `pond`, `shore`.
+- **`HOMESTEAD.keepClear`:**
+  - Spawn: radius 4.2 for small kinds and 7.5 for tall ones.
+  - Tall kinds are also blocked in strips south of the spawn and the campfire.
+  - Every kind is blocked on the spawn → campfire walkway.
+- **Costs:** unchanged from 86a (apple tree 5 apples + 4 logs, and so on).
+- **Growth:**
+  - Trees and palms start as a shared tinted two-leaf sprout; the sapling is the species model at 0.45.
+  - Each watering grows one stage at once. A 1.5 s lock (client and host, in simulation time) stops double growth, and the host requires the can in hand.
+  - FX: a 12-droplet splash, a squash-and-stretch overshoot of about 0.8 s, a ground ring, and leaves + sparkles. The full tree adds a bigger ring, petals or leaves, and a camera nudge for the waterer.
+  - Procedural sounds: `pour`, `sproutgrow`, `treegrow`, `plant`.
+- **Far view:** retired natives are skipped and grown planted trees added, with the blobs rebuilt at most every 0.6 s.
+- **`line2` fix:** the Shape line is now a child of the prompt bubble, just above it.
+- **Browser review (main session), on `?homestead&racks&newgame`:**
+  - The palette rendered as described. With 5 apples + 4 logs only the apple tree was active; the others showed "Needs 5 Peaches", "Needs 8 Stones" and so on. Plain bush showed "Free".
+  - `pick('appleTree')` at (5, 22) gave a green ghost (`ok`, no reason). `confirm()` planted a sprout at (5, 24), took 5 apples + 4 logs, moved the meter 234 → 237 / 240 and reopened the palette.
+  - With the can (taken from the home rack), the prompt read "E Water". The first watering made a sapling.
+  - On a second tree, an immediate second press was blocked by the lock, and a press 2 s later grew the full tree.
+  - The `line2` now sits directly on the bubble ("R Needs an axe" over "E Shake").
+  - `spotCheck`: the 86a problem spot (1.29, 15.94) is now `spawn` for trees and herbs; (0, 8) is `spawn`, the sea and the pond are `water`, and a lily pad on grass is `pond`.
+  - A pink flower, a lily pad (17, 5) and reeds (12.5, 5) placed and rendered (Decor 23 / 60).
+  - `farBlobs()` showed 7 rebuilds, not dirty.
+  - No console errors.
+- **Tests:** `npm test` gives **1650 pass, 0 fail**.
+- **Rough edges found:**
+  - **Fixed after review (main session):** tree / palm ghosts are now the planted sprout plus a faint ground ring for the grown canopy (`spec.ring`: tree 2.6, palm 2.3; one extra draw call), and the reason tag sits just above the sprout. Before the fix, **the tree ghost previewed the full-grown tree** (canopy and all), 2 u in front of the player. Facing the camera, it covers the player and much of the screen, and its overlapping see-through faces look muddy. A sprout-sized ghost plus a faint ground ring for the grown canopy's footprint would read better and match what actually gets planted.
+  - The palette's cherry blossom row wraps its leaf pips onto a second line.
+  - The Homesteading entry toast overlaps the clock (the known toast-overlap rough edge).
+  - `items.equip('watering-can')` can't fetch the can (it is a rack-only copy); take it from the home rack.
+  - Not verified: the droplet / particle / boing effects frame by frame (only stills), audio by ear, phones / touch for the palette, two players' palettes queuing.
+
+**Step 86c — the Homesteading mode and permanent removal (2026-10-28, 0.85.14).** Built by a Sonnet sub-agent. The main session reviewed it in the Browser pane (2026-10-28).
+- **New:** `game/homesteadShape.js` (the mode controller: enter / leave / toggle, `press`, `cancelTap`, `promptLine`, `update`), `ui/homesteadBadge.js` (the HUD badge), `test/homesteadShape.test.js` (9 tests).
+- **Changed:** `charms.js`, `homesteadLogic.js`, `homestead.js`, `homesteadWorld.js`, `harvest.js`, `gathering.js`, `hud.js`, `main.js`, `game.css`, docs, README.
+- **The mode:**
+  - It is per player and for the host's screen only. The fire-menu row toggles it, and entering shows a toast.
+  - One badge per screen (top-left, under the roster) shows while any local player is in it: the house icon, then Island `used / budget` and Decor `used / budget`.
+  - Leaving: one Cancel is still the hop, and a second Cancel within 0.45 s opens "Leave Homesteading?" (owned by that player). "Done homesteading" on the fire menu also leaves, and so does leaving the home island (a cave, the Party Glade or a storybook page count too).
+- **Shape:**
+  - `actionsWithCharmRouting(actions, inCombat, homesteading)` turns Charm into `shapePressed` / `shapeHeld` in the mode, and combat still wins.
+  - The touch / phone Charm button shows in the mode, without an icon (the widget has none).
+  - Prompt bubbles take an optional `line2`, such as "R Chop down for good" or a dimmed "Needs a hammer". Non-keyboard players see X instead of R.
+- **Removal:**
+  - The host checks the tool and reach (`no-tool`, `far`).
+  - Trees, palms and rocks go through `harvest.removeForGood`: one final normal hit, so the fall / shatter and the drops are the ordinary ones. The target is then retired instead of regrowing.
+  - `gathering.lastHarvest` handles bushes (their berries), herbs and mushrooms (one pick), and dig spots (one dig plus the Journal roll, no respawn).
+  - Sprouts, flowers and plain bushes give nothing.
+  - Every gathering removal asks "...for good? It won't grow back." with "No, keep it" as the default. Decorations skip the confirm.
+  - With two players, the second player's confirm waits in a queue (there is one dialog).
+- **Browser review (main session), on `?homestead&newgame`:**
+  - In the mode, with an axe at a native cherry tree, the badge read 240 / 240 and 20 / 60, and the prompt showed "E Chop" plus "R Chop down for good".
+  - R opened the confirm. Yes → "Timber!", the tree toppled, and the meter went to 237 / 240. A peach and 4 logs dropped, and no stump was left. `regrowNow` left it removed (`tree:6`).
+  - After `remove('mush:0')` and `remove('mush:1')`, Shape at the last patch toasted "That's the island's last mushroom patch!" and opened no dialog.
+  - A shovel at a flower dug it up with no dialog (Decor 20 → 19). A shovel at a rock showed "Needs a hammer".
+  - In the mode, Q and Space hop (`_hopY` 0.61) and R does not. Outside the mode, R hops again.
+  - Q Q opened "Leave Homesteading?", and "Yes, I am done" left the mode and hid the badge.
+  - Two players (P2 a debug gamepad): P1's apple tree confirm showed first and P2's rock confirm was queued. After P1's Yes, P2's dialog opened, tagged P2 and driven by P2's input. Both were removed, and the meter read 230 / 240 (= 240 − 3 − 3 − 2 − 1 − 1).
+  - Teleporting P1 to Frostpine auto-left P1's mode while P2 stayed in.
+  - No console errors.
+- **Tests:** `npm test` gives **1631 pass, 0 fail**.
+- **Rough edges found:**
+  - **The Shape line floats far above the prompt bubble on tall targets.** On a tree it sits about 50 px above "E Chop", near the top edge, and overlaps the clock. It should sit directly above (or below) the bubble. Fix it with 86d's palette / preview UI.
+  - Two `items.equip('axe', p)` calls for two players picked the same axe record (a debug-helper quirk, not gameplay).
+  - Not verified: the touch / phone Charm button in the mode (no phone or touch test), audio, real devices, online guests in 86c (86b's guest checks still apply).
+
+**Step 86b — Homesteading unlock and the home watering can (2026-10-28, 0.85.13).** Built by a Sonnet sub-agent. The main session reviewed it in the Browser pane (2026-10-28).
+- **Unlock:** Nabong's menu gains "I found everything!" only when `homestead.canTalk()` is true (host screen, home album complete, not unlocked yet). The 4 pages are in `HOMESTEAD_TALK` (`game/tdoongzScript.js`) and reach her menu through a new `extraRows` option on `createTdoongz` (`nabongRows` in `main.js`).
+  - The host validates the request (`not-host`, `album`, `already`). Every screen then plays the Journal showcase pose with the can on that actor and shows a toast.
+  - Afterwards her menu shows a "Homesteading" tip row (host screen only).
+  - The can is NOT put in the player's hand: it waits on the home rack.
+- **Rack ids:** `TOOL_RACK.kinds` and the 80 existing ids are unchanged (`RACK_COUNT` 80). The 4 cans are `base + 80 + slot` (`RACK_TOTAL` 84), and the dynamic records start 4 ids later. A test pins every (fire, slot, kind) id.
+  - `rackKinds(discovered, fire, homesteadUnlocked)` appends `'watering-can'` for the home rack only.
+  - The can hangs on its own side peg (a separate mesh) and pops in when the unlock lands.
+- **Fire menu:** a "Homesteading" / "Done homesteading" row with the new `ICONS.homestead`, host screen only. For now it toggles the mode and shows a placeholder toast.
+- **Mode API for 86c:** `homestead.setMode(player, on)`, `inMode(player)`, `modes()` and a `mode` event. It is screen-local per player, never synced or saved. `setMode` returns false for guests or while locked.
+- **Debug:** `?testhomestead` gives 5 of the 6 home Journal entries on a host (the Sand Dollar is missing). `__game.homestead.unlockTalk()` and `nabong()` run the scenes.
+- **Changed:** `game/toolRackLogic.js`, `world/items.js`, `world/toolRacks.js`, `game/homestead.js`, `game/tdoongzScript.js`, `world/tdoongz.js`, `world/journalShowcase.js`, `ui/icons.js`, `main.js`, `config.js`, docs, README. **New:** `test/homesteadUnlock.test.js` (9 tests).
+- **Browser review (main session), on `?testhomestead&racks&newgame`:**
+  - With 5 / 6 finds, Nabong's menu had no unlock row.
+  - After awarding the Sand Dollar the "Infinite Island album complete!" toast showed and "I found everything!" appeared. The 4 pages read in her voice, the unlock landed, and her menu then showed the "Homesteading" tip row.
+  - The home rack cycled axe → hammer → sword → shovel → watering can → axe. The Frostpine, Emberleaf and Duskcrown racks never offered the can.
+  - The home fire menu showed "Homesteading"; clicking it turned the mode on and showed the toast, and the row then read "Done homesteading".
+  - A reload kept the unlock and the can on the rack. The held rack copy was gone, per Step 75's session rule, and the mode was off.
+  - A `?join` replica over `?transport=ws` had no Homesteading row, `setMode` returned false, and the `homestead` / `items` hashes matched the host's. That replica showed no rack at all, because `?racks` only forces the racks on its own screen and no feast was done.
+- **Tests:** `npm test` gives **1622 pass, 0 fail**.
+- **Not verified / rough:**
+  - The showcase pose with the can wasn't caught on screen (it had ended by the time of the screenshot).
+  - The can's side-peg position and size on the rack, and the showcase scale (0.62), are the agent's guesses. A close-up of the rack is still to do.
+  - The held can is the Step 60 model; it reads as a blue spout with a pink tip from behind.
+  - Synthetic ArrowDown presses didn't move the menu selection in a stepped test, so the row was clicked instead. That's a test-harness quirk, not a game bug.
+  - Audio and real devices weren't checked.
+
+**Step 86a — Homesteading's layout layer (2026-10-28, 0.85.12).** Built by a Sonnet sub-agent. The main session reviewed it in the Browser pane (2026-10-28).
+- **Measured natives** (`HOMESTEAD.native`, pinned in tests): 35 trees (20 apple, 15 cherry-blossom), 8 palms, 20 rocks, 25 bushes (7 berry, 18 plain), 12 herbs, 3 mushroom clusters, 6 dig spots, 20 interactable flowers. `HOMESTEAD.budget` = **240** points (model B weights), `decoBudget` = **60** (20 native flowers + 40).
+- **New files:** `game/homesteadLogic.js` (pure: kinds, budgets, the last-native guard, validate remove / place, snapshot), `game/homestead.js` (the synced `homestead` domain, saved as `homestead` in `infinite-island.home.v1`), `world/homesteadWorld.js` (the screen runtime: tombstones, placed objects, `spotCheck`), `test/homestead.test.js` (15 tests).
+- **Changed:** `config.js`, `main.js`, `world/props.js`, `world/harvest.js`, `world/gathering.js`, `world/interactables.js`, docs, README, and the version pins in 8 tests.
+- **Id scheme:**
+  - Natives get stable string ids in placement order (`tree:i`, `palm:i`, `rock:i`, `bush:i`, `herb:i`, `mush:i`, `flower:k`, `dig:1..6`). Placed objects are `p<pid>`.
+  - Harvest: a placed object gets the fixed interactable id `1000000 + pid` (`addInteractable` takes an optional `id`), and joins and leaves through `harvest.adopt` / `forget`.
+  - Gathering: placed plants live in keyed maps. Its snapshot and hash only gain a `placed` section when something is planted, so every existing id and hash pin is unchanged.
+- **Tombstones:** a removed native keeps its slot, is hidden, loses its interactable and collider, and never regrows. Removed native dig spots shorten the wandering set, never below 1. The domain registers before harvest and gathering, so a joining replica applies the layout first.
+- **Placed home kinds are full citizens:** apple / cherry tree, palm, rock, berry / plain bush, herb, mushroom, dig spot (a fixed patch) and the home flower colours. Trees are planted as a sprout (the grown model ×0.2) → sapling (×0.45) → grown, with two `water(pid)` calls. Foreign kinds are rejected with `not-yet` (86e).
+- **Debug:** `__game.homestead` has `remove(id)`, `place(kind, x, z, {stage})`, `water(pid)`, `nearest()`, `summary()`, `budget()`, `unlock()` and `world.spotCheck(kind, x, z)`. The `?homestead` flag unlocks it.
+- **Browser review (main session):**
+  - `?homestead&newgame` loads with no console errors and reads main 240 / 240, deco 20 / 60.
+  - Removed 4 rocks and 2 trees, then placed an herb, an apple tree, a rock, a cherry tree, a pink flower, a plain bush and a dig spot near spawn. All of them render.
+  - The cherry sprout grew to sapling, then grown, with two waterings.
+  - The placed apple tree chopped down with the axe the normal way (stump + regrow timer) and came back with `regrowNow`.
+  - A reload kept the whole layout.
+  - Online over `?transport=ws`: a `?join` replica showed the same 7 placed and 6 removed, with matching `homestead`, `harvest` and `gathering` hashes. A replica's `remove` returned `not-host`. A PeerJS join from the Browser pane stayed `offline` (the PeerJS cloud wasn't reachable from there; the ws relay worked).
+- **Tests:** `npm test` gives **1613 pass, 0 fail** (1598 before).
+- **Not done / for later steps:**
+  - Removal has no drops, confirm or animation yet (86c). Growth has no effect or sound yet (86d).
+  - There is one blossom tree, and it drops peaches, so `cherryTree` costs peaches. There is no separate peach tree.
+  - The far canopy blobs ignore the layout: a removed tree still shows from far away, and a planted one doesn't (86d).
+  - **`spotCheck` has no camera-lane / spawn rule.** A tree planted at (1.3, 15.9) stands right in front of the spawn camera and hides the player behind its canopy (only the silhouette shows). 86d must keep the spawn area, the fire approach and paths clear.
+  - Placed objects aren't instanced (two draw calls per tree / palm / rock / bush / mushroom, like a native). Herbs and flowers are one instanced layer per kind. Draw calls weren't measured in the browser.
+  - Not verified: audio, real devices, real online play over PeerJS.
+
 **Step 74d — four reusable mechanics (2026-10-27, 0.85.11).** Main-session browser review (2026-10-27) with `?mechlab`: carrying (arms up, "Put down", 4.95 u/s), warming (0.17 in 5 s, +0.25 per gift, frost fades), the spin floe carrying the player round, the slide after release on a floe, and the guide waiting for a laggard, catching a fall at the log balance and finishing all work. Two fixes from the review: (1) `world/mechlab.js` keyed LOCAL players by their input device (`"local:0"`) instead of the screen id (`"host:0"`), so the host dropped a just-picked creature on the next tick ("carrier left"); local players now use `sync.screenId`, like `sync.actorFor`. (2) `WARM.radius` 2.2 -> 4: the old ring sat inside the camp benches (2.5 u), so a creature put down in front of the fire never warmed. Not checked in the browser: a timed hop onto a drifting floe (a scripted hop missed and splashed; the catch worked), the tilt floe, carrying across floes, two screens, audio. `world/boatRepair.js` builds its tar-heat key the same way (`p.screen || sync.screenId`) and had the same local-player key bug: a host-screen player's hot tar pot never showed in their hand. Fixed the same way (local players key by `sync.screenId`); checked in the browser that P1's pot shows while `tar["host:0"]` is hot and goes when it cools. Added pure carry / ice-footing / warmth / guide rules and small session-only host runtimes: `carry`, `ice`, `warm`, `guide` domains with full snapshots/events and request-only replicas. Carrying supports any player slot, one owner per object, safe put-down, checkpoint water drops and departure cleanup; 75% walking speed / 85% hop launch, raised arms, hidden tools/pets and no tool swings. Hop courses gain sea-level translucent floes, shared-clock closed drift and spin, host-counted edge tilt / two-player sink, momentum footing and a drift wait-window validator (including carry speed/jump and slide braking). Warming requires actual positive campfire fuel and a put-down object within 2.2 u; 30 s passive warm-up / .25 per debug gift, frost/glow blend, less shivering and steam. Guides enroll nearby active players, wait for the slowest beyond 6 u, run at 3.2 u/s, hop authored waypoints, and catch falls / losses beyond 24 u at each follower's checkpoint.
 
 `?mechlab` is the only consumer: snowball at `(-5,-152)`, warm approach `(-5,-167.2)` at the existing Frostpine fire `(-5,-169)`, five floes from `(-25,-91,.25)` to `(-14.5,-86.1,.25)`, ten guide waypoints `(-26,-151)` to `(-26,-124)`, one hop and one 1.4 u slippery log. The fire starts lit. Two registered-once targets, zero added collider-registry entries, two courses; all central game-state save reads/writes/clears disabled in the lab. Added `__game.mechlab.goto`, carry pick/drop/summary, warm give/summary, guide start/reset/summary and floe poses/loads in hop summaries. Use the flag on both network screens. Normal play registers nothing new; the frozen lake remains ordinary traction. No pup, quest, frozen waterfall, Snowsong pet registry entry, pose id or unlock.

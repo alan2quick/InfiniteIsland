@@ -53,8 +53,9 @@ function unbucket(item) {
   if (!list.length) _grid.delete(item.cell);
 }
 
-export function addInteractable({ type, object = null, instance = null, position, radius = 0.8, prompt = 'Interact', onInteract = null, canInteract = null }) {
-  const item = { id: _nextId++, type, object, instance, position, radius, prompt, onInteract, canInteract, seq: 0, cell: 0 };
+// `id` (Step 86a): a fixed id for a Homesteading object (HOMESTEAD.placedIdBase + pid), so it is the same on every screen and the counter - hence every native id - never moves.
+export function addInteractable({ type, object = null, instance = null, position, radius = 0.8, prompt = 'Interact', onInteract = null, canInteract = null, id = null }) {
+  const item = { id: id ?? _nextId++, type, object, instance, position, radius, prompt, onInteract, canInteract, seq: 0, cell: 0 };
   _items.push(item);
   bucket(item);
   return item;

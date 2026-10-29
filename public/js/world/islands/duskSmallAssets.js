@@ -20,7 +20,7 @@ export function getSmallAsset(kind) {
   const parts = [], hulls = [];
   const add = (g, c, t, glow = false, hull = false) => {
     const p = part(g, c, t);
-    p.setAttribute('aRole', new THREE.Float32BufferAttribute(new Float32Array(p.attributes.position.count).fill(glow ? 5 : 1), 1));
+    p.setAttribute('aRole', new THREE.Float32BufferAttribute(new Float32Array(p.attributes.position.count).fill(glow === true ? 5 : glow || 1), 1));   // glow: true = role 5 (emissive), a number = that role (86f: 4 = the stronger "bulb" glow)
     parts.push(p); if (hull) hulls.push(p.clone());
   };
   const flower = (x, y, z, r, c, glow) => {
@@ -33,6 +33,17 @@ export function getSmallAsset(kind) {
     add(G.cyl6, C.pale, { p: [x, h / 2, z], s: [0.055, h, 0.055] });
     add(ball, C.violet, { p: [x, h, z], s: [0.28, 0.16, 0.28] }, true, true);
     add(petal, C.pale, { p: [x + 0.06, h + 0.12, z + 0.07], s: [0.045, 0.018, 0.045] }, true);
+  }
+  else if (kind === 'glowcap') {        // Step 86f: the HOME decoration "glowcap sprouts": the marsh mushroom's violet caps read pink and dull at night, so these use periwinkle / sky / lilac caps, a cyan gill rim and bright spots, all on the stronger bulb glow (role 4)
+    const caps = ['#9d8cff', '#7fd8ff', '#c08cff'];
+    for (let i = 0; i < 3; i++) {
+      const x = (i - 1) * 0.34, z = Math.sin(i * 2.4) * 0.2, h = 0.34 + i * 0.16, r = 0.27 + 0.03 * i;
+      add(G.cyl6, C.pale, { p: [x, h / 2, z], s: [0.06, h, 0.06] });
+      add(ball, caps[i], { p: [x, h, z], s: [r, r * 0.6, r] }, 4, true);
+      add(ball, '#5ff0ee', { p: [x, h - r * 0.2, z], s: [r * 0.94, r * 0.14, r * 0.94] }, 4);
+      for (let k = 0; k < 3; k++) { const a = k * 2.1 + i; add(petal, '#f2ffff', { p: [x + Math.cos(a) * r * 0.45, h + r * 0.5, z + Math.sin(a) * r * 0.45], s: [0.045, 0.02, 0.045] }, 4); }
+    }
+    for (let k = 0; k < 5; k++) { const a = k * TAU / 5 + 0.4, d = 0.5 + (k % 2) * 0.12; add(stone, '#7ff6f0', { p: [Math.cos(a) * d, 0.035, Math.sin(a) * d], r: [k, k * 2, 0], s: [0.05, 0.035, 0.05] }, 4); }
   }
   else if (kind === 'crumb') {          // Step 72b playtest fix: the PICKABLE glowcap clumps (islands/duskCrumbs.js) read apart from the violet ambient ones: fat golden caps with cream spots,
     for (let i = 0; i < 3; i++) {       // a glowing orange gill rim and a ring of glowing crumbs on the ground (the item they give)

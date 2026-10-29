@@ -30,7 +30,7 @@ import { NEW_GAME, loadSave, writeSave, clearSave } from '../game/save.js';
 import { createGiftModel } from './pickups.js';
 import { MAX_STACK } from '../game/inventory.js';
 import { mulberry32 } from '../utils/rng.js';
-import { SPARKLE_SVG, HEART_SVG, FLAME_SVG, LEAVE_SVG } from '../ui/icons.js';
+import { SPARKLE_SVG, HEART_SVG, FLAME_SVG, LEAVE_SVG, SPROUT_SVG, HOMESTEAD_SVG } from '../ui/icons.js';
 import { SCRIPT } from '../game/tdoongzScript.js';
 
 const introKey = (id) => `infiniteIsland.tdoongIntro.${id}`;
@@ -83,10 +83,10 @@ const smooth = (u) => u * u * (3 - 2 * u);
 const env = (u, edge = 0.2) => smooth(Math.max(0, Math.min(1, Math.min(u / edge, (1 - u) / edge))));    // 0 -> 1 -> 0 over u in 0..1
 
 export { SCRIPT };                                  // (the lines live in game/tdoongzScript.js: pure data, Node-checked)
-const ROW_ICONS = { sparkle: SPARKLE_SVG, heart: HEART_SVG, flame: FLAME_SVG };
+const ROW_ICONS = { sparkle: SPARKLE_SVG, heart: HEART_SVG, flame: FLAME_SVG, sprout: SPROUT_SVG, homestead: HOMESTEAD_SVG };
 
 export function createTdoongz({ scene, players, avatars = null, world, dialog, particles = null, sfx = null, floatLabel = null,
-  sync = null, camera = null, clock = null, inventory = null, graphs: suppliedGraphs = null, persist = true }) {
+  sync = null, camera = null, clock = null, inventory = null, graphs: suppliedGraphs = null, persist = true, extraRows = null }) {
   const snd = (name, opts) => { if (sfx) sfx.play(name, opts); };
   let time = 0, frameT = 0, viewT = 0, saveT = 0, lastHours = clock?.elapsedHours ?? 0;
   const host = !sync || sync.isHost;
@@ -177,6 +177,17 @@ export function createTdoongz({ scene, players, avatars = null, world, dialog, p
 
   // ------------------------------------------------------------------ talking
   const back = (f, p, index) => () => menu(f, p, index);
+  // Step 86b: `extraRows(friendId, player)` (main.js) may add rows to a friend's menu (Nabong's Homesteading unlock / tip): { label, icon, pages, play?, after?(player) }.
+  // `after` runs when the last page is dismissed (the menu then comes back, re-evaluating the rows).
+  function extras(f, p) {
+    if (!extraRows) return [];
+    let rows = [];
+    try { rows = extraRows(f.id, p) || []; } catch (e) { console.error(e); }
+    return rows.map((r) => ({ label: r.label, icon: ROW_ICONS[r.icon] || SPARKLE_SVG, onSelect: () => {
+      if (r.play) play(f, r.play);
+      dialog.showPages(r.pages, { name: f.name, onFinish: () => { if (r.after) { try { r.after(p); } catch (e) { console.error(e); } } back(f, p, 0)(); } });
+    } }));
+  }
   function mainChoices(f, p) {
     const S = SCRIPT[f.id];
     const pages = (lines, index, extra) => (c, d) => { if (extra) extra(); dialog.showPages(lines, { name: f.name, onFinish: back(f, p, index) }); };
@@ -189,6 +200,7 @@ export function createTdoongz({ scene, players, avatars = null, world, dialog, p
           : result.reason === 'far' ? 'Come a little closer so I can hand it to you.' : 'Hold on a moment. Let us try again.';
         if (dialog.isOpen && dialog.menuId === f.menuId) dialog.showPages([text], { name: f.name, onFinish: back(f, p, 0) });
       } }] : []),
+      ...extras(f, p),
       ...S.rows.map((r, i) => ({ label: r.label, icon: ROW_ICONS[r.icon] || SPARKLE_SVG, onSelect: pages(r.pages, i, r.play ? () => play(f, r.play) : null) })),
       { label: 'Bye', icon: LEAVE_SVG, onSelect: () => { dialog.close(); say(f, S.bye); play(f, 'wave'); } },
     ];

@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FIRES, TOOL_RACK } from '../config.js';
-import { rackKinds, rackUnlocked } from '../game/toolRackLogic.js';
+import { rackKinds, rackUnlocked, RACK_EXTRA_KIND as EXTRA } from '../game/toolRackLogic.js';
 import { toolRackPlan } from './toolRackPlan.js';
 import { addCollider } from './colliders.js';
 import { addInteractable } from './interactables.js';
@@ -24,12 +24,15 @@ export function rackGeometry() {
   box.dispose();
   return combine(parts);
 }
+// Step 86b: the home rack's watering can hangs from its own little side peg (the five tool pegs are full), so it never moves the other tools.
+const SIDE_PEG = { 'watering-can': { p: [0.86, 0.56, 0.22], rz: 0.25 } };
 function displayGeometry(kinds, bright) {
-  const geos = [];
+  const geos = [], pegBox = new THREE.BoxGeometry(1, 1, 1);
   for (const kind of kinds) {
-    const model = buildItemModel(kind), i = TOOL_RACK.kinds.indexOf(kind);
-    model.position.set((i - 2) * 0.25, 0.68, 0.22);
-    model.scale.setScalar(TOOL_RACK.displayScale); model.rotation.z = Math.PI;
+    const model = buildItemModel(kind), i = TOOL_RACK.kinds.indexOf(kind), side = SIDE_PEG[kind];
+    model.position.set(...(side ? side.p : [(i - 2) * 0.25, 0.68, 0.22]));
+    model.scale.setScalar(TOOL_RACK.displayScale); model.rotation.z = side ? side.rz : Math.PI;
+    if (side) geos.push(part(pegBox, '#8f5a37', { p: [0.74, 0.7, 0.16], s: [0.26, 0.06, 0.07] }), part(pegBox, '#8f5a37', { p: [0.86, 0.7, 0.2], s: [0.06, 0.1, 0.12] }));
     model.updateMatrixWorld(true);
     // Body only: outlines are merged once for the entire peg display.
     for (const m of model.children) if (m.isMesh) {
@@ -42,17 +45,18 @@ function displayGeometry(kinds, bright) {
     }
     model.traverse((m) => { if (m.isMesh) m.geometry.dispose(); });
   }
+  pegBox.dispose();
   const merged = mergeGeometries(geos, false);
   for (const g of geos) g.dispose();
   return merged;
 }
-export function createToolRacks({ scene, players, items, quests, sync, boat, world = null, particles, sfx = null,
+export function createToolRacks({ scene, players, items, quests, sync, boat, world = null, particles, sfx = null, homestead = null,
   floatLabel = null, table = null, cinematic = null, followCam = null, params = new URLSearchParams(), plan = toolRackPlan() }) {
   const forced = new Set(params.has('racks') ? FIRES.map((f) => f.id) : []), racks = new Map();
   let initialised = false;
   const known = () => !sync.isReplica || sync.status === 'synced';
   const unlocked = (id) => known() && !!plan[id] && (forced.has(id) || rackUnlocked(quests, id));
-  const kinds = () => rackKinds(!!boat?.state?.discovered);
+  const kinds = (fire = null) => rackKinds(!!boat?.state?.discovered, fire, !!homestead?.unlocked);     // (Step 86b: the home rack also offers the watering can once Homesteading is unlocked)
   items.configureRacks({ unlocked, spot: (id) => plan[id], kinds,
     allowed: (actor) => (!table || table.get(actor.index)?.screen === actor.screen && !table.get(actor.index)?.away) && !cinematic?.busy,
     label: (name, p) => { if (p && floatLabel) floatLabel(name, { x: p.position.x, y: p.position.y + 2.3, z: p.position.z }, p); },
@@ -74,6 +78,23 @@ export function createToolRacks({ scene, players, items, quests, sync, boat, wor
         onLand: () => particles.burst('puff', spot, { count: 12, radius: 0.8 }), onDone: () => { stand.visible = true; } });
     }
   }
+  // The watering can's peg display: simply there on load, popping in when Homesteading unlocks while the rack is already standing.
+  function updateCan(r, on, lit) {
+    const sig = `${on}:${lit}`;
+    if (sig === r.canSig) return;
+    const first = r.canSig === undefined, was = r.canOn;
+    r.canSig = sig; r.canOn = on;
+    if (r.can) { r.can.removeFromParent(); r.can.traverse((m) => { if (m.isMesh) m.geometry.dispose(); }); r.can = null; }
+    if (!on) return;
+    const g = displayGeometry([EXTRA], lit ? [EXTRA] : []), m = new THREE.Mesh(g, VERTEX_TOON);
+    m.add(makeOutline(g, TOOL_RACK.outline * 0.6));
+    r.can = m;
+    if (!first && !was && !r.canPopped) {
+      r.canPopped = true; m.visible = false;
+      r.popper.add(g, { cast: false, outline: 0.02, onStart: () => sfx?.play('cooked', { pitch: 1.4 }), onLand: () => particles.burst('sparkle', r.group.position, { count: 8, radius: 0.5 }), onDone: () => { if (r.can === m) m.visible = true; } });
+    }
+    r.group.add(m);
+  }
   function refresh(live = false) {
     if (!known()) return;
     for (const fire of FIRES) if (unlocked(fire.id) && !racks.has(fire.id)) build(fire, live && initialised);
@@ -81,18 +102,20 @@ export function createToolRacks({ scene, players, items, quests, sync, boat, wor
   }
   function update(dt) {
     refresh(false);
-    const ks = kinds();
     for (const [id, r] of racks) {
+      const all = kinds(id), ks = all.filter((k) => k !== EXTRA);        // the five classic pegs; the watering can (Step 86b) is its own mesh below, so it can pop in alone
       r.group.visible = !world || world.regions.isFull(FIRES.find((f) => f.id === id).island);
       r.popper.update(dt);
       const locals = players.list.filter((p) => !p.bot && !p.leaving);
-      const bright = ks.filter((k) => locals.some((p) => items.rackStock(p.index, id)[k] === 'rack'));
-      const sig = `${ks.join(',')}:${bright.join(',')}`;
-      if (sig === r.signature) continue;
-      r.signature = sig;
-      if (r.display) { r.display.removeFromParent(); r.display.traverse((m) => { if (m.isMesh) m.geometry.dispose(); }); }
-      const g = displayGeometry(ks, bright), m = new THREE.Mesh(g, VERTEX_TOON);
-      m.add(makeOutline(g, TOOL_RACK.outline * 0.6)); r.display = m; r.group.add(m);
+      const bright = all.filter((k) => locals.some((p) => items.rackStock(p.index, id)[k] === 'rack'));
+      const sig = `${ks.join(',')}:${bright.filter((k) => k !== EXTRA).join(',')}`;
+      if (sig !== r.signature) {
+        r.signature = sig;
+        if (r.display) { r.display.removeFromParent(); r.display.traverse((m) => { if (m.isMesh) m.geometry.dispose(); }); }
+        const g = displayGeometry(ks, bright), m = new THREE.Mesh(g, VERTEX_TOON);
+        m.add(makeOutline(g, TOOL_RACK.outline * 0.6)); r.display = m; r.group.add(m);
+      }
+      updateCan(r, all.includes(EXTRA), bright.includes(EXTRA));
     }
   }
   quests.on('change', () => refresh(true));
@@ -110,7 +133,7 @@ export function createToolRacks({ scene, players, items, quests, sync, boat, wor
     summary() { return FIRES.map((f) => {
       const r = racks.get(f.id); let calls = 0, triangles = 0;
       if (r) r.group.traverse((m) => { if (m.isMesh) { const n = 1 + (m.castShadow ? 1 : 0); calls += n; triangles += (m.geometry.index?.count || m.geometry.attributes.position.count) / 3 * n; } });
-      return { fire: f.id, spot: plan[f.id], shown: !!r, visible: !!r?.group.visible, drawCalls: calls, triangles, forced: forced.has(f.id), kinds: kinds() };
+      return { fire: f.id, spot: plan[f.id], shown: !!r, visible: !!r?.group.visible, drawCalls: calls, triangles, forced: forced.has(f.id), kinds: kinds(f.id), can: !!r?.can };
     }); },
   };
 }

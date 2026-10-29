@@ -42,7 +42,7 @@ for (const label of ['overworld','other rack','other owner']) test(`${label}: dr
 });
 test('80 reserved IDs are unique, reversible, stable, before dynamics', () => {
   const ids=[]; for (const f of FIRES) for(let slot=0;slot<4;slot++) for(const k of TOOL_RACK.kinds) { const id=rackId(100,f.id,slot,k); ids.push(id); assert.deepEqual(rackInfo(100,id),{fire:f.id,owner:slot,kind:k}); }
-  assert.equal(RACK_COUNT,80); assert.deepEqual(ids,Array.from({length:80},(_,i)=>100+i)); assert.equal(rackInfo(100,180),null);
+  assert.equal(RACK_COUNT,80); assert.deepEqual(ids,Array.from({length:80},(_,i)=>100+i)); assert.equal(rackInfo(100,184),null);   // (Step 86b appended 4 home-only watering-can ids at 180..183: test/homesteadUnlock.test.js)
 });
 function player(index,scene) {
   const root=new THREE.Group(), handSocket=new THREE.Group(), armR=new THREE.Group(); armR.userData.restZ=0; root.add(armR,handSocket); scene.add(root);
@@ -70,7 +70,7 @@ function pair() {
   return {h,r,flush,step};
 }
 test('reservations cost no item models; separate rack sets and stable dynamic ids', () => {
-  const w=fixture(); assert.equal(w.items.list.filter(r=>r.rack).length,80);assert.equal(w.items.list.filter(r=>r.rack&&r.model).length,0);
+  const w=fixture(); assert.equal(w.items.list.filter(r=>r.rack).length,84);   // 80 + the 4 home watering cans (Step 86b)assert.equal(w.items.list.filter(r=>r.rack&&r.model).length,0);
   const base=w.items.rackBase;w.racks.cycle(w.p,'home');w.step();assert.equal(w.racks.stock(w.p,'home').axe,'held');assert.equal(w.racks.stock(w.p,'frost').axe,'rack');
   w.at('frost'); w.racks.cycle(w.p,'frost'); w.step(); assert.equal(w.racks.stock(w.p,'home').axe,'out'); assert.equal(w.items.held.rack.fire,'frost');
   const saber=w.items.spawnSpecial('lightsaber',{x:25,z:25});assert.ok(saber.id>=base+80);
@@ -170,7 +170,7 @@ test('placement against actual island data, camp seats, hat rack, stable and Car
   const scene = new THREE.Scene(), p = player(0,scene), sync = new WorldSync({role:'host'}), players = {p1:p,list:[p],players:[p],get:()=>p,labelOf:()=> 'P1'};
   const items = createItems({scene, players, sync, particles:{burst(){}},hud:{toast(){}}, frost:buildIslandData(ISLANDS.find(i=>i.id==='frost')).frost, ember:buildIslandData(ISLANDS.find(i=>i.id==='ember')).ember});
   console.log('production rack ID base / dynamic start',items.rackBase,items.rackBase+80);
-  assert.equal(items.rackBase,95); assert.equal(items.list.length,175);
+  assert.equal(items.rackBase,95); assert.equal(items.list.length,179);   // 95 fixed + 80 racks + 4 home watering cans (Step 86b)
   const racks=createToolRacks({scene,players,items,sync,plan,quests:{slots:{},on(){}},boat:{state:{discovered:false}},particles:{burst(){}},params:new URLSearchParams('racks')});
   racks.goto('home');assert.equal(findNearest(p.position).type,'toolrack','real home bushes and starting tools do not steal the front approach');
   console.log('real layout rack spots',JSON.stringify(plan));

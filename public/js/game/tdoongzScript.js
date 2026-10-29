@@ -235,3 +235,48 @@ export const SCRIPT = {
     bye: '...Rest well. I hope your next dream is kind.',
   },
 };
+
+// Step 86b: Im Nabong's Homesteading rows, added to HER menu by main.js (createTdoongz `extraRows`), never to the other friends'.
+//   unlock   shown when the home Journal album is complete and Homesteading is not unlocked yet (host screen only); the last page ends the talk, the host unlocks it and the watering can showcase plays
+//   tip      shown once Homesteading is unlocked (every screen): a hint about the watering can and the campfire
+// `icon` is a key of ROW_ICONS in world/tdoongz.js. Test: test/homesteadUnlock.test.js.
+export const HOMESTEAD_TALK = {
+  friend: 'imnabong',
+  unlock: {
+    id: 'homestead-unlock', label: 'I found everything!', icon: 'sparkle', play: 'earflop', pages: [
+      'Ooh! Is that the WHOLE Journal for this island? Every single page is full! I came running as fast as my ears could flap!',
+      'You found it all! And you know what? This island could be even cosier with things we plant ourselves. A tree here, a rock there, just the way we like it!',
+      'So I dug something out of my cloud pouch, right under the carrots. Ta-daa! A watering can! Sprouts grow up SO fast with a little splash.',
+      'To start, pick Homesteading at the campfire. The can is waiting on the tool rack there. Oh, I cannot wait to see what you grow!',
+    ],
+  },
+  // Step 86f: the tip row rotates (one set of pages per visit, in order, then round again) so she always has something new: the can, the budget, other islands' plants, decorations. `tip` stays the first set.
+  tips: [
+    [
+      'Pick Homesteading at the campfire, and the island is yours to shape! A tree here, a rock there. Just remember, everything on it needs room to grow.',
+      'And do not forget the watering can on the campfire tool rack. Give a little sprout a splash and it grows up right away. Anybody can water, even friends visiting from far away!',
+    ],
+    [
+      'Psst! Tiny sprouts are SO thirsty. One splash from the watering can and a sprout becomes a sapling. Another splash and, whoosh, a whole tree!',
+      'Do not splash it twice in a hurry, though. Let it wiggle and grow first. Even I wait for that part, and I am terrible at waiting!',
+    ],
+    [
+      'Did you notice the little leaves next to every plant in the list? That is how much room it takes. A tree takes three, a little herb only one! Flowers have their very own room.',
+      'Dig something up and the room comes right back. It is like making space in my cloud pouch for more carrots. There is always space for carrots!',
+    ],
+    [
+      'When a bridge or a boat takes you to another island, its plants and flowers show up in the list too! Frostpine pines, Emberleaf bamboo, Duskcrown glowcaps, all growing at home!',
+      'There is a limit on how many different kinds you can plant at once, though. Take every copy of one kind away and the next kind can come in. And have you seen the Decorations tab? Free flowers, snowmen, tiki torches and mushrooms that shine at night!',
+    ],
+  ],
+  tip: {
+    id: 'homestead-tip', label: 'Homesteading', icon: 'sprout', pages: [
+      'Pick Homesteading at the campfire, and the island is yours to shape! A tree here, a rock there. Just remember, everything on it needs room to grow.',
+      'And do not forget the watering can on the campfire tool rack. Give a little sprout a splash and it grows up right away. Anybody can water, even friends visiting from far away!',
+    ],
+  },
+  /** The tip row for visit number `n` (0, 1, 2, ...): the same row, the pages of tips[n mod tips.length]. */
+  tipRow(n = 0) { const len = this.tips.length; return { ...this.tip, pages: this.tips[((Math.floor(Number(n)) || 0) % len + len) % len] }; },
+  gaveCan: 'Im Nabong gave you a watering can!',
+  canWaits: 'The watering can is on the home tool rack!',
+};

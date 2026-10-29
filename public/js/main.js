@@ -43,6 +43,15 @@ import { createItems } from './world/items.js';
 import { createHarvest } from './world/harvest.js';
 import { createPickups } from './world/pickups.js';
 import { createGathering } from './world/gathering.js';
+import { createHomestead } from './game/homestead.js';                // Step 86a: Homesteading's layout layer (the `homestead` domain) and its world side
+import { HOMESTEAD_TALK } from './game/tdoongzScript.js';              // Step 86b: Nabong's unlock rows
+import { ICONS } from './ui/icons.js';
+import { createHomesteadWorld } from './world/homesteadWorld.js';
+import { createHomesteadShape } from './game/homesteadShape.js';         // Step 86c: the Homesteading mode (Shape = remove for good, the leave menu, auto-leave)
+import { createHomesteadBadge } from './ui/homesteadBadge.js';
+import { createHomesteadFx } from './world/homesteadFx.js';                // Step 86d: the splash arc + the growth burst of a watered tree
+import { createHomesteadGhost } from './world/homesteadGhost.js';          // Step 86d: the translucent preview of what is about to be planted
+import { createHomesteadPlace } from './game/homesteadPlace.js';           // Step 86d: the palette, the preview flow and the watering press           // Step 86c: the mode's HUD badge + budget meter
 import { createCampfires } from './world/campfire.js';
 import { createCampMenu } from './game/campMenu.js';
 import { PATHS } from './config.js';
@@ -332,6 +341,22 @@ avatars = new Avatars({ scene, hudRoot, players, table: slotTable, sync, items, 
 avatars.reconcile();
 journalShowcase = createJournalShowcase({ scene, camera, players, avatars, sync, particles });
 let hitStopT = 0;                                                     // real seconds of hit-stop left (the sim runs at ~8% speed meanwhile)
+const homestead = createHomestead({ sync, inventory, albumComplete: () => collection.progress('home').complete, params, heldKind: (actor) => items.heldByKey(actorKey(actor))?.kind || null, now: () => simTime, strictWater: true,
+  islandsUnlocked: () => [...(bridges.entry('frost')?.built ? ['frost'] : []), ...(bridges.entry('ember')?.built ? ['ember'] : []), ...(boat.state.discovered ? ['dusk'] : [])] });   // Step 86e: each island's kinds join the Homesteading palette once the game says it is reached (bridge built / the boat has been to Duskcrown; none of these ever turns off)
+        // Step 86a (86d: now / strictWater = the host's 1.5 s watering lock and the can-in-hand check): registers BEFORE harvest / gathering: a joining replica applies the planted objects first (see game/homestead.js)
+// Step 86b: the unlock. 'unlocked' (a live event on every screen) = Im Nabong just handed the watering can to `d.actor`: the showcase pose on whoever it was, a toast, and the can is on the home rack from now on.
+homestead.on((kind, d) => {
+  if (kind !== 'unlocked') return;
+  if (d.actor) journalShowcase.show('watering-can', d.actor);
+  if (d.actor && d.actor.screen === sync.screenId) hud.toast(HOMESTEAD_TALK.gaveCan, { icon: 'tool-watering-can', duration: 3200 });
+  hud.toast(HOMESTEAD_TALK.canWaits, { icon: 'tool-watering-can', duration: 3600 });
+  sfx.play('chime');
+});
+if (params.has('testhomestead') && sync.isHost) {                      // ?testhomestead: the home album is ONE find short (the Sand Dollar, dig for it), so the unlock is a quick test; session only
+  const homeDefs = collection.definitions.filter((d) => d.island === 'home');
+  for (const d of homeDefs.slice(0, homeDefs.length - 1)) collection.found.add(d.id);
+  collection.changed();
+}
 const harvest = createHarvest({                                       // chopping trees / breaking rocks (needs items for the swing)
   scene, players, items, particles, hud, sfx, interactions, props, pickups, camera: followCam, sync, extraTargets: [...worldVis.harvestables, ...ritual.stones],
   collectFind,
@@ -342,6 +367,15 @@ const gathering = createGathering({ scene, players, props, frost: worldVis.frost
 // the campfire: firepit + benches east of the spawn, fuel / fire levels, the choice menu (dialog) and cooking (needs the dialog + inventory)
 const campfires = createCampfires({ scene, players, particles, hud, sfx, inventory, dialog, floatText, camera: followCam, sync });   // one per config FIRES entry (home + the Frostpine camp + the Emberleaf garden hearth)
 const campfire = campfires.home;            // the home fire (debug / old code: __game.campfire)
+// Step 86b/c: the home fire's "Homesteading" row (host's screen only, once unlocked). Per player; it toggles that player's Homesteading mode (game/homesteadShape.js, created further down).
+campfire.setMenuExtras((p) => {
+  if (!sync.isHost || !homestead.unlocked) return [];
+  const on = homestead.inMode(p);
+  return [{ label: on ? 'Done homesteading' : 'Homesteading', icon: ICONS.homestead, onSelect: () => {
+    dialog.close();
+    homesteadShape.toggle(p);
+  } }];
+});
 // Shared progress per campfire; this screen tracks only the camera's stable ground region.
 const quests = new QuestLog({ inventory });
 quests.attachSync(sync);
@@ -424,8 +458,14 @@ const mossback = createMossback({
 });
 // ---- The Tdoongz: host-synchronized island residents and rare gift visitors.
 // Created after the island props and hubs have registered their route obstacles.
+let nabongTipAt = 0;
+const nabongRows = (id, p) => {                                      // Step 86b: Im Nabong's Homesteading rows (game/tdoongzScript.js HOMESTEAD_TALK); only the host's screen unlocks / hears the tip
+  if (id !== HOMESTEAD_TALK.friend) return [];
+  if (homestead.canTalk()) return [{ ...HOMESTEAD_TALK.unlock, after: (pl) => { homestead.unlockTalk(pl); } }];
+  return sync.isHost && homestead.unlocked ? [{ ...HOMESTEAD_TALK.tipRow(nabongTipAt), after: () => { nabongTipAt++; } }] : [];      // Step 86f: each visit shows the next tip (session-only counter)
+};
 const tdoongz = createTdoongz({
-  scene, players, avatars, world: worldVis, dialog, particles, sfx, sync, camera, clock: dayNight, inventory,
+  scene, players, avatars, world: worldVis, dialog, particles, sfx, sync, camera, clock: dayNight, inventory, extraRows: nabongRows,
   floatLabel: (text, at, by, icon) => invBar.label(text, at, by && players.multi ? by.colors.ui : null, icon),
 });
 const seeds = createSeeds({ scene, players, items, garden, sync, hud, particles, sfx, world: worldVis, clock: dayNight, mossback });   // Step 38a: the eight seed finds (after createInteractions: it wraps the Moon Orchid tree's and the two flowers' handlers)
@@ -523,9 +563,24 @@ const rubyPlaces = rubyPlan();
 const ruby = createRuby({ sync, plan: rubyPlaces, inventory, pets: petsDomain, cinematic, params, heldKind: key => items.heldByKey(key)?.kind || null });
 const rubyWorld = createRubyWorld({ scene, ruby, plan: rubyPlaces, players, world: worldVis, items, inventory, pets, domain: petsDomain, dialog, cinematic, camera, particles, sfx, hud, thoughts, hop: hopCourses, marlo, hearthFire: campfires.get('ember') });
 // Plan racks after createGathering and garden plot registration, reserving all later camp stages too.
-const toolRacks = createToolRacks({ plan: toolRackPlan({ reserved: [saplingReserve(carlePlan.collider)] }), scene, players, items, quests, sync, boat, world: worldVis, particles, sfx, table: slotTable, cinematic, followCam, params,
+const toolRacks = createToolRacks({ plan: toolRackPlan({ reserved: [saplingReserve(carlePlan.collider)] }), scene, players, items, quests, sync, boat, homestead, world: worldVis, particles, sfx, table: slotTable, cinematic, followCam, params,
   floatLabel: (text, at, by) => invBar.label(text, at, by && players.multi ? by.colors.ui : null),
 });
+const homesteadFx = createHomesteadFx({ scene, particles, sfx, shake: (a, d) => followCam.shake(a, d) });
+const homesteadWorld = createHomesteadWorld({ props, harvest, gathering, interactions, particles, sfx, fx: homesteadFx,
+  isLocal: (a) => !!a && players.list.some((p) => { const x = sync.actorFor(p); return x.screen === a.screen && x.index === a.index; }) });
+homestead.attach(homesteadWorld);                                                 // Step 86a: the saved layout is applied AFTER the tool racks planned themselves (every screen plans them on the untouched island)
+const homesteadShape = createHomesteadShape({                                      // Step 86c: the mode. Auto-leave = off the home island (or inside a cave / the Party Glade / a storybook page); the touch / phone Charm button shows while in the mode
+  homestead, world: homesteadWorld, players, items, dialog, hud, sfx,
+  offHome: (p) => regionOf(p.position.x, p.position.z) !== 'home' || dungeon.contains(p) || party.contains(p) || storybook.contains(p),
+  inCombat: (p) => dungeon.contains(p),
+  charmUi: (p, show, frac) => { if (p.device === 'local') touch?.widget.setCharm(show, frac); else players.sendCharmUi(p, show, frac); },
+  onEmpty: (p) => homesteadPlace.openPalette(p),                                   // Step 86d: Shape with nothing to remove opens the palette
+});
+const homesteadGhost = createHomesteadGhost({ scene, camera, root: hudRoot, world: homesteadWorld });
+const heldToolKind = (p) => { const h = items.heldBy(p); return h && h.state === 'held' ? h.kind : null; };
+const homesteadPlace = createHomesteadPlace({ homestead, world: homesteadWorld, players, dialog, hud, sfx, ghost: homesteadGhost, inventory, heldKind: heldToolKind });
+const homesteadBadge = createHomesteadBadge(hudRoot);                              // one badge per SCREEN: it shows while any local player is in the mode (the budget is shared by everyone)
 dayNight.flushCatchUp();                                                          // Step 74b: the clock's load catch-up (the game was closed) reaches the listeners only now that they all exist
 const beachFinds = createBeachFinds({ scene, collection, sync, world: worldVis });
 // The bridge-opening cutscene (Step 28c): takes over the final stage of a bridge (hook of world/bridges.js) on every screen
@@ -795,7 +850,7 @@ function tick(realDt) {
   party.preInput(dt);                         // Step 80a: the party bots decide and press (their BotSources) before the devices are polled
   players.pollInput(dt);                      // every device -> claims / leaves -> per-player actions
   renderer.domElement.classList.toggle('mouse-steering', keyboard.mouseHeld);
-  for (const p of players.list) actionsWithCharmRouting(p.actions, dungeon.contains(p));   // Step 58: outside combat areas Charm is a second Jump
+  for (const p of players.list) actionsWithCharmRouting(p.actions, dungeon.contains(p), homestead.inMode(p));   // Step 58: outside combat areas Charm is a second Jump; Step 86c: in Homesteading mode it is Shape
   storybook.preInput();                       // inside a page the strip only runs left / right
   if (autoParty && simTime > 0.6) { const r = party.open(autoParty); autoParty = null; Promise.resolve(r).then((x) => { if (x && x.ok === false) hud.toast(`The party cannot start: ${x.reason}`, { icon: 'sparkle', duration: 3000 }); }); }
   // Gamepad buttons are user activations too: let them wake the audio context.
@@ -865,11 +920,22 @@ function tick(realDt) {
         continue;
       }
       if (mechlab?.drive(p, a)) continue;
+      if (homestead.inMode(p)) {                                             // Step 86c: Shape (R / pad X / the Charm button) removes the target for good; a double Cancel opens "Leave Homesteading?" (one Cancel is still the hop)
+        if (homesteadPlace.previewing(p)) {                                  // Step 86d: the ghost preview: Shape plants, Cancel goes back to the palette, Jump still hops; nothing else acts meanwhile
+          if (a.shapePressed) homesteadPlace.confirm(p);
+          else if (a.cancelPressed) homesteadPlace.back(p);
+          else if (a.jumpPressed) interactions.cancel(p);
+          continue;
+        }
+        if (a.shapePressed) { homesteadShape.press(p, t); continue; }
+        if (a.cancelPressed && homesteadShape.cancelTap(p)) continue;
+      }
       if (a.interactPressed && t) {
         const toolAction = getToolAction(held, t);
         if (toolAction === 'fish') fishingPlay.cast(p, t.pond);
         else if (['rubydig', 'rubycoconut', 'rubycrust'].includes(t.type) && toolAction) rubyWorld.toolAction(t, p);
         else if (toolAction === 'chop' && t.type === 'shademoss') caprayWorld.clearMoss(t, p);                                  // Step 73b: an axe / sword / saber on a titan's shade moss: swing now, the host counts the hit at the impact frame
+        else if (toolAction === 'water' || t.type === 'sprout') homesteadPlace.water(p, t);                                  // Step 86d: the watering can on a sprout / sapling (without the can: a "needs water" toast)
         else if (toolAction === 'dig') (t.type === 'seeddig' ? seeds.dig(t, p) : gathering.dig(t, p));                       // shovel on a dig spot: plunge now, the soil flies at the impact frame
         else if (toolAction) harvest.hit(t, p);                              // chop / break: swing now, the hit lands at the impact frame
         else if (interactions.interact(t, p)) hud.suppressPrompt(0.7, p.index);
@@ -969,7 +1035,7 @@ function tick(realDt) {
     if (fishingPlay.isFishing(p)) continue;                                  // Step 72a: while a line is out the bobber is the prompt
     const toolAct = getToolAction(items.heldBy(p), t);
     prompts.push({
-      key: p.index, target: t, text: toolAct === 'chop' ? (t.type === 'shademoss' ? t.prompt : 'Chop') : toolAct === 'break' ? 'Break' : toolAct === 'dig' ? 'Dig' : toolAct === 'strike' ? 'Strike' : toolAct === 'fish' ? 'Cast' : null,
+      key: p.index, target: t, line2: homestead.inMode(p) ? homesteadShape.promptLine(p, t) : null, text: toolAct === 'chop' ? (t.type === 'shademoss' ? t.prompt : 'Chop') : toolAct === 'break' ? (t.tag ? 'Break (' + t.tag + ')' : 'Break') : toolAct === 'dig' ? (t.tag ? 'Dig (' + t.tag + ')' : 'Dig') : toolAct === 'strike' ? 'Strike' : toolAct === 'fish' ? 'Cast' : toolAct === 'water' ? 'Water' : t.type === 'sprout' ? 'Needs water' : null,
       source: p.actions.activeSource, color: p.colors.ui, label: p.colors.name,
     });
   }
@@ -979,8 +1045,15 @@ function tick(realDt) {
   title.update(dt);
   water.update(simTime);
   props.update(simTime);
+  homesteadWorld.update(dt);
+  homesteadShape.update(dt);
+  homesteadPlace.update(dt);
+  homesteadGhost.update(dt, camera);
+  { const inMode = homestead.modes().length > 0; homesteadBadge.update(inMode, inMode ? homestead.budget() : null); }
   ritual.update(simTime, dayNight.nightness);
   for (const m of props.handles.mushrooms) m.material.emissiveIntensity = dayNight.nightness * (0.33 + 0.07 * Math.sin(simTime * 2 + m.position.x));
+  for (const m of props.plantedMushrooms) m.material.emissiveIntensity = dayNight.nightness * (0.33 + 0.07 * Math.sin(simTime * 2 + m.position.x));
+  homesteadWorld.setNight(dayNight.nightness, simTime);                    // Step 86e: Duskcrown decorations / glowcap clumps planted at home glow softly, only at night (one shared uniform)
   sky.update(dt, camera);
   worldVis.update(simTime);                   // region visibility from the view centre (after every camera move above) + the volcano smoke
   {                                           // Step 69c: Duskcrown's canopy fade: giant caps over a local player, or between the camera and one, dither out (duskFade.js)
@@ -1372,8 +1445,35 @@ const tdoongzDebug = {
 // __game.world.goto('party') opens the party, goto('party:vineskip' | 'party:timber' | 'party:marlosays' | 'party:huddle' | 'party:sizzle' | 'party:eggs' | 'party:feastround' | 'party:bumpers' | 'party:glowcap' | 'party:cast' | 'party:tilty' | 'party:bonk') plays that game. Leave with party.close() or hold Cancel + Interact on the keyboard for 3 s.
 const partyDebug = party;
 
+// Step 86a debug: __game.homestead.{ summary(), budget(), natives(), unlock(), nearest() = { id, item } of the thing nearest P1 (a native id like 'tree:3', 'spot:7' or 'p2'),
+// remove(id | interactableId | 'spot:<sid>'), place(kind, x, z, {stage}?), water(pid), world, api }. remove/place skip the unlock gate and the cost; the layout saves in infinite-island.home.v1 -> homestead. ?homestead = unlocked.
+const homesteadDebug = {
+  summary: () => homestead.summary(), budget: () => homestead.budget(), natives: () => homestead.natives, unlock: () => homestead.unlock(),
+  unlockTalk: (p = players.p1) => homestead.debug.unlockScene(p),                 // Step 86b: the Nabong handover (pose + toast + the can on the home rack), no album needed, replayable
+  nabong: (p = players.p1) => tdoongz.talk('imnabong', p),                       // opens Nabong's real menu for P1 (the unlock row shows when the album is complete)
+  mode: (p = players.p1) => ({ in: homestead.inMode(p), set: (on) => homestead.setMode(p, on) }),
+  // Step 86c: enter(p) / leave(p) / toggle(p) = the fire-menu row; shape(p, {confirm}) = press Shape for that player on its current target ({confirm:true} answers Yes at once); shapeState() = pending swings + queued confirms + who is in the mode
+  enter: (p = players.p1) => homesteadShape.enter(p), leave: (p = players.p1) => homesteadShape.leave(p), toggle: (p = players.p1) => homesteadShape.toggle(p),
+  shape: (p = players.p1, o = {}) => homesteadShape.press(p, targets.get(p) || null, o), shapeState: () => homesteadShape.state(), leaveMenu: (p = players.p1) => homesteadShape.leaveMenu(p),
+  nearest: (r = 4) => { const it = findNearest(players.p1.position, r); return it ? { id: homesteadWorld.idOfItem(it), type: it.type, interactableId: it.id, x: +it.position.x.toFixed(2), z: +it.position.z.toFixed(2) } : null; },
+  remove: (id) => homestead.debug.remove(typeof id === 'number' ? (homesteadWorld.idOfItem(homesteadWorld.itemById(id)) || id) : id),
+  place: (kind, x, z, o) => homestead.debug.place(kind, x, z, o),
+  // Step 86d: palette(p) opens the palette (the mode is entered first), pick(kind, p) enters the preview, confirm(p) plants it, back(p) = Cancel, ghost(p) = the preview { kind, x, z, ok, reason, line }, rows(tab) = the palette rows,
+  // growState() = the growth effects now running, waterBy(pid, p) = the real watering press (the can must be in hand)
+  palette: (p = players.p1, tab) => { if (!homestead.inMode(p)) homesteadShape.enter(p); return homesteadPlace.openPalette(p, { tab }); },
+  pick: (kind, p = players.p1) => { if (!homestead.inMode(p)) homesteadShape.enter(p); if (dialog.isOpen && dialog.menuId === 'homestead-palette') dialog.close(); return homesteadPlace.pick(p, kind); },
+  confirm: (p = players.p1) => homesteadPlace.confirm(p), back: (p = players.p1) => homesteadPlace.back(p), ghost: (p = players.p1) => homesteadPlace.ghost(p), rows: (tab = 'gathering') => homesteadPlace.rows(tab),
+  placeState: () => homesteadPlace.state(), growState: () => homesteadFx.state(), farBlobs: () => { const f = worldVis.visuals.home.homeFar; return f ? { rebuilds: f.rebuilds, verts: f.mesh.geometry.attributes.position.count, dirty: !!props.farDirty } : null; },
+  waterBy: (pid, p = players.p1) => { const b = homesteadWorld.handleOf(pid); return b ? homesteadPlace.water(p, b.item) : false; },
+  water: (pid) => homestead.debug.water(pid),
+  // Step 86e: unlockIslands() lists every island's kinds without travelling (also ?homesteadall, which unlocks Homesteading too); islands() = what is listed now; kinds() = every kind { kind, island, listed, cost, weight, tab };
+  // foreign() = the instanced layers of the other islands' kinds + their estimated draw calls + the current night glow
+  unlockIslands: () => homestead.unlockIslands(), islands: () => homestead.islands(), kinds: () => homestead.kinds(), foreign: () => homesteadWorld.foreign.stats(),
+  world: homesteadWorld, api: homestead,
+};
+
 window.__game = {
-  toolRacks,
+  toolRacks, homestead: homesteadDebug,
   mechlab, carry: mechlab?.carry, warm: mechlab?.warm, guide: mechlab ? { summary: mechlab.guide.summary, start: (id = 'wolf') => mechlab.guide.start(id, players.list[0]), reset: mechlab.guide.reset } : null,
   version: VERSION, party: partyDebug, dusk: duskDebug, boat: boatDebug, tdoongz: tdoongzDebug, hats, tails, pets: petsDebug, petLab, capray: caprayDebug, carle: carleDebug, ruby: rubyDebug, petStable, garlands: {
     list: GARLANDS.map((g) => g.name), set: (p, i) => garlandStand.wear(typeof p === "number" ? players.list.find((a) => a.index === p) : p, i),

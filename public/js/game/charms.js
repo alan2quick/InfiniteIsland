@@ -7,7 +7,8 @@
 //       (a hovering flyer cannot dodge a charm).
 //   charmCooldown(member, time)   -> { ready, left, frac }   frac 0..1 = how recharged the held charm is (1 = ready, also 1 with no charm)
 //   charmButtonShown(inArea, armoryCount, heldId)   the touch Charm button shows only inside a combat area AND (the Armory has a charm OR the player holds one)
-//   actionsWithCharmRouting(actions, inCombat)      outside combat areas Charm is a second Jump (so the button is never dead)
+//   actionsWithCharmRouting(actions, inCombat, homesteading)   outside combat areas Charm is a second Jump (so the button is never dead); Step 86c: for a player in Homesteading mode it is SHAPE instead
+//                                                    (actions.shapePressed / shapeHeld; Jump stays on Space / pad Y). Combat areas always win: inCombat leaves Charm alone.
 //   rackPedestals(area, charmIds) / areaPedestals(area)   the pedestal records of a run: the Armory rack in the first safe start + each section's own `pedestals`
 //   partyPedestals(area, current, members)                 the section pedestals a party of that size gets (one per friend; playtest 0.60.0)
 //
@@ -82,9 +83,14 @@ export function charmCooldown(m, time) {
 
 export const charmButtonShown = (inArea, armoryCount, heldId) => !!inArea && (armoryCount > 0 || !!charmInfo(heldId));
 
-/** Outside combat areas Charm acts as a second Jump (islands: the hop; storybook pages: the jump). Mutates and returns `actions`. */
-export function actionsWithCharmRouting(actions, inCombat) {
-  if (!inCombat) {
+/** Outside combat areas Charm acts as a second Jump (islands: the hop; storybook pages: the jump); in Homesteading mode (`homesteading`, Step 86c) it is the Shape button instead. Mutates and returns `actions`. */
+export function actionsWithCharmRouting(actions, inCombat, homesteading = false) {
+  actions.shapePressed = false;
+  actions.shapeHeld = false;
+  if (!inCombat && homesteading) {
+    actions.shapePressed = !!actions.charmPressed;
+    actions.shapeHeld = !!actions.charmHeld;
+  } else if (!inCombat) {
     actions.jumpPressed = !!actions.jumpPressed || !!actions.charmPressed;
     actions.jumpHeld = !!actions.jumpHeld || !!actions.charmHeld;
   }

@@ -28,6 +28,12 @@
 // islands/duskCrumbs.js planDuskCrumbs() (16 of the existing violet clumps, "Pick", 1-2 `glowcap-crumbs` each, regrow like any mushroom). Picking scales that clump's instance away
 // (duskCrumbRuntime -> duskSmallVisuals), a rebuild of Duskcrown's visuals re-hides it.
 //
+// Step 86a (Homesteading): natives can be REMOVED FOR GOOD without shifting any index: retireBush(item) / retireHerb(i) / retireMushroom(i) keep their slot (state 'removed': hidden, unregistered, never regrow), removeSpot(sid) /
+// trimWander(n) take dig spots out of the wandering set. Things the players plant join with adoptPlaced(handle) under KEYED ids `p<pid>` (berry bushes, herbs, mushroom clusters; handles come from props.spawnPlaced), kept
+// in their own maps so the index lists above never grow; requests/events carry the key string in the same `i` field, and the snapshot gets an extra `placed` section only when something is planted (old hashes unchanged).
+// Step 86e: planted kinds of the other islands use the same keyed maps (adoptPlaced reads HOMESTEAD.kinds: island, class, the item they give); a placed dig patch from another island is announced with notePatch(pid, { isl, look, label }) on every screen first, so it digs ITS island's finds (digLoot) and wears its look.
+// A PLACED dig spot (addFixedSpot) is a fixed patch: its `pid` rides on the spot, and after a dig it re-fills IN PLACE (a respawn entry with its x/z) instead of wandering.
+//
 // World sync (Step 22b, domain 'gathering'; see net/worldSync.js). AUTHORITY (host): every state + timer below. Ids: berry bush / herb / mushroom =
 // its index in the (deterministic) lists; dig spot = `sid`, a counter (the initial ones are 1..15 on every screen, later ones get the next number).
 //   requests (from any screen, with its actor: the host range-checks a remote actor and checks the tool):
@@ -48,7 +54,7 @@
 import * as THREE from 'three';
 import { WORLD_SEED } from '../config.js';
 import { mulberry32 } from '../utils/rng.js';
-import { INTERACT_RADIUS } from '../config.js';
+import { INTERACT_RADIUS, HOMESTEAD } from '../config.js';
 import { SPAWN, getHeight } from './terrain.js';
 import { actionForKind } from '../items/tools.js';
 import { actorKey } from '../net/worldSync.js';
@@ -85,11 +91,24 @@ function groundAt(x, z) {
   return big ? { isl: big.island.id, snow: big.mod.groundType(x, z) === 'snow' } : { isl: 'home', snow: false };
 }
 
-/** Cracked-soil mound: a low dirt dome with a few dark cracks radiating from the top and a couple of pebbles. `snow` = a frosty white dome (on snow ground). */
-function buildMound(snow = false) {
-  const c = snow
-    ? { a: '#cfdcf0', b: '#eaf1fb', p1: '#b9b4cc', p2: '#d3cfe6', crack: '#7f93b8' }
-    : { a: '#8a5a3a', b: '#a8743f', p1: '#b9b4cc', p2: '#d3cfe6', crack: '#4a2d1a' };
+// Step 86e: a dig mound's look -> its colours (the mound, the hole decal, the dust). 'dirt' = home, 'snow' = Frostpine's own white mounds, 'frost' = a PLACED snowy spot at home (white mound + ice glints + a snow ring on the
+// grass, so it reads as "snowy" on a green island), 'volcanic' = a placed Emberleaf taro spot (a dark mound with a hot crack).
+const LOOKS = {
+  dirt: { rim: '#8a5a3a', hole: '#3b2413', dust: '#d9b48a', dirt: null },
+  snow: { rim: '#dbe6f7', hole: '#6f86a8', dust: '#f4f8ff', dirt: '#eaf1fb' },
+  frost: { rim: '#dbe6f7', hole: '#6f86a8', dust: '#f4f8ff', dirt: '#eaf1fb' },
+  volcanic: { rim: '#5a4e66', hole: '#1f1830', dust: '#6a5a78', dirt: '#4a3f5a' },
+};
+const lookOf = (snowOrLook) => (typeof snowOrLook === 'string' ? (LOOKS[snowOrLook] ? snowOrLook : 'dirt') : snowOrLook ? 'snow' : 'dirt');
+
+/** Cracked-soil mound: a low dirt dome with a few dark cracks radiating from the top and a couple of pebbles. `snow` (or a look name) = a frosty white dome / the placed looks above. */
+export function buildMound(look = false) {
+  look = lookOf(look);
+  const snow = look === 'snow' || look === 'frost';
+  const c = look === 'volcanic' ? { a: '#3c3446', b: '#5a4e66', p1: '#2b2340', p2: '#4a3f5a', crack: '#ff7a2e' }
+    : snow
+      ? { a: '#cfdcf0', b: '#eaf1fb', p1: '#b9b4cc', p2: '#d3cfe6', crack: '#7f93b8' }
+      : { a: '#8a5a3a', b: '#a8743f', p1: '#b9b4cc', p2: '#d3cfe6', crack: '#4a2d1a' };
   const parts = [
     part(G.ico2, c.a, { p: [0, 0.02, 0], s: [0.66, 0.27, 0.62] }),
     part(G.ico2, c.b, { p: [-0.04, 0.06, 0.02], s: [0.5, 0.25, 0.47] }),
@@ -101,6 +120,17 @@ function buildMound(snow = false) {
     const rr = 0.2 + (i % 2) * 0.06;
     const y = 0.06 + 0.26 * Math.sqrt(Math.max(0, 1 - (rr / 0.52) ** 2));
     parts.push(part(G.sphereLo, c.crack, { p: [Math.cos(a) * rr, y, Math.sin(a) * rr], r: [0, -a, 0.35], s: [0.15, 0.022, 0.03] }));
+  }
+  if (look === 'frost') {                                     // placed at home: a few ice glints on the mound and a little snow ring on the grass round it
+    for (let i = 0; i < 4; i++) {
+      const a = i * 1.7 + 0.4, rr = 0.16 + (i % 2) * 0.2, h = 0.14 + (i % 3) * 0.05;
+      parts.push(part(G.cone6, i % 2 ? '#bfe9ff' : '#e6f8ff', { p: [Math.cos(a) * rr, 0.2 + 0.12 * (1 - rr), Math.sin(a) * rr], r: [Math.sin(a) * 0.3, 0, -Math.cos(a) * 0.3], s: [0.045, h * 2.2, 0.045] }));
+    }
+    const ring = new THREE.RingGeometry(0.66, 1.0, 18); ring.rotateX(-Math.PI / 2);
+    parts.push(part(ring, '#f4f8ff', { p: [0, 0.03, 0] })); ring.dispose();
+  } else if (look === 'volcanic') {                           // a dark ring of ash round the mound
+    const ring = new THREE.RingGeometry(0.62, 0.9, 16); ring.rotateX(-Math.PI / 2);
+    parts.push(part(ring, '#3a3345', { p: [0, 0.03, 0] })); ring.dispose();
   }
   return combine(parts);
 }
@@ -124,6 +154,15 @@ export function createGathering({ scene, players, props, frost = null, ember = n
   const root = new THREE.Group();
   root.name = 'gathering';
   scene.add(root);
+
+  // Step 86a: planted things live in keyed maps ('p<pid>'); a request/event `i` is either a native index (number) or such a key (string)
+  const placedBushes = new Map(), placedHerbs = new Map(), placedMushrooms = new Map();
+  const bushOf = (i) => (typeof i === 'string' ? placedBushes.get(i) : bushes[i]);
+  const herbOf = (i) => (typeof i === 'string' ? placedHerbs.get(i) : herbs[i]);
+  const mushOf = (i) => (typeof i === 'string' ? placedMushrooms.get(i) : mushrooms[i]);
+  const allBushes = () => (placedBushes.size ? [...bushes, ...placedBushes.values()] : bushes);
+  const allHerbs = () => (placedHerbs.size ? [...herbs, ...placedHerbs.values()] : herbs);
+  const allMushrooms = () => (placedMushrooms.size ? [...mushrooms, ...placedMushrooms.values()] : mushrooms);
 
   // =========================================================================================== berries
   // bush record: { i, isl, x, y (ground), topY (where petals / berries come from), item, full, regrowAt, popT, setBerries(on, k) }
@@ -169,8 +208,8 @@ export function createGathering({ scene, players, props, frost = null, ember = n
 
   /** HOST: validate a rustle. */
   function handleRustle(d, actor) {
-    const b = bushes[d.i];
-    if (!b || !actor) return { reject: 'bad-request' };
+    const b = bushOf(d.i);
+    if (!b || !actor || b.removed) return { reject: 'bad-request' };
     if (!b.full) return { reject: 'empty' };
     if (!inReach(actor, b.x, b.z, b.item.radius)) return { reject: 'far' };
     b.regrowAt = time + BERRY_REGROW;
@@ -188,10 +227,14 @@ export function createGathering({ scene, players, props, frost = null, ember = n
       b.setBerries(false);
       particles.burst('petal', top, { count: 5, radius: 0.5, color: b.color, speed: 0.8, size: 0.7 });
       if (!sync.isHost) return;                                // loot is rolled + spawned by the host
-      const drop = BERRY_DROPS[b.isl] || BERRY_DROPS.home;
-      const n = b.isl === 'home' ? 2 + (Math.random() < 0.5 ? 1 : 0) : rollCount(drop.n);
-      for (let i = 0; i < n; i++) pickups.spawn(drop.item, { x: top.x + rnd(-0.25, 0.25), y: top.y, z: top.z + rnd(-0.25, 0.25) });
+      dropBerries(b, top);
     });
+  }
+  /** HOST: a bush's berries pop out at `top` (one rustle's worth). */
+  function dropBerries(b, top) {
+    const drop = BERRY_DROPS[b.isl] || BERRY_DROPS.home;
+    const n = b.isl === 'home' ? 2 + (Math.random() < 0.5 ? 1 : 0) : rollCount(drop.n);
+    for (let i = 0; i < n; i++) pickups.spawn(drop.item, { x: top.x + rnd(-0.25, 0.25), y: top.y, z: top.z + rnd(-0.25, 0.25) });
   }
 
   function growBerries(b) {
@@ -251,8 +294,7 @@ export function createGathering({ scene, players, props, frost = null, ember = n
 
   /** HOST: validate a pick, put the item(s) in the bag, then play + broadcast it. */
   function handlePick(d, actor) {
-    const list = d.k === 'herb' ? herbs : d.k === 'mushroom' ? mushrooms : null;
-    const r = list && list[d.i];
+    const r = d.k === 'herb' ? herbOf(d.i) : d.k === 'mushroom' ? mushOf(d.i) : null;
     if (!r || !actor) return { reject: 'bad-request' };
     if (r.state !== 'ready') return { reject: 'gone' };
     const pos = r.item.position;
@@ -270,8 +312,8 @@ export function createGathering({ scene, players, props, frost = null, ember = n
   function applyPicked(d) {
     const by = pickPlayer(d.actor);
     if (d.k === 'herb') {
-      const r = herbs[d.i];
-      if (!r || r.state === 'hidden') return;
+      const r = herbOf(d.i);
+      if (!r || r.state === 'hidden' || r.state === 'removed') return;
       r.state = 'hidden';
       r.set(0);
       removeInteractable(r.item);
@@ -281,8 +323,8 @@ export function createGathering({ scene, players, props, frost = null, ember = n
       if (by) by.squash(-0.14);
       if (by && floatText) floatText(r.itemId, d.n, { x, y: y + 0.8, z }, by);
     } else {
-      const r = mushrooms[d.i];
-      if (!r || r.state === 'hidden') return;
+      const r = mushOf(d.i);
+      if (!r || r.state === 'hidden' || r.state === 'removed') return;
       r.state = 'hidden';
       r.set(0);
       removeInteractable(r.item);
@@ -324,13 +366,14 @@ export function createGathering({ scene, players, props, frost = null, ember = n
   }
 
   // =========================================================================================== dig spots
-  const moundGeos = {};                                       // 'dirt' | 'snow' -> { geo, outline }
-  const moundOf = (snow) => {
-    const k = snow ? 'snow' : 'dirt';
-    if (!moundGeos[k]) { const geo = buildMound(snow); moundGeos[k] = { geo, outline: makeOutline(geo, 0.03).geometry }; }
+  const moundGeos = {};                                       // 'dirt' | 'snow' | 'frost' | 'volcanic' -> { geo, outline }
+  const moundOf = (look) => {
+    const k = lookOf(look);
+    if (!moundGeos[k]) { const geo = buildMound(k); moundGeos[k] = { geo, outline: makeOutline(geo, 0.03).geometry }; }
     return moundGeos[k];
   };
-  const spotPool = { dirt: [], snow: [] };
+  const spotPool = { dirt: [], snow: [], frost: [], volcanic: [] };
+  const patchInfo = new Map();                                // Step 86e: pid -> { isl, look, label } of a PLACED patch (set on every screen by notePatch before the spot exists)
   const spots = [];                                           // live spots: { sid, x, y, z, isl, snow, g, item, state, sparkleAt, popT }
   const respawns = [];                                        // dug spots waiting for a new place: { at, isl }
   const holeDisc = new THREE.CircleGeometry(1, 18).rotateX(-Math.PI / 2);
@@ -338,10 +381,11 @@ export function createGathering({ scene, players, props, frost = null, ember = n
   const pending = new Map();                                  // Player -> { player, spot, t }
   let nextSid = 0;                                            // dig-spot ids: a counter (the host hands out the new ones, events carry them)
 
-  function takeMound(snow) {
-    let g = spotPool[snow ? 'snow' : 'dirt'].pop();
+  function takeMound(look) {
+    look = lookOf(look);
+    let g = spotPool[look].pop();
     if (!g) {
-      const m = moundOf(snow);
+      const m = moundOf(look);
       g = new THREE.Group();
       g.name = 'dig-spot';
       const mesh = new THREE.Mesh(m.geo, VERTEX_TOON);
@@ -410,15 +454,18 @@ export function createGathering({ scene, players, props, frost = null, ember = n
     return null;
   }
 
-  function addSpot(x, z, animate, sid = ++nextSid, rot = Math.random() * TAU) {
+  function addSpot(x, z, animate, sid = ++nextSid, rot = Math.random() * TAU, pid = null) {
     nextSid = Math.max(nextSid, sid);
-    const { isl, snow } = groundAt(x, z);
-    const g = takeMound(snow);
+    let { isl, snow } = groundAt(x, z);
+    const pinfo = pid != null ? patchInfo.get(pid) : null;      // Step 86e: a placed patch from another island digs ITS island's finds and wears its own look
+    const look = pinfo ? pinfo.look : snow ? 'snow' : 'dirt';
+    if (pinfo) { isl = pinfo.isl; snow = look === 'snow' || look === 'frost'; }
+    const g = takeMound(look);
     const y = getHeight(x, z);
     g.position.set(x, y, z);
     g.rotation.y = rot;
     const s = {
-      sid, x, y, z, isl, snow, g, state: 'ready', sparkleAt: time + rnd(0.5, 2), popT: animate ? 0 : -1, item: null,
+      sid, x, y, z, isl, snow, look, g, state: 'ready', sparkleAt: time + rnd(0.5, 2), popT: animate ? 0 : -1, item: null, pid: pid ?? null,   // pid: a PLACED patch (Step 86a), re-fills in place
     };
     g.scale.setScalar(animate ? 0.01 : 1);
     s.item = addInteractable({
@@ -428,9 +475,10 @@ export function createGathering({ scene, players, props, frost = null, ember = n
     g.userData.interactable = s.item;
     spots.push(s);
     if (animate && nearPlayer(x, z, 20)) {
-      particles.burst('puff', { x, y: y + 0.2, z }, { count: 5, radius: 0.4, color: snow ? '#f4f8ff' : '#d9b48a' });
+      particles.burst('puff', { x, y: y + 0.2, z }, { count: 5, radius: 0.4, color: LOOKS[look].dust });
       particles.burst('sparkle', { x, y: y + 0.4, z }, { count: 3, radius: 0.4 });
     }
+    if (pinfo && pinfo.label) s.item.tag = pinfo.label;          // the prompt names the kind: "Dig (snowy spot)"
     return s;
   }
 
@@ -438,9 +486,9 @@ export function createGathering({ scene, players, props, frost = null, ember = n
   const spotBySid = (sid) => spots.find((s) => s.sid === sid) || null;
 
   /** HOST: a new spot at a valid place away from every player; everybody is told. Returns the spot or null (nowhere valid right now). */
-  function hostAddSpot(x, z) {
-    const s = addSpot(x, z, true);
-    sync.emit('gathering', 'spotAdd', { sid: s.sid, x: r2(x), z: r2(z), rot: r2(s.g.rotation.y) });
+  function hostAddSpot(x, z, pid = null, animate = true) {
+    const s = addSpot(x, z, animate, undefined, undefined, pid);
+    sync.emit('gathering', 'spotAdd', { sid: s.sid, x: r2(x), z: r2(z), rot: r2(s.g.rotation.y), ...(pid != null ? { pid } : {}) });
     return s;
   }
 
@@ -448,7 +496,7 @@ export function createGathering({ scene, players, props, frost = null, ember = n
   function dropSpot(s) {
     removeInteractable(s.item);
     s.g.visible = false;
-    spotPool[s.snow ? 'snow' : 'dirt'].push(s.g);
+    spotPool[s.look || (s.snow ? 'snow' : 'dirt')].push(s.g);
     const i = spots.indexOf(s);
     if (i >= 0) spots.splice(i, 1);
     for (const [pl, pd] of pending) if (pd.spot === s) pending.delete(pl);
@@ -487,7 +535,7 @@ export function createGathering({ scene, players, props, frost = null, ember = n
     if (!inReach(actor, s.x, s.z, s.item.radius)) return { reject: 'far' };
     const finds = rollDig(digLoot(s.isl));                       // the finds: rolled by the host (potatoes at home; truffles / a rare crystal on Frostpine)
     collectFind('dig', { x: s.x, z: s.z }, actor);
-    respawns.push({ at: time + DIG_RESPAWN, isl: s.isl });       // a new spot is due later (host timer), on the same island
+    respawns.push({ at: time + DIG_RESPAWN, isl: s.isl, ...(s.pid != null ? { pid: s.pid, x: s.x, z: s.z } : {}) });   // a new spot is due later (host timer), on the same island (a placed patch: on the same spot)
     const data = { sid: s.sid, actor: who(actor) };
     applyDug(s, data.actor, finds);
     sync.emit('gathering', 'dug', data);
@@ -502,17 +550,18 @@ export function createGathering({ scene, players, props, frost = null, ember = n
     s.state = 'dug';
     removeInteractable(s.item);
     s.g.visible = false;
-    spotPool[s.snow ? 'snow' : 'dirt'].push(s.g);
+    spotPool[s.look || (s.snow ? 'snow' : 'dirt')].push(s.g);
     spots.splice(spots.indexOf(s), 1);
     for (const [pl, pd] of pending) if (pd.spot === s) pending.delete(pl);
     const h = takeHole();
     h.g.position.set(x, y, z);
     h.g.rotation.y = Math.random() * TAU;
-    h.rimMat.color.set(s.snow ? '#dbe6f7' : '#8a5a3a'); h.holeMat.color.set(s.snow ? '#6f86a8' : '#3b2413');   // (snow-coloured on snow ground)
+    const pal = LOOKS[s.look || (s.snow ? 'snow' : 'dirt')];
+    h.rimMat.color.set(pal.rim); h.holeMat.color.set(pal.hole);   // (snow-coloured on snow ground, dark on a volcanic patch)
     h.rimMat.opacity = 0.75; h.holeMat.opacity = 0.95;
 
-    particles.burst('dirt', { x, y: y + 0.3, z }, { count: 16, radius: 0.3, speed: 1.15, ...(s.snow ? { color: '#eaf1fb' } : {}) });
-    particles.burst('puff', { x, y: y + 0.25, z }, { count: 4, radius: 0.45, color: s.snow ? '#f4f8ff' : '#d9b48a', size: 1.2 });
+    particles.burst('dirt', { x, y: y + 0.3, z }, { count: 16, radius: 0.3, speed: 1.15, ...(pal.dirt ? { color: pal.dirt } : {}) });
+    particles.burst('puff', { x, y: y + 0.25, z }, { count: 4, radius: 0.45, color: pal.dust, size: 1.2 });
     snd('dig');
     if (camera && localPlayerOf(actor)) camera.shake(0.06, 0.18);
     let k = 0;
@@ -528,6 +577,12 @@ export function createGathering({ scene, players, props, frost = null, ember = n
     }
     if (sync.isHost) for (let i = respawns.length - 1; i >= 0; i--) {   // dig-spot respawn timers: host only (replicas get a 'spotAdd' event)
       if (time < respawns[i].at) continue;
+      if (respawns[i].pid != null) {                              // a placed patch re-fills where it was, once nobody stands on it
+        if (nearAnyone(respawns[i].x, respawns[i].z, 1.2)) { respawns[i].at = time + 4; continue; }
+        const q = respawns.splice(i, 1)[0];
+        hostAddSpot(q.x, q.z, q.pid);
+        continue;
+      }
       const loc = findLocation(Math.random, false, 6, respawns[i].isl);
       if (loc) { respawns.splice(i, 1); hostAddSpot(loc.x, loc.z); }
       else respawns[i].at = time + 4;                           // nowhere valid right now: try again shortly
@@ -593,20 +648,176 @@ export function createGathering({ scene, players, props, frost = null, ember = n
     for (const r of herbs) if (r.isl === 'ember') r.set(r.state === 'hidden' ? 0 : r.state === 'growing' ? Math.max(0.01, easeOutBack(Math.min(1, r.t / POP_TIME))) : 1);
   });
 
+  // =========================================================================================== Homesteading (Step 86a)
+  const homeDigAtStart = spots.filter((s) => s.isl === 'home').length;   // the native wandering dig spots the island started with (6)
+
+  /** A native berry bush (by its interactable) is removed for good: the caller hides the mesh, here it stops being a bush that can regrow. */
+  function retireBush(item) {
+    const b = bushes.find((q) => q.item === item);
+    if (!b) return false;
+    b.removed = true; b.full = false; b.popT = -1; b.regrowAt = Infinity;
+    b.setBerries(false);
+    removeInteractable(item);
+    return true;
+  }
+  const retireRecord = (r) => { if (!r || r.state === 'removed') return false; r.state = 'removed'; r.set(0); removeInteractable(r.item); return true; };
+  function retireHerb(i) { return retireRecord(herbs[i]); }
+  function retireMushroom(i) { return retireRecord(mushrooms[i]); }
+
+  /** Step 86c (Homesteading's Shape, every screen, BEFORE the retire call): the removed thing gives its ONE-HARVEST drop, exactly what a full normal harvest gives, and plays the normal effect. The host banks / spawns the loot; the others
+   *  only see the effect. ref = { cls: 'bush', item | key } | { cls: 'herb' | 'mushroom', key (index or 'p<pid>') } | { cls: 'dig', sid | pid }. Returns true when there was something to give. */
+  function lastHarvest(ref, actor) {
+    if (ref.cls === 'bush') {
+      const b = ref.key != null ? placedBushes.get(ref.key) : bushes.find((q) => q.item === ref.item);
+      const pos = b ? { x: b.x, y: b.topY, z: b.z } : ref.item ? { x: ref.item.position.x, y: ref.item.position.y + 0.8, z: ref.item.position.z } : null;
+      if (!pos) return false;
+      snd('rustle');
+      particles.burst('leaf', pos, { count: 8, radius: 0.7, speed: 0.9, ring: true, height: 0.3, color: '#3f9150' });
+      if (b && b.full && !b.removed) { if (sync.isHost) dropBerries(b, pos); b.full = false; return true; }
+      return false;
+    }
+    if (ref.cls === 'herb' || ref.cls === 'mushroom') {
+      const r = ref.cls === 'herb' ? herbOf(ref.key) : mushOf(ref.key);
+      if (!r || r.state !== 'ready') return false;                                  // not grown right now: nothing to give
+      const n = ref.cls === 'herb' ? 1 : 1 + (sync.isHost && Math.random() < 0.5 ? 1 : 0);
+      if (sync.isHost) inventory.add(r.itemId, n);
+      applyPicked({ k: ref.cls, i: r.i, n, actor });
+      return true;
+    }
+    if (ref.cls === 'dig') {
+      const s = ref.sid != null ? spotBySid(ref.sid) : spots.find((q) => q.pid === ref.pid);
+      if (!s || s.state === 'dug') return false;
+      const finds = sync.isHost ? rollDig(digLoot(s.isl)) : [];
+      if (sync.isHost) collectFind('dig', { x: s.x, z: s.z }, actor);
+      applyDug(s, actor, finds);                                                    // (no respawn entry: the spot stays gone)
+      return true;
+    }
+    return false;
+  }
+  /** Take dig spot `sid` out of the world for good (no hole, no loot). The wandering limit follows by itself: one fewer spot, one fewer respawn. */
+  function removeSpot(sid) {
+    const s = spotBySid(sid);
+    if (!s) return false;
+    particles.burst('puff', { x: s.x, y: s.y + 0.25, z: s.z }, { count: 5, radius: 0.45, color: LOOKS[s.look || (s.snow ? 'snow' : 'dirt')].dust });
+    dropSpot(s);
+    return true;
+  }
+  /** Load: drop `n` native wandering home spots (the last ones made), never leaving fewer than 1. */
+  function trimWander(n) {
+    const wild = spots.filter((s) => s.isl === 'home' && s.pid == null).sort((a, b) => b.sid - a.sid);
+    let k = 0;
+    while (k < n && wild.length - k > 1) { dropSpot(wild[k]); k++; }
+    return k;
+  }
+  /** A PLACED dig spot (host): a fixed patch; the 'spotAdd' event makes it on the replicas. */
+  function addFixedSpot(pid, x, z, animate = true) {
+    if (sync.isReplica) return null;
+    return hostAddSpot(x, z, pid, animate);
+  }
+  /** A placed patch is removed for good (every screen): the spot, and the re-fill that was waiting for it (host). */
+  function removeFixed(pid) {
+    for (let i = respawns.length - 1; i >= 0; i--) if (respawns[i].pid === pid) respawns.splice(i, 1);
+    const s = spots.find((q) => q.pid === pid);
+    const gone = s ? removeSpot(s.sid) : false;
+    patchInfo.delete(pid);
+    return gone;
+  }
+  /** Step 86e (EVERY screen, before the spot is made): the placed patch `pid` belongs to island `isl` (its finds: lootTable.js digLoot) and has this mound look and prompt label. */
+  function notePatch(pid, info) { patchInfo.set(pid, { isl: info.isl, look: info.look, label: info.label || null }); }
+  const spotInfo = (sid) => { const s = spotBySid(sid); return s ? { sid: s.sid, pid: s.pid, isl: s.isl } : null; };
+
+  /** A planted berry bush / herb / mushroom cluster (a props.spawnPlaced handle) becomes a gathering citizen under the key `p<pid>`. */
+  function adoptPlaced(h) {
+    const key = 'p' + h.pid;
+    const meta = HOMESTEAD.kinds[h.kind] || {};
+    const isl = meta.island || 'home';                       // Step 86e: a planted kind from another island gives ITS island's finds (lingonberries, mountain mint, chanterelles, pineapples, glowcap crumbs)
+    if (isl !== 'home' && meta.cls === 'bush') {
+      const item = h.item;
+      const b = {
+        i: key, isl, x: h.x, y: h.y, z: h.z, topY: h.topY, color: '#e0243f', sparkle: '#ff9fb0',
+        item, full: true, regrowAt: 0, popT: -1, placed: true,
+        setBerries(on, k = 1) { h.setBerries(on, k); },
+      };
+      item.onInteract = (it, by) => { frostRustle(b); rustleRequest(b, by); };         // (no mesh to wobble, like Frostpine's own bushes: leaves + the rustle sound)
+      placedBushes.set(key, b);
+    } else if (isl !== 'home' && meta.cls === 'herb') {
+      const r = { i: key, isl, itemId: meta.item, x: h.x, y: h.y, z: h.z, state: 'ready', regrowAt: 0, t: 0, item: h.item, set: h.set, placed: true };
+      h.item.onInteract = (it, by) => pickRequest('herb', r, by);
+      placedHerbs.set(key, r);
+    } else if (isl !== 'home' && (meta.cls === 'mushroom' || meta.cls === 'glowcap')) {
+      const r = { i: key, isl, itemId: meta.item, x: h.x, y: h.y, z: h.z, state: 'ready', regrowAt: 0, t: 0, item: h.item, set: h.set, placed: true };
+      h.item.onInteract = (it, by) => pickRequest('mushroom', r, by);
+      placedMushrooms.set(key, r);
+    } else if (h.kind === 'berryBush') {
+      const g = h.g, item = h.item;
+      const b = {
+        i: key, isl: 'home', x: g.position.x, y: g.position.y, z: g.position.z, topY: g.position.y + 1.0 * g.scale.y, color: '#ff4d6d', sparkle: '#ff9fb0',
+        item, full: true, regrowAt: 0, popT: -1, placed: true,
+        setBerries(on, k = 1) { const mesh = g.userData.berries; if (!mesh) return; mesh.visible = on; if (on) mesh.scale.setScalar(k); },
+      };
+      const base = item.onInteract;
+      item.onInteract = (it, by) => { if (base) base(it, by); rustleRequest(b, by); };
+      placedBushes.set(key, b);
+    } else if (h.kind === 'herb') {
+      const r = { i: key, isl: 'home', itemId: 'herb', x: h.x, y: h.y, z: h.z, state: 'ready', regrowAt: 0, t: 0, item: h.item, set: h.set, placed: true };
+      h.item.onInteract = (it, by) => pickRequest('herb', r, by);
+      placedHerbs.set(key, r);
+    } else if (h.kind === 'mushroom') {
+      const r = { i: key, isl: 'home', itemId: 'mushroom', x: h.x, y: h.y, z: h.z, state: 'ready', regrowAt: 0, t: 0, item: h.item, set: h.set, placed: true };
+      h.item.onInteract = (it, by) => pickRequest('mushroom', r, by);
+      placedMushrooms.set(key, r);
+    }
+  }
+  function releasePlaced(pid) {
+    const key = 'p' + pid;
+    placedBushes.delete(key); placedHerbs.delete(key); placedMushrooms.delete(key);
+  }
+  const hasPlaced = () => placedBushes.size + placedHerbs.size + placedMushrooms.size > 0;
+  const placedSnapshot = () => ({
+    bushes: Object.fromEntries([...placedBushes].map(([k, b]) => [k, { full: b.full, in: b.full ? null : left(b.regrowAt) }])),
+    herbs: Object.fromEntries([...placedHerbs].map(([k, r]) => [k, { hidden: r.state === 'hidden', in: r.state === 'hidden' ? left(r.regrowAt) : null }])),
+    mushrooms: Object.fromEntries([...placedMushrooms].map(([k, r]) => [k, { hidden: r.state === 'hidden', in: r.state === 'hidden' ? left(r.regrowAt) : null }])),
+  });
+  const byKey = ([a], [b]) => (a < b ? -1 : 1);
+  const placedHash = () => ({
+    bushes: [...placedBushes].sort(byKey).map(([k, b]) => [k, b.full]),
+    herbs: [...placedHerbs].sort(byKey).map(([k, r]) => [k, r.state === 'hidden']),
+    mushrooms: [...placedMushrooms].sort(byKey).map(([k, r]) => [k, r.state === 'hidden']),
+  });
+  function applyPlacedSnapshot(sec) {
+    const p = sec || {};
+    for (const [k, e] of Object.entries(p.bushes || {})) {
+      const b = placedBushes.get(k);
+      if (!b) continue;
+      if (e.full && !b.full) { b.full = true; b.popT = -1; b.setBerries(true, 1); }
+      else if (!e.full && b.full) { b.full = false; b.setBerries(false); }
+    }
+    for (const [list, key] of [[placedHerbs, 'herbs'], [placedMushrooms, 'mushrooms']]) {
+      for (const [k, e] of Object.entries(p[key] || {})) {
+        const r = list.get(k);
+        if (!r) continue;
+        if (e.hidden && r.state !== 'hidden') { r.state = 'hidden'; r.set(0); removeInteractable(r.item); }
+        else if (!e.hidden && r.state === 'hidden') { r.state = 'ready'; r.set(1); restoreInteractable(r.item); }
+      }
+    }
+  }
+
   // =========================================================================================== world sync domain
   const left = (at) => +Math.max(0, at - time).toFixed(1);
   sync.register('gathering', {
     snapshot: () => ({
-      bushes: bushes.map((b) => ({ full: b.full, in: b.full ? null : left(b.regrowAt) })),
+      bushes: bushes.map((b) => ({ full: b.full, in: b.full || b.removed ? null : left(b.regrowAt) })),
       herbs: herbs.map((r) => ({ hidden: r.state === 'hidden', in: r.state === 'hidden' ? left(r.regrowAt) : null })),
       mushrooms: mushrooms.map((r) => ({ hidden: r.state === 'hidden', in: r.state === 'hidden' ? left(r.regrowAt) : null })),
-      spots: spots.map((s) => ({ sid: s.sid, x: r2(s.x), z: r2(s.z) })),
+      spots: spots.map((s) => ({ sid: s.sid, x: r2(s.x), z: r2(s.z), ...(s.pid != null ? { pid: s.pid } : {}) })),
+      ...(hasPlaced() ? { placed: placedSnapshot() } : {}),
     }),
     hashView: () => ({
       bushes: bushes.map((b) => b.full),
       herbs: herbs.map((r) => r.state === 'hidden'),
       mushrooms: mushrooms.map((r) => r.state === 'hidden'),
-      spots: spots.map((s) => [s.sid, r2(s.x), r2(s.z)]).sort((a, b) => a[0] - b[0]),
+      spots: spots.map((s) => (s.pid != null ? [s.sid, r2(s.x), r2(s.z), s.pid] : [s.sid, r2(s.x), r2(s.z)])).sort((a, b) => a[0] - b[0]),
+      ...(hasPlaced() ? { placed: placedHash() } : {}),
     }),
     applySnapshot(snap) {
       const sn = snap || {};
@@ -633,17 +844,18 @@ export function createGathering({ scene, players, props, frost = null, ember = n
         const e = want.get(s.sid);
         if (!e || Math.hypot(e.x - s.x, e.z - s.z) > 0.05) dropSpot(s);
       }
-      for (const e of want.values()) if (!spotBySid(e.sid)) addSpot(e.x, e.z, false, e.sid);
+      for (const e of want.values()) if (!spotBySid(e.sid)) addSpot(e.x, e.z, false, e.sid, undefined, e.pid);
+      applyPlacedSnapshot(sn.placed);
     },
     applyEvent(kind, d) {
-      if (kind === 'berries') { const b = bushes[d.i]; if (b) applyBerries(b); }
+      if (kind === 'berries') { const b = bushOf(d.i); if (b) applyBerries(b); }
       else if (kind === 'picked') applyPicked(d);
       else if (kind === 'dug') { const sp = spotBySid(d.sid); if (sp) applyDug(sp, d.actor); }
-      else if (kind === 'spotAdd') { if (!spotBySid(d.sid)) addSpot(d.x, d.z, true, d.sid, d.rot); }
+      else if (kind === 'spotAdd') { if (!spotBySid(d.sid)) addSpot(d.x, d.z, true, d.sid, d.rot, d.pid); }
       else if (kind === 'grow') {
-        if (d.k === 'berry') { const b = bushes[d.i]; if (b && !b.full) growBerries(b); }
-        else if (d.k === 'herb') { const r = herbs[d.i]; if (r) growHerb(r); }
-        else if (d.k === 'mushroom') { const r = mushrooms[d.i]; if (r) growMushroom(r); }
+        if (d.k === 'berry') { const b = bushOf(d.i); if (b && !b.full && !b.removed) growBerries(b); }
+        else if (d.k === 'herb') { const r = herbOf(d.i); if (r) growHerb(r); }
+        else if (d.k === 'mushroom') { const r = mushOf(d.i); if (r) growMushroom(r); }
       }
     },
     handleRequest(kind, d, actor) {
@@ -657,9 +869,9 @@ export function createGathering({ scene, players, props, frost = null, ember = n
 
   /** Host: every waiting regrow / respawn fires on the next update. */
   function regrowAll() {
-    for (const b of bushes) if (!b.full) b.regrowAt = time;
-    for (const r of herbs) if (r.state === 'hidden') r.regrowAt = time;
-    for (const r of mushrooms) if (r.state === 'hidden') r.regrowAt = time;
+    for (const b of allBushes()) if (!b.full && !b.removed) b.regrowAt = time;
+    for (const r of allHerbs()) if (r.state === 'hidden') r.regrowAt = time;
+    for (const r of allMushrooms()) if (r.state === 'hidden') r.regrowAt = time;
     for (const q of respawns) q.at = time;
   }
 
@@ -670,8 +882,8 @@ export function createGathering({ scene, players, props, frost = null, ember = n
     for (let i = timers.length - 1; i >= 0; i--) {
       if (time >= timers[i].at) { const fn = timers[i].fn; timers.splice(i, 1); fn(); }
     }
-    for (const b of bushes) {
-      if (sync.isHost && !b.full && time >= b.regrowAt) { sync.emit('gathering', 'grow', { k: 'berry', i: b.i }); growBerries(b); }
+    for (const b of allBushes()) {
+      if (sync.isHost && !b.full && !b.removed && time >= b.regrowAt) { sync.emit('gathering', 'grow', { k: 'berry', i: b.i }); growBerries(b); }
       if (b.popT >= 0) {
         b.popT += dt;
         const u = Math.min(1, b.popT / POP_TIME);
@@ -679,7 +891,7 @@ export function createGathering({ scene, players, props, frost = null, ember = n
         if (u >= 1) { b.popT = -1; b.setBerries(true, 1); }
       }
     }
-    for (const r of herbs) {
+    for (const r of allHerbs()) {
       if (sync.isHost && r.state === 'hidden' && time >= r.regrowAt) { sync.emit('gathering', 'grow', { k: 'herb', i: r.i }); growHerb(r); }
       if (r.state === 'growing') {
         r.t += dt;
@@ -688,7 +900,7 @@ export function createGathering({ scene, players, props, frost = null, ember = n
         if (u >= 1) { r.state = 'ready'; r.set(1); restoreInteractable(r.item); }
       }
     }
-    for (const r of mushrooms) {
+    for (const r of allMushrooms()) {
       if (sync.isHost && r.state === 'hidden' && time >= r.regrowAt) { sync.emit('gathering', 'grow', { k: 'mushroom', i: r.i }); growMushroom(r); }
       if (r.state === 'growing') {
         r.t += dt;
@@ -709,6 +921,9 @@ export function createGathering({ scene, players, props, frost = null, ember = n
       if (pd) { if (pd.spot.state === 'digging') pd.spot.state = 'ready'; pending.delete(player); }
     },
     get digSpots() { return spots; },
+    // Step 86a: Homesteading (see the header)
+    lastHarvest, retireBush, retireHerb, retireMushroom, removeSpot, trimWander, addFixedSpot, removeFixed, spotInfo, adoptPlaced, releasePlaced, notePatch,
+    get nativeDigCount() { return homeDigAtStart; },
     /** Debug: put a dig spot at (x, z) right now (no validity check; the host announces it to the replicas). */
     addSpot(x, z) { return sync.isReplica ? null : hostAddSpot(x, z); },
     /** Debug: what is waiting to regrow. */
@@ -727,7 +942,7 @@ export function createGathering({ scene, players, props, frost = null, ember = n
       regrowAll();
     },
     /** Debug: the bush / herb / mushroom records (frost ones have isl 'frost'; item = the interactable) and the plan's ids. */
-    get plants() { return { bushes, herbs, mushrooms }; },
+    get plants() { return { bushes, herbs, mushrooms, placed: { bushes: placedBushes, herbs: placedHerbs, mushrooms: placedMushrooms } }; },
     constants: { BERRY_REGROW, HERB_REGROW, MUSHROOM_REGROW, DIG_RESPAWN, DIG_SPOTS },
   };
 }

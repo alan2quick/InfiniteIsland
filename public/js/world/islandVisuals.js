@@ -27,7 +27,7 @@
 //   world.harvestables     the choppable trees / breakable boulders of the big islands (Groups with userData.interactable, Step 29a): harvest.js adds them to its targets
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { ISLANDS, BRIDGES, REGION_VIEW } from '../config.js';
+import { ISLANDS, BRIDGES, REGION_VIEW, HOMESTEAD } from '../config.js';
 import { buildIslandTerrain, buildFarTerrain } from './terrainMesh.js';
 import { createRegions } from './regions.js';
 import { registerStubColliders, buildStubVisuals } from './bridgeStubs.js';
@@ -66,14 +66,25 @@ export function buildIslandData(island) {
 // ---------------------------------------------------------------------------------------------
 // Far canopy blobs of the home island (its trees are individual meshes with colliders: only their positions are read)
 // ---------------------------------------------------------------------------------------------
-function homeFarBlobs(props) {
+// Step 86d: Homesteading changes the trees: removed natives (userData.retired, set by world/homesteadWorld.js) are skipped and grown planted trees / palms are added. The blobs are rebuilt (geometry swapped) when the
+// layout changed (props.farDirty, raised by homesteadWorld) at most every FAR_REBUILD s, so a burst of changes is one rebuild.
+const FAR_REBUILD = 0.6;
+function farBlobGeo(props) {
   const ico = new THREE.IcosahedronGeometry(1, 0);
   const parts = [];
-  for (const g of props.handles.trees) {
+  const trees = [...props.handles.trees], palms = [...props.handles.palms];
+  for (const h of props.planted ? props.planted.values() : []) {
+    if (!h.g || h.g.userData.young) continue;
+    const k = HOMESTEAD.kinds[h.kind];
+    if (k && k.cls === 'tree') trees.push(h.g); else if (k && k.cls === 'palm') palms.push(h.g);
+  }
+  for (const g of trees) {
+    if (g.userData.retired) continue;
     const s = g.scale.x;
     parts.push(part(ico, g.userData.cherry ? '#ff9fc6' : '#4cbf68', { p: [g.position.x, g.position.y + 3.1 * s, g.position.z], s: [2.6 * s, 1.8 * s, 2.6 * s] }));
   }
-  for (const g of props.handles.palms) {
+  for (const g of palms) {
+    if (g.userData.retired) continue;
     const s = g.scale.x;
     parts.push(part(ico, '#3fae55', { p: [g.position.x, g.position.y + 4.6 * s, g.position.z], s: [2.2 * s, 1.0 * s, 2.2 * s] }));
   }
@@ -81,10 +92,36 @@ function homeFarBlobs(props) {
   if (!parts.length) return null;
   const geo = mergeGeometries(parts, false);
   for (const p of parts) p.dispose();
-  const mesh = new THREE.Mesh(geo, toonMat('#ffffff', { vertexColors: true }));
+  return geo;
+}
+function homeFarBlobs(props) {
+  const geo0 = farBlobGeo(props);
+  if (!geo0) return null;
+  const mesh = new THREE.Mesh(geo0, toonMat('#ffffff', { vertexColors: true }));
   mesh.name = 'far-trees-home';
   mesh.castShadow = false; mesh.receiveShadow = false;
-  return { mesh, dispose() { geo.dispose(); mesh.removeFromParent(); } };
+  let wait = 0;
+  return {
+    mesh,
+    rebuilds: 0,
+    /** Per frame: swap in a fresh geometry when the layout changed (debounced). */
+    tick(dt) {
+      if (!props.farDirty) return;
+      wait += dt;
+      if (wait < FAR_REBUILD) return;
+      wait = 0; props.farDirty = false;
+      this.rebuild();
+    },
+    rebuild() {
+      const g = farBlobGeo(props);
+      const old = mesh.geometry;
+      if (g) mesh.geometry = g;
+      mesh.visible = !!g;
+      old.dispose();
+      this.rebuilds++;
+    },
+    dispose() { mesh.geometry.dispose(); mesh.removeFromParent(); },
+  };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -104,11 +141,11 @@ export function buildIslandVisuals(island, ctx) {
   const farTerrain = buildFarTerrain(island);
   far.add(farTerrain.mesh); disposers.push(() => farTerrain.dispose());
 
-  let ember = null, frost = null, story = null, dusk = null, smallDusk = null, crown = null, crownTrees = null;
+  let ember = null, frost = null, story = null, dusk = null, smallDusk = null, crown = null, crownTrees = null, homeFar = null;
   if (island.id === 'home') {
     full.add(ctx.homeProps.group);                         // wrapped as is (never disposed here: its colliders / interactables live on)
     const blobs = homeFarBlobs(ctx.homeProps);
-    if (blobs) { far.add(blobs.mesh); disposers.push(() => blobs.dispose()); }
+    if (blobs) { far.add(blobs.mesh); disposers.push(() => blobs.dispose()); homeFar = blobs; }
   } else {
     if (data.ember) {
       ember = buildEmberVisuals(island, data.ember);
@@ -149,7 +186,8 @@ export function buildIslandVisuals(island, ctx) {
 
   return {
     id: island.id, root, full, far, always, data, get crown() { return crown; }, get crownTrees() { return crownTrees; },
-    update(t) { ember?.update(t); frost?.update(t); story?.update(t); },
+    update(t) { ember?.update(t); frost?.update(t); story?.update(t); if (homeFar) { homeFar.tick(Math.min(0.25, Math.max(0, t - (homeFar.last ?? t)))); homeFar.last = t; } },
+    get homeFar() { return homeFar; },
     setFull(on) { full.visible = on; far.visible = !on; },
     dispose() {
       for (const d of disposers) d();

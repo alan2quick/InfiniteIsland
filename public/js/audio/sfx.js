@@ -3,7 +3,7 @@
 //
 //   const sfx = new Sfx();            // registers first-gesture listeners; the AudioContext is created on the first key / pointer / touch
 //   sfx.unlock();                     // also callable manually (e.g. on a gamepad button press)
-//   sfx.play('pop' | 'bip' | 'rustle' | 'leaves' | 'clink' | 'chime' | 'blip' | 'equip' | 'whoosh' | 'thud' | 'saber-on' | 'saber-off' | 'saber-swing' | 'chop' | 'crack' | 'zap' | 'flag' | 'squawk' | 'dropwhistle' | 'shell' | 'timber' | 'collect' | 'dig' | 'flare' | 'sizzle' | 'toss' | 'cooked' | 'nom' | 'jingle' | 'pat' | 'pageturn' | 'count' | 'go' | 'tick' | 'whistle' | 'boing' | 'fanfare' | 'roundWon' | 'trophy' | 'seedpass' | 'seedpop' | 'eggcatch' | 'golden' | 'eggsplat' | 'bonk' | 'glowbell' | 'capsink' | 'caprise' | 'castline' | 'reelclick' | 'hooked' | 'blah')
+//   sfx.play('pop' | 'bip' | 'rustle' | 'leaves' | 'clink' | 'chime' | 'blip' | 'equip' | 'whoosh' | 'thud' | 'saber-on' | 'saber-off' | 'saber-swing' | 'chop' | 'crack' | 'zap' | 'flag' | 'squawk' | 'dropwhistle' | 'shell' | 'timber' | 'collect' | 'dig' | 'flare' | 'sizzle' | 'toss' | 'cooked' | 'nom' | 'jingle' | 'pat' | 'pageturn' | 'count' | 'go' | 'tick' | 'whistle' | 'boing' | 'fanfare' | 'roundWon' | 'trophy' | 'seedpass' | 'seedpop' | 'eggcatch' | 'golden' | 'eggsplat' | 'bonk' | 'glowbell' | 'capsink' | 'caprise' | 'castline' | 'reelclick' | 'hooked' | 'blah' | 'plant' | 'poof' | 'pour' | 'sproutgrow' | 'treegrow')
 //   sfx.setFire(0..1)   // looping campfire crackle bed (Step 14), set every frame
 //   sfx.toggleMute() -> boolean muted;  sfx.muted;  sfx.onChange(fn(muted))
 //
@@ -456,6 +456,35 @@ export class Sfx {
         [880, 1320, 1760].forEach((f, k) => this._tone('sine', f, f, 0.8, 0.12 * v / (k + 1))); break;
       case 'sporedrift':
         this._noise(0.7, 0.08 * v, { f: 2400, q: 0.6, pulses: 4 }); break;
+      // ---- Step 86d (Homesteading): planting and watering. Everything is built from the same _tone / _noise blocks as the rest.
+      // Step 86f: levelled against the existing jingles. Loudest single voice: the feast 'jingle' note 0.17; its final chord adds up to ~0.55. Every voice below is <= 0.17 and the biggest sound (treegrow) adds up to ~0.58 even if every voice overlapped (it never does: they are staggered).
+      case 'plant':    // a seed pressed into the soil: a soft low thud, a crumbly noise and a small "pop" on top
+        this._tone('sine', 190 * pitch, 80 * pitch, 0.16, 0.17 * v);
+        this._noise(0.14, 0.12 * v, { type: 'lowpass', f: 900, q: 0.7, pulses: 2 });
+        this._tone('sine', 520 * pitch, 880 * pitch, 0.09, 0.1 * v, 0.06);
+        break;
+      case 'poof':     // a planting is removed for good: a soft airy puff and a little falling bloop (no thud, so it never sounds like a hit)
+        this._noise(0.16, 0.1 * v, { type: 'lowpass', f: 1500 * pitch, q: 0.6, pulses: 2 });
+        this._tone('sine', 420 * pitch, 210 * pitch, 0.14, 0.08 * v);
+        break;
+      case 'pour':     // a watering can: gurgling band-passed noise (nine quick bumps) over a falling hiss, 0.7 s
+        this._noise(0.7, 0.12 * v, { type: 'bandpass', f: 2700 * pitch, q: 0.9, pulses: 9 });
+        this._sweep(0.7, 0.05 * v, 3200 * pitch, 2400 * pitch, 1700 * pitch, { q: 0.8 });
+        break;
+      case 'sproutgrow': // sprout -> sapling: a bright two-note pluck (E5, A5) with a little sparkle on the second
+        this._tone('triangle', 659 * pitch, 659 * pitch, 0.2, 0.15 * v);
+        this._tone('triangle', 880 * pitch, 1000 * pitch, 0.3, 0.15 * v, 0.1);       // (a little upward lean on the second note: the "boing")
+        this._tone('sine', 1760 * pitch, 1740 * pitch, 0.22, 0.05 * v, 0.12);
+        this._tone('sine', 2349 * pitch, 2349 * pitch, 0.16, 0.025 * v, 0.2);
+        break;
+      case 'treegrow': // sapling -> tree: a rising three-note chime (C5, E5, G5) with a high shimmer, over a leafy rustle
+        this._tone('sine', 523 * pitch, 523 * pitch, 0.36, 0.12 * v);
+        this._tone('sine', 659 * pitch, 659 * pitch, 0.4, 0.12 * v, 0.11);
+        this._tone('sine', 784 * pitch, 784 * pitch, 0.7, 0.14 * v, 0.22);
+        this._tone('triangle', 1568 * pitch, 1560 * pitch, 0.5, 0.05 * v, 0.24);
+        this._tone('sine', 1047 * pitch, 1047 * pitch, 0.5, 0.05 * v, 0.34);                // (a sparkling octave tail: the "it made it" sparkle)
+        this._noise(0.62, 0.1 * v, { f: 2500, q: 0.6, pulses: 6, delay: 0.08 });
+        break;
       case 'timber':   // tree crashes down: deep thud + rustle
         this._tone('sine', 110 * pitch, 40 * pitch, 0.3, 0.4 * v);
         this._noise(0.5, 0.22 * v, { f: 1800, q: 0.6, pulses: 6 });

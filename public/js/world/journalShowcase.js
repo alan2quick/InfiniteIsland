@@ -10,6 +10,17 @@
 // that player's avatar), nothing is synced. Walking away ends the pose early. Costs two draw calls while it shows (model + halo).
 import * as THREE from 'three';
 import { createJournalModel } from '../player/journalModels.js';
+import { buildItemModel } from '../items/models.js';
+
+// Step 86b: Im Nabong's watering can is shown the same way ("id" = 'watering-can'; it is not a Journal find). The tool model is built for a hand (about a metre long), so it is shown smaller.
+function toolShowModel(id) {
+  if (id !== 'watering-can') return null;
+  const item = buildItemModel(id), g = new THREE.Group();
+  g.name = 'showcase-' + id; g.add(item);
+  g.userData.fit = 0.62;
+  g.userData.dispose = () => item.traverse((m) => { if (m.isMesh) m.geometry.dispose(); });
+  return g;
+}
 
 const DUR = 2.8;          // seconds the find is shown
 const MIN = 0.6;          // walking before this does not cut it short (the finder was usually just mid-swing)
@@ -67,7 +78,7 @@ export function createJournalShowcase({ scene, camera, players, avatars, sync, p
     if (!p || p.pageDrive || p.downed) return false;
     const old = shows.get(p);
     if (old) end(old, { quiet: true });
-    const model = createJournalModel(id);
+    const model = createJournalModel(id) || toolShowModel(id);
     if (!model) return false;
     tex ||= haloTexture();
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 }));

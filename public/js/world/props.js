@@ -11,18 +11,20 @@
 //   * Flowers (4 colours) and grass tufts are InstancedMeshes without outlines.
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
-import { PALETTE, WORLD_SEED, WATER_LEVEL, OUTLINE_THICKNESS, nearAnyFire, HAT_RACK, SIGNPOST } from '../config.js';
+import { PALETTE, WORLD_SEED, WATER_LEVEL, OUTLINE_THICKNESS, nearAnyFire, HAT_RACK, SIGNPOST, HOMESTEAD, ISLANDS } from '../config.js';
 import { mulberry32, range, rangeInt, pick } from '../utils/rng.js';
 import { toonMat, addOutline } from '../render/toon.js';
 import {
   getHeight, getGroundType, getSlope, inlandDistance, streamDistance,
   SPAWN, POND, PLATEAU, RAMP_ANGLES, STREAM_HALF_WIDTH,
 } from './terrain.js';
-import { addCollider, overlapsAny } from './colliders.js';
-import { addInteractable } from './interactables.js';
+import { addCollider, removeCollider, overlapsAny } from './colliders.js';
+import { addInteractable, removeInteractable, getInteractables } from './interactables.js';
 import { swayClone, wobbleGroup, windTime } from './wind.js';
 import { ritualReserved } from './islands/ritual.js';
 import { rootgateReserved } from './islands/rootgate.js';
+import { pathPaint } from './paths.js';
+import { keepClearReason, inPond, onShore } from '../game/homesteadSpot.js';
 
 // ---------------------------------------------------------------------------------------------
 // Small geometry toolkit
@@ -445,6 +447,48 @@ function buildHerbGeo() {
 }
 const HERB_MAT = swayClone(PLAIN, { amp: 0.12, speed: 1.1 });
 
+// ---- Step 86d: the shared small models of Homesteading (built once, lazily; every planted copy shares them)
+/** A sprout: a thin stem and two round leaves (a third tiny one on top). One model for every species, tinted by SPROUT_MATS. */
+function buildSproutGeo() {
+  const parts = [];
+  parts.push(part(G.cyl6, '#6fb85a', { p: [0, 0.16, 0], s: [0.035, 0.32, 0.035] }));
+  parts.push(part(G.sphereLo, '#7be07a', { p: [0.15, 0.3, 0], r: [0, 0, 0.55], s: [0.2, 0.06, 0.13] }));
+  parts.push(part(G.sphereLo, '#63d06e', { p: [-0.15, 0.34, 0.02], r: [0, 0.3, -0.55], s: [0.2, 0.06, 0.13] }));
+  parts.push(part(G.sphereLo, '#a4f08a', { p: [0, 0.4, 0], s: [0.1, 0.05, 0.08] }));
+  return combine(parts);
+}
+const SPROUT_MATS = { tree: tint('#ffffff'), cherry: tint('#ffc9e0'), palm: tint('#fff2a8') };
+/** A lily pad: a flat disc with a notch, floating (the native pads' look). */
+function buildLilyGeo() {
+  const pad = new THREE.CircleGeometry(1, 16, 0.4, Math.PI * 2 - 0.55);
+  pad.rotateX(-HALF_PI);
+  const g = combine([part(pad, '#5fd07a', {}), part(pad, '#2f9a55', { p: [0, -0.02, 0], s: [1.04, 1, 1.04] })]);
+  pad.dispose();
+  return g;
+}
+/** A reed clump: five tapered blades, a brown cattail on two of them. */
+function buildReedGeo() {
+  const parts = [];
+  const cone = new THREE.ConeGeometry(0.075, 1, 5, 1);
+  const c1 = new THREE.Color('#4fb85a'), c2 = new THREE.Color('#9be27a');
+  const blades = [[0, 0, 1.5, 0.05, 0.04], [0.28, 0.1, 1.2, -0.08, 0.06], [-0.25, 0.14, 1.7, 0.06, -0.05], [0.1, -0.28, 1.1, -0.04, -0.09], [-0.12, -0.2, 1.35, 0.1, 0.05]];
+  blades.forEach(([px, pz, hh, lx, lz], i) => {
+    parts.push(partFn(cone, (c, x, y) => { c.copy(c1).lerp(c2, Math.min(1, Math.max(0, y / hh))); }, { p: [px, hh * 0.5 - 0.1, pz], r: [lz, 0, -lx], s: [1, hh, 1] }));
+    if (i % 2 === 0) parts.push(part(G.sphereLo, '#8a5a3a', { p: [px - lx * hh * 0.45, hh * 0.76, pz + lz * hh * 0.45], s: [0.075, 0.24, 0.075] }));
+  });
+  cone.dispose();
+  return combine(parts);
+}
+/** A flat brown patch: the ghost of a dig spot. */
+function buildPatchGeo() {
+  const d = new THREE.CircleGeometry(0.55, 14);
+  d.rotateX(-HALF_PI);
+  return combine([part(d, '#8a5a3a', { p: [0, 0.03, 0] })]);
+}
+const SHARED = {};                                              // lazily built geometries: sprout, lily, reed, patch, herb, shroom, flower0..3 (never disposed)
+const shared = (key, make) => (SHARED[key] ||= make());
+const LAYER_MAT = { herb: HERB_MAT };                           // (lily pads use PLAIN, the flower-like layers the swaying FLOWER_MAT)
+
 // ---- Mushroom cluster (returns merged geo plus a stem+cap-only outline geo)
 function buildMushroomCluster(items) {
   const parts = [], outlineParts = [];
@@ -527,6 +571,7 @@ export function createProps(scene) {
   group.name = 'props';
   const stats = {};
   const handles = { trees: [], palms: [], rocks: [], bushes: [], mushrooms: [], herbs: null, flowers: null, sign: null, log: null };
+  const kit = {};   // Step 86a: the native variants (geometries + outlines), so planted things reuse them
 
   // ---- occupancy for spacing (footprint circles) and hard obstacles (for small stuff)
   const occ = [];    // { x, z, r }  spacing footprint
@@ -591,6 +636,7 @@ export function createProps(scene) {
     const rng = mulberry32(WORLD_SEED + 31);
     const variants = [];
     for (let i = 0; i < 6; i++) variants.push(buildRockVariant(rng, i % 3 === 2));
+    kit.rockV = variants;
     const place = (x, z, s) => {
       const v = pick(rng, variants);
       const mesh = new THREE.Mesh(v.geo, pick(rng, ROCK_TINTS));
@@ -643,6 +689,7 @@ export function createProps(scene) {
     const greenV = [], cherryV = [];
     for (let i = 0; i < 5; i++) greenV.push(buildTreeVariant('green', rng));
     for (let i = 0; i < 4; i++) cherryV.push(buildTreeVariant('cherry', rng));
+    kit.treeV = { greenV, cherryV };
 
     const groveSpecs = [
       { c: [-16, 12], bias: 0.15 },   // west of the spawn (visible from the start)
@@ -719,6 +766,7 @@ export function createProps(scene) {
     const rng = mulberry32(WORLD_SEED + 51);
     const variants = [];
     for (let i = 0; i < 3; i++) variants.push(buildPalmVariant(rng));
+    kit.palmV = variants;
     let placed = 0;
     for (let k = 0; k < 8; k++) {
       const a0 = (k / 8) * Math.PI * 2 + range(rng, -0.2, 0.2);
@@ -768,6 +816,7 @@ export function createProps(scene) {
     // 7 of the first 18 bushes are berry bushes (deterministic, spread through the placement order): gathering.js makes them harvestable
     const berryV = [buildBushVariant(rng, 'berry'), buildBushVariant(rng, 'berry'), buildBushVariant(rng, 'berry')];
     const otherV = [null, null, null, 'pink', 'yellow', null].map((k) => buildBushVariant(rng, k));
+    kit.bushV = { berryV, otherV };
     const berryIdx = new Set([1, 3, 6, 9, 12, 14, 17]);
     let placed = 0;
     const treePos = handles.trees.map((t) => t.position);
@@ -1107,6 +1156,7 @@ export function createProps(scene) {
     }
     pad.dispose();
     stats.lilyPads = padPos.length;
+    handles.lilyPads = padPos;                       // (Step 86d: a planted lily pad keeps clear of these)
 
     // reeds
     const rparts = [];
@@ -1157,10 +1207,289 @@ export function createProps(scene) {
 
   const wobbleOff = new Set();   // groups whose rotation is driven by something else (felled / falling trees)
 
+  // =========================================================================================
+  // Homesteading (Step 86a): things the players plant. Same geometries / materials / outlines as the natives (kit = the native variants, captured above), seeded by pid so every screen builds the same
+  // thing. Each planted object is a full citizen: a tree / palm / rock Group is adopted by harvest.js, berry bushes / herbs / mushroom clusters by gathering.js (keyed ids), flowers are boinging
+  // instances. Herbs and flowers are shared instanced layers (HOMESTEAD.layerCap slots each, hidden while empty), everything else is one mesh + outline like a native.
+  // =========================================================================================
+  const planted = new Map();                     // pid -> handle
+  const plantedMushrooms = [];                   // their meshes (main.js drives the night glow of these too)
+  const layers = new Map();                      // 'herb' | 'flower0'.. -> { mesh, free: [], used: 0 }
+  const SPROUT_SCALE = { sprout: 0.2, sapling: 0.45, grown: 1 };
+  const layerOf = (key, make) => {
+    let l = layers.get(key);
+    if (!l) {
+      const mesh = new THREE.InstancedMesh(make(), LAYER_MAT[key] || (key === 'lily' ? PLAIN : FLOWER_MAT), HOMESTEAD.layerCap);
+      mesh.name = 'planted-' + key;
+      mesh.count = 0; mesh.castShadow = false; mesh.receiveShadow = true; mesh.frustumCulled = false;
+      group.add(mesh);
+      l = { mesh, free: [], used: 0 };
+      layers.set(key, l);
+    }
+    return l;
+  };
+  const layerFull = (key) => { const l = layers.get(key); return !!l && l.free.length === 0 && l.mesh.count >= HOMESTEAD.layerCap; };
+  const layerKeyOf = (kind) => (kind === 'herb' ? 'herb' : kind === 'lilyPad' ? 'lily' : kind === 'reed' ? 'reed' : (HOMESTEAD.kinds[kind] && HOMESTEAD.kinds[kind].color !== undefined ? 'flower' + HOMESTEAD.kinds[kind].color : null));
+  const layerGeo = (key, meta) => (key === 'lily' ? buildLilyGeo() : key === 'reed' ? buildReedGeo() : key === 'herb' ? buildHerbGeo() : buildFlowerGeo(FLOWER_COLORS[meta.color]));
+  const _dummy = new THREE.Object3D();
+  const setSlot = (mesh, i, x, y, z, rx, ry, rz, s) => {
+    _dummy.position.set(x, y, z); _dummy.rotation.set(rx, ry, rz); _dummy.scale.setScalar(Math.max(0.0001, s)); _dummy.updateMatrix();
+    mesh.setMatrixAt(i, _dummy.matrix); mesh.instanceMatrix.needsUpdate = true;
+  };
+  const fixedId = (pid) => HOMESTEAD.placedIdBase + pid;
+
+  /** HOST + replicas: build planted object `pid` of `kind` at (x, z). stage = 'sprout' | 'sapling' | 'grown' (only trees / palms grow; a young one is the same model, scaled, with a 'sprout' interactable). Returns the handle or null. */
+  function spawnPlaced(kind, { pid, x, z, rot = 0, stage = 'grown' }) {
+    const meta = HOMESTEAD.kinds[kind];
+    if (!meta || planted.has(pid)) return null;
+    const rng = mulberry32(WORLD_SEED + 700 + pid);
+    const h = { pid, kind, x, z, y: getHeight(x, z), g: null, item: null, collider: null, set: null, wob: null, destroy };
+    const young = meta.grows && stage !== 'grown';
+    const f = young ? SPROUT_SCALE[stage] || SPROUT_SCALE.sprout : 1;
+    const register = (g, y, radius, type, prompt, col) => {
+      group.add(g);
+      if (col) h.collider = addCollider({ x, z, r: col, owner: g });
+      h.item = addInteractable({ id: fixedId(pid), type: young ? 'sprout' : type, object: g, position: new THREE.Vector3(x, y, z), radius: young ? Math.max(0.3, radius * f + 0.15) : radius, prompt: young ? 'Water' : prompt });
+      g.userData.interactable = h.item;
+      g.userData.pid = pid;
+      h.g = g; h.y = y;
+    };
+    const cls = meta.cls;
+    if (young && stage === 'sprout' && (cls === 'tree' || cls === 'palm')) {          // Step 86d: the shared two-leaf sprout (tinted per species); the sapling below is the species model at 0.45
+      const mesh = new THREE.Mesh(shared('sprout', buildSproutGeo), SPROUT_MATS[cls === 'palm' ? 'palm' : kind === 'cherryTree' ? 'cherry' : 'tree']);
+      mesh.castShadow = false; mesh.receiveShadow = true;
+      outline(mesh, shared('sproutOutline', () => smoothOutlineGeo(shared('sprout', buildSproutGeo))), 0.04);
+      const g = new THREE.Group();
+      g.name = 'sprout';
+      g.add(mesh);
+      g.rotation.y = rot;
+      g.scale.setScalar(range(rng, 1.15, 1.4));
+      const y = getHeight(x, z) - 0.02;
+      g.position.set(x, y, z);
+      register(g, y, 0.3, cls, 'Water', 0);
+      g.userData.canopy = mesh; g.userData.young = true; g.userData.kind = kind;
+    } else if (cls === 'tree') {
+      const cherry = kind === 'cherryTree';
+      const vs = cherry ? kit.treeV.cherryV : kit.treeV.greenV;
+      const v = vs[pid % vs.length];
+      const mesh = new THREE.Mesh(v.geo, (cherry ? PINK_TINTS : GREEN_TINTS)[pid % 5]);
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      outline(mesh, v.outlineGeo, 0.06);
+      const g = new THREE.Group();
+      g.name = cherry ? 'cherry-tree' : 'tree';
+      g.add(mesh);
+      const s = range(rng, 0.85, 1.25);
+      g.scale.set(s * f, s * f * range(rng, 0.95, 1.1), s * f);
+      g.rotation.y = rot;
+      const y = groundY(x, z, 0.5 * s) - 0.05;
+      g.position.set(x, y, z);
+      register(g, y, 0.5 * s, 'tree', 'Shake', young ? 0 : 0.5 * s);
+      g.userData.cherry = cherry; g.userData.canopy = mesh; g.userData.young = young; g.userData.kind = kind;
+      if (!young) h.wob = { g, amp: 0.02, ph: x * 0.21 + z * 0.17 };
+    } else if (cls === 'palm') {
+      const v = kit.palmV[pid % kit.palmV.length];
+      const mesh = new THREE.Mesh(v.geo, PLAIN);
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      outline(mesh, v.outlineGeo, 0.055);
+      const g = new THREE.Group();
+      g.name = 'palm';
+      g.add(mesh);
+      const s = range(rng, 1.05, 1.35);
+      g.scale.setScalar(s * f);
+      g.rotation.y = rot;
+      const y = groundY(x, z, 0.4);
+      g.position.set(x, y, z);
+      register(g, y, 0.42 * s, 'palm', 'Shake', young ? 0 : 0.42 * s);
+      g.userData.canopy = mesh; g.userData.topLocal = v.top; g.userData.young = young; g.userData.kind = kind;
+      if (!young) h.wob = { g, amp: 0.032, ph: x * 0.19 + z * 0.23 };
+    } else if (cls === 'rock') {
+      const v = kit.rockV[pid % kit.rockV.length];
+      const mesh = new THREE.Mesh(v.geo, ROCK_TINTS[pid % ROCK_TINTS.length]);
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      outline(mesh, v.outlineGeo, 0.05);
+      const g = new THREE.Group();
+      g.name = 'rock';
+      g.add(mesh);
+      const s = range(rng, 0.9, 1.6);
+      g.rotation.y = rot;
+      g.scale.set(s * range(rng, 0.92, 1.15), s * range(rng, 0.85, 1.15), s * range(rng, 0.92, 1.15));
+      const y = groundY(x, z, 0.75 * s);
+      g.position.set(x, y + 0.62 * g.scale.y, z);
+      register(g, y, 0.82 * s, 'rock', 'Inspect', 0.82 * s);
+    } else if (cls === 'bush') {
+      const berry = kind === 'berryBush';
+      const v = berry ? kit.bushV.berryV[pid % 3] : kit.bushV.otherV[[0, 1, 2, 5][pid % 4]];
+      const mesh = new THREE.Mesh(v.geo, GREEN_TINTS[pid % 5]);
+      mesh.castShadow = true; mesh.receiveShadow = true;
+      outline(mesh, v.outlineGeo, 0.05);
+      const g = new THREE.Group();
+      g.name = berry ? 'berry-bush' : 'bush';
+      if (v.berryGeo) {
+        const bm = new THREE.Mesh(v.berryGeo, PLAIN);
+        bm.name = 'berries'; bm.castShadow = false; bm.receiveShadow = false;
+        mesh.add(bm);
+        g.userData.berries = bm;
+      }
+      g.add(mesh);
+      const s = range(rng, 0.8, 1.25);
+      g.scale.set(s, s * range(rng, 0.92, 1.1), s);
+      g.rotation.y = rot;
+      const y = groundY(x, z, 0.7 * s) - 0.04;
+      g.position.set(x, y, z);
+      register(g, y, 0.82 * s, 'bush', 'Rustle', 0.82 * s);
+    } else if (cls === 'mushroom') {
+      const cy = getHeight(x, z);
+      const items = [];
+      const n = rangeInt(rng, 2, 4);
+      for (let i = 0; i < n; i++) {
+        const aa = rng() * Math.PI * 2, dd = i === 0 ? 0 : range(rng, 0.28, 0.6);
+        const px = Math.cos(aa) * dd, pz = Math.sin(aa) * dd;
+        items.push({ p: [px, getHeight(x + px, z + pz) - cy - 0.03, pz], s: i === 0 ? range(rng, 1.1, 1.5) : range(rng, 0.7, 1.05), rot: rng() * 6 });
+      }
+      const mc = buildMushroomCluster(items);
+      const glowMat = PLAIN.clone();
+      glowMat.emissive = new THREE.Color('#94d8b0');
+      glowMat.emissiveIntensity = 0;
+      const mesh = new THREE.Mesh(mc.geo, glowMat);
+      mesh.castShadow = false; mesh.receiveShadow = true;
+      outline(mesh, mc.outlineGeo, 0.03);
+      mesh.position.set(x, cy, z);
+      mesh.name = 'mushrooms';
+      register(mesh, cy, 0.55, 'mushroom', 'Pick', 0);
+      h.set = (k) => { mesh.visible = k > 0; if (k > 0) mesh.scale.setScalar(k); };
+      h.own = { geo: mc.geo, outlineGeo: mc.outlineGeo, mat: glowMat };
+      plantedMushrooms.push(mesh);
+    } else if (cls === 'herb') {
+      const l = layerOf('herb', buildHerbGeo);
+      const slot = l.free.pop() ?? l.mesh.count++;
+      const s = range(rng, 1.4, 1.75), y = getHeight(x, z) - 0.03;
+      h.layer = l; h.slot = slot;
+      h.set = (k) => setSlot(l.mesh, slot, x, y, z, 0, rot, 0, s * k);
+      h.set(1); h.y = y;
+      l.mesh.visible = true;
+      h.item = addInteractable({ id: fixedId(pid), type: 'herb', object: null, position: new THREE.Vector3(x, y, z), radius: 0.35, prompt: 'Pick' });
+    } else if (cls === 'flower') {
+      const key = layerKeyOf(kind);
+      const l = layerOf(key, () => layerGeo(key, meta));
+      const slot = l.free.pop() ?? l.mesh.count++;
+      const lily = key === 'lily', reed = key === 'reed';
+      const s = lily ? range(rng, 0.55, 0.8) : reed ? range(rng, 0.85, 1.25) : range(rng, 0.95, 1.45);
+      const tx = lily ? 0 : range(rng, -0.15, 0.15), tz = lily ? 0 : range(rng, -0.15, 0.15);
+      const y = lily ? WATER_LEVEL + 0.13 : reed ? getHeight(x, z) - 0.05 : getHeight(x, z) - 0.02;      // (a pad floats on the water line)
+      h.layer = l; h.slot = slot;
+      setSlot(l.mesh, slot, x, y, z, tx, rot, tz, s);
+      l.mesh.visible = true; h.y = y;
+      h.item = addInteractable({
+        id: fixedId(pid), type: 'flower', object: null,
+        instance: { mesh: l.mesh, index: slot, position: new THREE.Vector3(x, y, z), scale: s, rotY: rot, tiltX: tx, tiltZ: tz },
+        position: new THREE.Vector3(x, y, z), radius: lily ? 0.45 : reed ? 0.35 : 0.2, prompt: lily ? 'Boing' : reed ? 'Rustle' : 'Smell',
+      });
+    } else {
+      return null;                                        // digSpot lives in gathering.js; foreign kinds come with 86e
+    }
+    if (h.wob) wobblers.push(h.wob);
+    planted.set(pid, h);
+    return h;
+  }
+
+  /** Delete planted object `h` (it was removed for good, or its growth stage is being rebuilt). */
+  function destroy() {
+    const h = this;
+    if (h.item) removeInteractable(h.item);
+    if (h.collider) removeCollider(h.collider);
+    if (h.wob) { const i = wobblers.indexOf(h.wob); if (i >= 0) wobblers.splice(i, 1); wobbleOff.delete(h.wob.g); }
+    if (h.g) {
+      group.remove(h.g);
+      const k = plantedMushrooms.indexOf(h.g); if (k >= 0) plantedMushrooms.splice(k, 1);
+    }
+    if (h.own) { h.own.geo.dispose(); h.own.outlineGeo.dispose(); h.own.mat.dispose(); }
+    if (h.layer) { setSlot(h.layer.mesh, h.slot, 0, -50, 0, 0, 0, 0, 0.0001); h.layer.free.push(h.slot); }
+    planted.delete(h.pid);
+  }
+
+  const homeIsland = ISLANDS.find((i) => i.id === 'home');
+  /**
+   * Why can't `kind` stand at (x, z)? null = fine, else one of (checked in this order, so the sentence under a red ghost names the most useful problem):
+   *   'water' (sea, pond, stream) | 'cliff' (too steep) | 'ground' (the wrong ground type) | 'edge' (too near the shore / outside the usable meadow) | 'spawn' / 'fire' (the keep-clear zones of game/homesteadSpot.js)
+   *   | 'reserved' (ritual annex, Rootgate, hat rack, signpost, plateau ramps) | 'path' | 'blocked' (a collider) | 'crowded' (too near another interactable) | 'pond' / 'shore' (the lily pad / reeds' own ground).
+   * Reads the live registries, so removed natives free their room.
+   */
+  function placeCheck(kind, x, z) {
+    const meta = HOMESTEAD.kinds[kind];
+    if (!meta) return 'ground';
+    const r = meta.r;
+    const h = getHeight(x, z);
+    if (meta.spot === 'pond') {                                      // a lily pad: pond water, like the native pads (basin floor, clear of the stream, off the native pads)
+      const s = 0.8;
+      if (!inPond(x, z, h) || getHeight(x + s, z) > -0.15 || getHeight(x - s, z) > -0.15 || getHeight(x, z + s) > -0.15 || getHeight(x, z - s) > -0.15 || streamDistance(x, z) < 2.2) return 'pond';
+      for (const p of handles.lilyPads || []) if ((p.x - x) ** 2 + (p.z - z) ** 2 < (p.s + r + 0.15) ** 2) return 'crowded';
+    } else if (meta.spot === 'shore') {                              // reeds: the pond's shore band, not steep, clear of the spawn / fire / reserved areas
+      if (!onShore(x, z, h)) return h < -0.3 ? 'water' : 'shore';
+      if (getSlope(x, z) > 0.6) return 'cliff';
+    } else {
+      if (h < (meta.minH ?? 0.15)) return 'water';
+      const gt = getGroundType(x, z);
+      if (gt === 'water') return 'water';
+      const pondPad = 1.4 + r, px = (x - POND.x) / (POND.rx + pondPad), pz = (z - POND.z) / (POND.rz + pondPad);
+      if (px * px + pz * pz < 1 || streamDistance(x, z) < STREAM_HALF_WIDTH + 0.7 + r) return 'water';
+      if (getSlope(x, z) > 0.35) return 'cliff';
+      if (!meta.ground.includes(gt)) return 'ground';
+    }
+    const kc = keepClearReason(kind, x, z);
+    if (kc) return kc;
+    if (nearAnyFire(x, z, r * 0.5)) return 'fire';
+    if (ritualReserved(x, z, r) || rootgateReserved(x, z, r) || Math.hypot(x - HAT_RACK.x, z - HAT_RACK.z) < HAT_RACK.radius + r + 0.7 || Math.hypot(x - SIGNPOST.x, z - SIGNPOST.z) < r + 1.1 || nearRamp(x, z, r * 0.5)) return 'reserved';
+    if (pathPaint(homeIsland, x, z).w > 0.05) return 'path';
+    if (!meta.spot) {
+      if (r > 0.3) for (const [cx, cz] of RING) if (getHeight(x + cx * (r + 0.2), z + cz * (r + 0.2)) < (meta.minH ?? 0.15) - 0.1) return 'edge';
+      if (meta.inland) { const t = inlandDistance(x, z); if (t < meta.inland[0] || t > meta.inland[1]) return 'edge'; }
+      if (!terrainOK(x, z, { r, types: meta.ground, slope: 0.35, inland: meta.inland, minH: meta.minH })) return 'ground';
+    }
+    if (overlapsAny(x, z, r + 0.1)) return 'blocked';
+    const clear = HOMESTEAD.clearance;
+    for (const it of getInteractables()) if (Math.hypot(it.position.x - x, it.position.z - z) - it.radius < r + clear) return 'crowded';
+    return null;
+  }
+
+  /** Step 86d: what the ghost preview of `kind` draws: { geo, scale, dy, color? } (shared geometry, vertex-coloured; the ghost module brings its own translucent material). null for an unknown kind. */
+  function ghostSpec(kind) {
+    const meta = HOMESTEAD.kinds[kind];
+    if (!meta) return null;
+    switch (meta.cls) {
+      // Trees and palms are planted as a sprout, so the ghost is the sprout plus a faint ring for the grown canopy (a full-size ghost covered the player; 86d review)
+      case 'tree': return { geo: shared('sprout', buildSproutGeo), scale: 1.3, dy: 0, ring: 2.6 };
+      case 'palm': return { geo: shared('sprout', buildSproutGeo), scale: 1.3, dy: 0, ring: 2.3 };
+      case 'rock': return { geo: kit.rockV[0].geo, scale: 1.2, dy: 0.7 };
+      case 'bush': return { geo: (kind === 'berryBush' ? kit.bushV.berryV[0] : kit.bushV.otherV[0]).geo, scale: 1, dy: -0.04 };
+      case 'herb': return { geo: shared('herb', buildHerbGeo), scale: 1.5, dy: 0 };
+      case 'mushroom': return { geo: shared('shroom', () => buildMushroomCluster([{ p: [0, 0, 0], s: 1.3, rot: 0.3 }, { p: [0.4, 0, 0.15], s: 0.9, rot: 1.2 }, { p: [-0.25, 0, 0.35], s: 0.8, rot: 2.1 }]).geo), scale: 1, dy: 0 };
+      case 'digspot': return { geo: shared('patch', buildPatchGeo), scale: 1, dy: 0 };
+      case 'flower':
+        if (meta.spot === 'pond') return { geo: shared('lily', buildLilyGeo), scale: 0.7, dy: WATER_LEVEL + 0.13, absY: true };
+        if (meta.spot === 'shore') return { geo: shared('reed', buildReedGeo), scale: 1, dy: -0.05 };
+        return { geo: shared('flower' + meta.color, () => buildFlowerGeo(FLOWER_COLORS[meta.color])), scale: 1.3, dy: 0 };
+      default: return null;
+    }
+  }
+
   return {
     group,
     handles,
     stats,
+    /** Step 86a: planting (see the Homesteading block above): spawnPlaced(kind, {pid, x, z, rot, stage}) -> handle | null, placeCheck(kind, x, z) -> null | reason, layerFull(kind). */
+    spawnPlaced,
+    placeCheck,
+    ghostSpec,
+    /** Step 86e: a shared-geometry sprout mesh (+ outline) in any tint: the other islands' trees are planted as this too (world/homesteadForeign.js). */
+    makeSprout(hex) {
+      const mesh = new THREE.Mesh(shared('sprout', buildSproutGeo), tint(hex));
+      mesh.castShadow = false; mesh.receiveShadow = true;
+      outline(mesh, shared('sproutOutline', () => smoothOutlineGeo(shared('sprout', buildSproutGeo))), 0.04);
+      return mesh;
+    },
+    layerFull(kind) { const k = layerKeyOf(kind); return !!k && layerFull(k); },
+    get planted() { return planted; },
+    get plantedMushrooms() { return plantedMushrooms; },
     /** Enable / disable the ambient wind tilt of a tree or palm group (harvest.js takes over its rotation while felling). */
     setWobble(g, on) { if (on) wobbleOff.delete(g); else wobbleOff.add(g); },
     /**

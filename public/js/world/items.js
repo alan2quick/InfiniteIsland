@@ -45,7 +45,7 @@ import { DUNGEON, WEAPONS } from '../game/dungeonLogic.js';
 import { SUPPLY } from '../game/areas/wildroot.js';
 import { AREAS } from '../game/areaLogic.js';
 import { TOOLS, ISLAND_SWINGS } from '../items/tools.js';
-import { RACK_COUNT, rackId, rackInfo, decideCycle } from '../game/toolRackLogic.js';
+import { RACK_COUNT, RACK_TOTAL, RACK_EXTRA_KIND, rackId, rackInfo, decideCycle } from '../game/toolRackLogic.js';
 import { TOOL_RACK } from '../config.js';
 import { duskHearthLayout } from './islands/duskHearth.js';
 
@@ -865,9 +865,9 @@ export function createItems({ scene, players, particles, hud, sfx = null, sync, 
     records.push(rec);
   }
 
-  // Eighty lightweight reservations: meshes only exist after the first take. No rack state ever reaches a save.
+  // Eighty lightweight reservations (+ Step 86b: four more after them, the home rack's watering cans): meshes only exist after the first take. No rack state ever reaches a save.
   const rackBase = records.length;
-  for (let n = 0; n < RACK_COUNT; n++) {
+  for (let n = 0; n < RACK_TOTAL; n++) {
     const rack = rackInfo(rackBase, rackBase + n);
     records.push({ id: rackBase + n, kind: rack.kind, name: rack.kind, rack, state: 'rack', holderKey: null,
       holder: null, spot: new THREE.Vector3(), home: new THREE.Vector3(), interactable: null });
@@ -881,7 +881,7 @@ export function createItems({ scene, players, particles, hud, sfx = null, sync, 
   }
   const rackPlace = (r) => (r.state === 'rack' || r.state === 'toRack') ? 'rack' : r.holderKey ? 'held' : 'out';
   function rackStock(owner, fire) {
-    return Object.fromEntries(TOOL_RACK.kinds.map((kind) => {
+    return Object.fromEntries([...TOOL_RACK.kinds, RACK_EXTRA_KIND].map((kind) => {
       const id = rackId(rackBase, fire, owner, kind);
       return [kind, id === null ? null : rackPlace(records[id])];
     }));
@@ -889,7 +889,7 @@ export function createItems({ scene, players, particles, hud, sfx = null, sync, 
   function rackDecision(player, fire) {
     const held = heldByKey(keyOf(player));
     return decideCycle(held && { id: held.id, kind: held.kind, own: held.rack?.fire === fire && held.rack.owner === player.index },
-      rackStock(player.index, fire), rackAccess?.kinds() || []);
+      rackStock(player.index, fire), rackAccess?.kinds(fire) || []);
   }
   function putRack(rec) {
     if (rec.model) {
@@ -955,7 +955,7 @@ export function createItems({ scene, players, particles, hud, sfx = null, sync, 
     if (actor.screen === sync.screenId && !p) return { reject: 'gone' };
     if ((locks.get(key) || 0) > 0 || p?.frozen || p?.away || p?.leaving || players.frozenAll || !rackAccess.allowed(actor)) return { reject: 'locked' };
     const held = heldByKey(key);
-    const decision = decideCycle(held && { id: held.id, kind: held.kind, own: held.rack?.fire === d.fire && held.rack.owner === actor.index }, rackStock(actor.index, d.fire), rackAccess.kinds());
+    const decision = decideCycle(held && { id: held.id, kind: held.kind, own: held.rack?.fire === d.fire && held.rack.owner === actor.index }, rackStock(actor.index, d.fire), rackAccess.kinds(d.fire));
     const spot = decision.drop === null ? null : vec(rackDropSpot(actor, pos, held));
     const data = { actor: { screen: actor.screen, index: actor.index }, fire: d.fire, put: decision.put,
       drop: decision.drop === null ? null : { id: decision.drop, spot, yaw: r3(Math.random() * TAU) },

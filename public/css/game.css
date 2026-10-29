@@ -171,6 +171,26 @@ html, body {
   border-bottom-right-radius: 3px;
 }
 @keyframes prompt-bob { from { translate: 0 0; } to { translate: 0 -5px; } }
+/* Step 86c: the second line above a prompt bubble (Homesteading: "R  Chop down for good"); dim = the wrong tool / the last one */
+/* Step 86d: the second line is a child of the bubble itself, absolutely placed just above it (tall targets used to float it far away), so it follows the bubble's bob and pop-in */
+.hud-prompt-bubble > .hud-prompt-line2 { position: absolute; left: 50%; bottom: calc(100% + 7px); transform: translateX(-50%); margin: 0; }
+.hud-prompt-line2 {
+  display: flex; align-items: center; justify-content: center; gap: 6px; width: max-content; margin: 0 auto 14px; padding: 3px 12px 4px 4px;
+  background: #e6f7d6; border: 2.5px solid var(--outline); border-radius: 999px; box-shadow: 0 3px 0 var(--outline);
+  font-weight: 600; font-size: 16px; line-height: 1; white-space: nowrap;
+}
+.hud-prompt-line2[hidden] { display: none; }
+.hud-prompt-pop > .hud-prompt-bubble { width: max-content; margin: 0 auto; }      /* (a wider second line must not stretch the bubble) */
+.hud-prompt-line2 .glyph { width: 24px; height: 24px; font-size: 14px; border-width: 2px; }
+.hud-prompt-line2.dim { background: #f1ecf7; opacity: 0.88; color: #5b4d74; }
+#hud.touch-host .hud-prompt-line2 { font-size: 14px; }
+/* Step 86d: the ghost preview's floating reason (world/homesteadGhost.js) */
+.hs-ghost-tag {
+  position: absolute; left: 0; top: 0; pointer-events: none; will-change: transform; z-index: 6;
+  padding: 3px 12px 4px; background: #ffe0e0; color: #8a1f3d; border: 2.5px solid var(--outline); border-radius: 999px; box-shadow: 0 3px 0 var(--outline);
+  font-weight: 600; font-size: 15px; line-height: 1.1; white-space: nowrap;
+}
+.hs-ghost-tag[hidden] { display: none; }
 /* several players on the island: each bubble is tinted with its player's colour and carries a small "P2" corner badge */
 .hud-prompt-badge {
   position: absolute;
@@ -851,6 +871,22 @@ html, body {
 .hc-label { flex: 1 1 auto; white-space: nowrap; }
 .hc-detail { flex: none; font-size: 0.82em; font-weight: 500; opacity: 0.6; text-align: right; }
 .hc-chips { display: inline-flex; gap: 6px; flex: none; flex-wrap: nowrap; }
+/* Step 86d: Homesteading's palette rows: leaf pips (the room a kind takes), the two-tab switch row, the grey-out reason under a disabled row */
+.hc-pips { display: inline-flex; gap: 1px; flex: none; font-size: 15px; }
+.hc-pip { display: block; width: 1em; height: 1em; }
+.hc-tabs { flex: 1 1 auto; display: inline-flex; gap: 4px; }
+.hc-tab { flex: 1 1 0; text-align: center; padding: 2px 10px 3px; border: 2.5px solid var(--outline); border-radius: 999px; background: #f1ecf7; color: #5b4d74; font-weight: 600; font-size: 0.9em; }
+.hc-tab.on { background: #bfeea0; color: var(--outline); box-shadow: 0 2px 0 var(--outline); }
+/* Step 86f: a palette row is ONE line at every width (the cherry blossom's two chips + three pips used to wrap): the name column shrinks (ellipsis) instead of the pips wrapping */
+.hud-choice:has(.hc-pips) { gap: 7px; flex-wrap: nowrap; padding-right: 8px; }
+.hud-choice:has(.hc-pips):has(.hc-reason) { flex-wrap: wrap; }
+.hud-choice:has(.hc-pips) .hc-label { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.hud-choice:has(.hc-pips) .hc-chips { gap: 3px; }
+.hud-choice:has(.hc-pips) .hc-chip { font-size: 0.72em; padding-right: 5px; }
+.hud-choice:has(.hc-pips) .hc-pips { font-size: 12px; }
+.hud-choice.tabrow { padding-top: 5px; padding-bottom: 5px; }
+.hc-reason { flex: 1 0 100%; padding-left: 30px; font-size: 0.74em; font-weight: 500; color: #b0304f; line-height: 1.1; margin-top: -2px; }
+.hud-choice:has(.hc-reason) { flex-wrap: wrap; }
 .hc-chip {
   display: inline-flex; align-items: center; gap: 2px; padding: 1px 7px 1px 3px;
   background: #fff; border: 2.5px solid var(--outline); border-radius: 999px; font-size: 0.78em; font-weight: 700; line-height: 1.2;
@@ -1593,3 +1629,22 @@ html, body {
   .pu-exit { font-size: 13px; padding: 4px 10px; }
 }
 @media (max-height: 500px) and (min-width: 561px) { .pu-card { top: calc(62px + var(--sat)); transform: translateX(-50%); width: min(520px, calc(100vw - 16px)); } }      /* landscape phones: under the top button row */
+
+/* Step 86c: the Homesteading badge (top-left, under the roster / pill) with the two budget meters */
+.homestead-badge {
+  position: absolute; top: 68px; left: 14px; z-index: 14; display: flex; flex-direction: column; gap: 5px; padding: 6px 12px 7px 8px; pointer-events: none;
+  background: #e6f7d6; border: 3.5px solid var(--outline); border-radius: 20px; box-shadow: 0 5px 0 var(--outline); font-weight: 600; transform-origin: 0 0;
+}
+.homestead-badge[hidden] { display: none; }
+.homestead-badge.enter { animation: qt-enter 0.55s var(--pop-ease); }
+.hb-head { display: flex; align-items: center; gap: 6px; font-size: 19px; line-height: 1; }
+.hb-icon { display: inline-flex; font-size: 28px; }
+.hb-icon svg { width: 1em; height: 1em; display: block; }
+.hb-meters { display: flex; flex-direction: column; gap: 3px; }
+.hb-meter { display: grid; grid-template-columns: 62px 44px auto; align-items: center; gap: 6px; font-size: 14px; line-height: 1; }
+.hb-bar { display: block; grid-column: 1; grid-row: 1; height: 10px; border: 2px solid var(--outline); border-radius: 6px; background: #fffdf7; overflow: hidden; }
+.hb-bar b { display: block; height: 100%; width: 0; background: #6fcf5a; transition: width 0.3s ease; }
+.hb-meter.full .hb-bar b { background: #ff7c6b; }
+.hb-label { grid-column: 2; grid-row: 1; }
+.hb-num { grid-column: 3; grid-row: 1; font-weight: 700; }
+@media (max-width: 519px), (max-height: 420px) { .homestead-badge { top: 60px; left: 10px; transform: scale(0.85); } }

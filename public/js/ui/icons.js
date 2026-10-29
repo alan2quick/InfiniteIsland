@@ -190,7 +190,16 @@ export const CHARM_FROST_SVG = svg(`<path d="M12 2.5v19M3.8 7.2l16.4 9.6M20.2 7.
 export const CHARM_SPARK_SVG = svg(`<path d="M12 2.5 14.6 9.4 21.5 12 14.6 14.6 12 21.5 9.4 14.6 2.5 12 9.4 9.4z" fill="#ffd45e" stroke="${O}" stroke-width="2" stroke-linejoin="round"/><circle cx="12" cy="12" r="2.2" fill="#fff6c9" stroke="${O}" stroke-width="1.2"/>`);
 
 /** Name -> svg lookup for toast icons etc. (catalog.js adds one entry per item id, so hud.toast({icon:'apple'}) works too.) */
+// Step 86b: Homesteading (a snug house with a green leaf sprouting by its door), the fire-menu row and the mode badge of 86c.
+export const HOMESTEAD_SVG = svg(`
+  <path d="M3.5 11.5 12 4l8.5 7.5" fill="none" stroke="${O}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M3.5 11.5 12 4l8.5 7.5" fill="none" stroke="#ff7c6b" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M5.6 11v8.4h12.8V11L12 5.4z" fill="#fff4dc" stroke="${O}" stroke-width="1.8" stroke-linejoin="round"/>
+  <rect x="10.3" y="13.2" width="3.4" height="6.2" rx="1" fill="#c88a55" stroke="${O}" stroke-width="1.4"/>
+  <path d="M17 20.5c-.3-3 1-4.8 3.8-5 .3 3-1 4.8-3.8 5z" fill="#7fd35c" stroke="${O}" stroke-width="1.3" stroke-linejoin="round"/>`);
+
 export const ICONS = {
+  homestead: HOMESTEAD_SVG,
   keyboard: KEYBOARD_SVG, gamepad: GAMEPAD_SVG, phone: PHONE_SVG, remote: PHONE_SVG, screen: SCREEN_SVG,
   speaker: SPEAKER_ON_SVG, muted: SPEAKER_OFF_SVG, music: MUSIC_ON_SVG, musicOff: MUSIC_OFF_SVG, sparkle: SPARKLE_SVG, berry: BERRY_SVG,
   sprout: SPROUT_SVG, seed: SEED_SVG, flame: FLAME_SVG, pot: POT_SVG, quest: QUEST_SVG, feast: FEAST_SVG, hat: HAT_SVG, bridge: BRIDGE_SVG, leave: LEAVE_SVG, split: SPLIT_SVG, back: BACK_SVG, camp: CAMP_SVG, fox: FOX_SVG, squirrel: SQUIRREL_SVG, rabbit: RABBIT_SVG, grouse: GROUSE_SVG,

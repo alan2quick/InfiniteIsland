@@ -218,9 +218,12 @@ Keep PLAN.md and CLAUDE.md short: long text goes to the topic file, the changelo
 | 81 | Party Games II | done (0.81.1) | [plan/81-party-games-2.md](plan/81-party-games-2.md) |
 | 82 | Party Glade living pass | done (0.82.4) | [plan/82-living-pass.md](plan/82-living-pass.md) |
 | 85 | The Crownlands (Duskcrown's sunlit plateau, floating islands) | done (0.85.3) | [plan/85-crownlands.md](plan/85-crownlands.md) |
+| 86–88 | Homesteading: the customisable home island (permanent removal, budgeted placement, watered tree growth; unlocked by the home Journal + Nabong); 87 = decorations, 88 = island expansion | 86 done (0.86.0); 87 (native decorations) and 88 (expansion) later | [plan/86-homesteading.md](plan/86-homesteading.md) |
 
 ### Open steps
 
+- [ ] Step 87 — Homesteading: native decorations (later) — [plan/86-homesteading.md](plan/86-homesteading.md)
+- [ ] Step 88 — Homesteading: the home island grows south / south-east (later; needs its own spec) — [plan/86-homesteading.md](plan/86-homesteading.md)
 - [ ] Step 74e — "Pup on the Ice": Snowsong's quest line and Snowsong as a pet — [plan/74-home-frost-pets.md](plan/74-home-frost-pets.md)
 - [ ] Step 68f — Playtest fixes, star chart — [plan/68-boat.md](plan/68-boat.md)
 - [ ] Step 68g — Playtest fixes, repair and story — [plan/68-boat.md](plan/68-boat.md)

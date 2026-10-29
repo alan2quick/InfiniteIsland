@@ -1,7 +1,7 @@
 // Tool capability table (single place to tune what each held item can do) + helper lookups.
 //
 //   TOOLS[kind] = { chop: hitsToFellTree, break: hitsToBreakRock, dig: digsNeeded }     0 = cannot do that
-//   getToolAction(heldItem, interactable)  -> 'chop' | 'break' | 'dig' | 'strike' | 'fish' | null
+//   getToolAction(heldItem, interactable)  -> 'chop' | 'break' | 'dig' | 'strike' | 'fish' | 'water' | null     ('water' = Step 86d: the watering can on a planted sprout / sapling, type 'sprout')
 //   toolHits(kind, action)                 -> number of hits needed (0 = not capable)
 //
 // Interactable types: 'tree' and 'palm' are chopped (that includes Frostpine's spruces, pines and birches, type 'tree'), 'rock' is broken (granite too), 'digspot' is dug (shovel only). Anything else falls back to the
@@ -39,12 +39,13 @@ export function bonusLogs(n, kind, random = Math.random) {
 
 const rubyAction = (kind, type) => type === 'rubydig' ? (kind === 'shovel' ? 'dig' : null) : type === 'rubycoconut' ? (['axe', 'hammer'].includes(kind) ? (kind === 'hammer' ? 'break' : 'chop') : null) : type === 'rubycrust' ? (['hammer', 'axe', 'sword'].includes(kind) ? 'break' : null) : undefined;
 
-const ACTION_OF = { tree: 'chop', palm: 'chop', rock: 'break', ritualstone: 'strike', digspot: 'dig', seeddig: 'dig', pond: 'fish', shademoss: 'chop' };   // (seeddig: Emberleaf's glinting seed spots, world/seeds.js; shademoss: Duskcrown's smothered titans, Step 73b: an axe / sword / saber 'chops' it, main.js routes that to capray.clearMoss instead of harvest)
+const ACTION_OF = { sprout: 'water', tree: 'chop', palm: 'chop', rock: 'break', ritualstone: 'strike', digspot: 'dig', seeddig: 'dig', pond: 'fish', shademoss: 'chop' };   // (seeddig: Emberleaf's glinting seed spots, world/seeds.js; shademoss: Duskcrown's smothered titans, Step 73b: an axe / sword / saber 'chops' it, main.js routes that to capray.clearMoss instead of harvest)
 
 export function toolHits(kind, action) {
   const t = TOOLS[kind];
   if (action === 'strike') return t ? 1 : 0;
   if (action === 'fish') return FISH_TOOLS.includes(kind) ? 1 : 0;      // (a pond is fished, not hit: 1 = capable)
+  if (action === 'water') return kind === 'watering-can' ? 1 : 0;         // (Step 86d: a sprout / sapling is watered, not hit)
   return (t && t[action]) || 0;
 }
 
