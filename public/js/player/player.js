@@ -40,7 +40,7 @@ import {
   PLAYER_HITSTUN, COMBAT, HOP_COURSE, PLAYER_SPEED, PLAYER_WALK_SPEED, PLAYER_ACCEL, PLAYER_DAMPING, PLAYER_RADIUS,
   TURN_SPEED, WALK_THRESHOLD,
 } from '../config.js';
-import { getHeight, isWalkable, SPAWN } from '../world/terrain.js';
+import { getHeight, getGroundType, isWalkable, SPAWN } from '../world/terrain.js';
 import { resolveCircle } from '../world/colliders.js';
 import { createCharacter } from './character.js';
 import { HATS } from './hats.js';
@@ -543,6 +543,8 @@ export class Player {
     }
     targetSpeed *= this.speedScale * (this.carrying ? CARRY.speed : 1);
     const v = this.velocity;
+    // Frostpine's frozen lake is ground type 'ice': slippery like a floe pad (hop courses decide their own footing)
+    if (!this._course) this._ice = !this.downed && getGroundType(this.position.x, this.position.z) === 'ice';
     if (this._ice) {
       Object.assign(v, slideVelocity(v, { x: hasInput ? mx / mag * targetSpeed : 0, z: hasInput ? mz / mag * targetSpeed : 0 }, dt));
     } else if (hasInput) {
