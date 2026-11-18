@@ -255,4 +255,3 @@ Moved from CLAUDE.md "State at hand-off" on 2026-10-22.
   - When a player leaves, their held item lands on the nearest clear spot, sometimes about 3 u away.
   - A player who loses a pickup race gets no feedback.
   - Hats are swappable (`setHat`), but there is no hat content or hair yet; a bare head has no hair.
-  - Adding a `.gitattributes` would normalise line endings.
