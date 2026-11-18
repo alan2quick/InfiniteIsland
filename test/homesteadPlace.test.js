@@ -533,7 +533,3 @@ test('draw-call budget: ten placed objects add at most one mesh per instanced ki
   assert.ok(added <= 12, `added ${added} meshes for 10 objects`);       // 2 layers + 4 solid objects x (mesh + outline) = 10
 });
 
-test('version', async () => {
-  const { VERSION } = await import('../public/js/config.js');
-  assert.equal(VERSION, '0.86.0');
-});

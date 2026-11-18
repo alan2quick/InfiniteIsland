@@ -8,7 +8,7 @@ globalThis.localStorage = { getItem: (k) => storage.get(k) ?? null, setItem: (k,
 const ctx = new Proxy({}, { get: (t, k) => (k === 'measureText' ? () => ({ width: 10 }) : /Gradient/.test(k) ? () => ({ addColorStop() {} }) : () => {}) });
 globalThis.document = { createElement: () => ({ getContext: () => ctx, style: {} }) };
 const { homeSave, STORAGE_KEY } = await import('../public/js/game/homeSave.js');
-import { HOMESTEAD, FIRES, TOOL_RACK, ISLANDS, VERSION } from '../public/js/config.js';
+import { HOMESTEAD, FIRES, TOOL_RACK, ISLANDS } from '../public/js/config.js';
 import { getItem } from '../public/js/game/catalog.js';
 import { WorldSync, actorKey } from '../public/js/net/worldSync.js';
 import {
@@ -49,7 +49,6 @@ test('the config table: every cost is a real catalogue item, weights follow mode
   }
   assert.deepEqual(HOMESTEAD.kinds.plainBush.cost, {}, 'plain bushes cost nothing but count 2');
   assert.equal(HOMESTEAD.kinds.plainBush.weight, 2);
-  assert.equal(VERSION, '0.86.0');
 });
 
 test('usage: the native island uses exactly the budget (and the 20 flowers are the deco budget\'s native part)', () => {

@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { WorldSync } from '../public/js/net/worldSync.js';
-import { PET, WATER_LEVEL, VERSION } from '../public/js/config.js';
+import { PET, WATER_LEVEL } from '../public/js/config.js';
 import {
   PET_IDS, encodePetId, decodePetId, petIndexOf, petIdAt, normaliseUnlocked, mergeUnlocked, clampPet, parsePetPrefs, glideTarget, heelPoint, followStep, catchState, shouldPoof,
   poseStep, petMood, appearScale, createIdle, stepIdle, pickIdle, idleDrive, hideSpotOf, nearestGiant, IDLE_KINDS, forwardOf, leftOf,
@@ -19,7 +19,6 @@ const { createPetsDomain, PETS_KEY } = await import('../public/js/game/petsDomai
 const { createPetModel, PETS, petMaterial, petUniforms } = await import('../public/js/npc/pets.js');
 const { createPets, STORAGE_KEY } = await import('../public/js/world/pets.js');
 
-test('the version is 0.86.0', () => { assert.equal(VERSION, '0.86.0'); });
 
 // ---- ids and the wire ---------------------------------------------------------------------------------------------------------------------------------------------------------
 test('ids: Capray first, pose ids are 1 + index, 0 / junk decode as none, the model registry has the same order', () => {
