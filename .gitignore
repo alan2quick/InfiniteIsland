@@ -3,3 +3,6 @@ node_modules/
 *.log
 .vercel/
 scratchpad/
+
+# per-session handoff note written by /handoff
+.claude/session-handoff.md
