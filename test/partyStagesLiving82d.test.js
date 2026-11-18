@@ -235,7 +235,7 @@ test('Tilty Tiles: nothing is added to, under or around a frame Group; the lawn,
   // the bunting hangs beside the frames (x beyond every frame edge), at tree height
   const flags = env.api.flags; flags.geometry.computeBoundingBox(); const bb = flags.geometry.boundingBox;
   assert.ok(bb.max.x < -(T.frames[0].x * -1 + T.hx) + 0 || bb.max.x < -11.8, 'left of the frames'); assert.ok(bb.min.y > 2.0);
-  assert.ok(env.bounds.some(b => b.kind === 'picnic') || true);
+  assert.ok(env.bounds.some(b => b.kind === 'picnic'));
   w.dispose();
 });
 

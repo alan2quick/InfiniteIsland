@@ -455,7 +455,7 @@ test('the party runs by itself with nobody pressing: lobby -> pick -> how-to -> 
   assert.equal(new Set(games.slice(0, 2)).size, 2, 'the second game is not the first again');
   assert.ok(rt.calls.music.includes('vineskip') || rt.calls.music.includes('timber'), 'a game track is forced at Go!'); assert.ok(rt.calls.music.includes(null), 'and handed back after');
   assert.ok(['count', 'go', 'whistle', 'fanfare', 'roundWon', 'tick'].every((n) => rt.calls.sfx.includes(n)), 'every cue played: ' + [...new Set(rt.calls.sfx)].join(','));
-  assert.ok(rt.party.summary().ui.chips === 4 || rt.party.summary().ui.chips === 0 || true);
+  assert.ok(rt.party.summary().ui.chips === 4 || rt.party.summary().ui.chips === 0);
   for (const p of rt.pm.list) assert.ok(inParty(p.position.x, p.position.z));
   assert.ok(rt.party.state.round >= 2);
 });

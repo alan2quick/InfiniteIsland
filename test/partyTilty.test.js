@@ -280,7 +280,7 @@ test('Tilty Tiles on the real runtime: bots (real Players) run on their frames, 
   const s = r.party.state; assert.equal(s.phase, 'results'); assert.ok(s.g.done);
   assert.ok(tipped > 150 && moved > 100, `${tipped} tipped frames, ${moved} moves`); assert.ok(feetOk > 300 && feetBad < feetOk * 0.05, `feet on the plane ${feetOk} / ${feetBad}`);
   assert.ok(s.g.boards.slice(1).reduce((a, b) => a + b.n, 0) > 6, 'the bots uncovered tiles'); assert.ok(s.g.boards[0].tz > 0 || s.g.boards[0].n >= 0);
-  const mine = s.g.boards[0]; assert.ok(Math.abs(mine.tx) < 0.05 || true);
+  const mine = s.g.boards[0]; assert.ok(Math.abs(mine.tx) < 0.05);
   assert.ok(r.calls.sfx.includes('tileflip') && r.calls.sfx.includes('count')); assert.ok(r.calls.music.includes('tilty'));
   assert.equal(r.party.summary().stages.tilty.visible, true);
   r.run(PARTY.flow.results + 1, () => r.party.state.phase === 'lobby'); assert.equal(r.party.summary().stages.tilty.visible, false);

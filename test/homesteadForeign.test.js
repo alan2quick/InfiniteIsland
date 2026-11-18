@@ -306,7 +306,7 @@ test('placed dig spots are fixed patches that dig THEIR island\'s finds: snowy =
   const find = (kind) => { const r = plant(w, kind); assert.equal(r.ok, true, JSON.stringify(r)); const s = w.gathering.digSpots.find((q) => q.pid === r.result.pid); assert.ok(s, kind + ' spot'); return s; };
   const snow = find('snowDigSpot');
   assert.equal(snow.isl, 'frost'); assert.equal(snow.look, 'frost'); assert.equal(snow.item.tag, 'snowy spot');
-  assert.equal(snow.g.parent !== null || true, true);
+  assert.notEqual(snow.g.parent, null);
   const dig = (s, v) => { withRandom(v, () => { const r = w.sync.request('gathering', 'dig', { sid: s.sid }, hostActor(s.x - 1, s.z)); assert.equal(r.ok, true, JSON.stringify(r)); w.step(0.05, 40); }); return w.take(); };
   const d1 = dig(snow, 0.5);
   assert.ok(d1.length >= 1 && d1.every((k) => k === 'snow-truffle'), 'snowy spot: truffles ' + d1);
@@ -327,10 +327,14 @@ test('placed dig spots are fixed patches that dig THEIR island\'s finds: snowy =
   // a removal for good gives one dig of ITS find
   const r = plant(w, 'snowDigSpot', {}, 6);
   assert.equal(r.ok, true);
-  const rem = w.sync.request('homestead', 'remove', { id: 'p' + r.result.pid, shape: true, face: 0 }, hostActor(r.at.x - 1, r.at.z));
-  assert.equal(rem.ok, true, JSON.stringify(rem));
-  w.step(0.05, 40);
-  assert.ok(w.take().every((k) => k === 'snow-truffle'));
+  // the dig rolls Math.random for the rare find (crystal); pin it like the digs above, or this test fails by chance
+  withRandom(0.5, () => {
+    const rem = w.sync.request('homestead', 'remove', { id: 'p' + r.result.pid, shape: true, face: 0 }, hostActor(r.at.x - 1, r.at.z));
+    assert.equal(rem.ok, true, JSON.stringify(rem));
+    w.step(0.05, 40);
+  });
+  const last = w.take();
+  assert.ok(last.length >= 1 && last.every((k) => k === 'snow-truffle'), 'removing a snowy spot gives its usual find: ' + last);
 });
 
 test('placed mountain mint, pineapple, chanterelles, glowcap clumps and lingonberry bushes give ITS island\'s item; the home herb is untouched', async () => {

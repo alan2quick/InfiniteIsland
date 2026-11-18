@@ -159,7 +159,7 @@ for (const id of Object.keys(factories)) {
           if (p.kind === 'bird') { assert.ok(pos.y >= 8.6); assert.ok(pos.z < -19); continue; }
           if (p.kind === 'cinder' || p.kind === 'campSmoke') { assert.equal(id, 'sizzle'); assert.ok(Math.hypot(pos.x, pos.z) < 2.2, 'embers and smoke rise only over the fire'); assert.ok(pos.y > 1.2, 'above the flames, never at the players'); continue; }
           if (p.kind === 'hotSteam') { assert.ok(Math.hypot(pos.x - 10, pos.z + 2) < 3.2, 'steam only over the spring'); continue; }
-          if (p.kind === 'snow') { assert.ok(Math.abs(pos.x) > 13 || pos.z < -2 || pos.y > 7.8 || true); continue; }
+          if (p.kind === 'snow') { assert.ok(Math.abs(pos.x) > 13 || pos.z < -2 || pos.y > 7.8); continue; }
           if (id === 'bumpers') { assert.ok(pos.y < 4.2, 'marsh life stays low, under the cap'); continue; }
           for (const k of keep) assert.ok(distanceToShape(k, pos.x, pos.z) > -0.01 || p.kind === 'leaf', `${id} ${p.kind} inside a play area at t=${t}`);
         }

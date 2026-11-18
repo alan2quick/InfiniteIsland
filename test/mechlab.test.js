@@ -217,17 +217,18 @@ test('real player: carry speed is 75%, tools cannot swing, emote hop is shorter'
   near(c.speed / p.speed, CARRY.speed); assert.equal(c.swing(), false);
   p.hop(); c.hop(); near(c._hopVel / p._hopVel, CARRY.jump);
 });
-test('real player: floe release slides; frozen lake uses ordinary damping without mechlab', () => {
+test('real player: floe release slides; Frostpine\'s frozen lake (ground type ice) slides too; ordinary ground uses ordinary damping', () => {
   let now = 0; setHopClock(() => now);
   const c = { id: 'test-ice', zone: { x: 0, z: -400, r: 15 }, gapY: -.1, pads: [{ id: 'pad', kind: 'floe', x: 0, z: -400, r: 10, top: .25, cp: true }], start: 'pad', goal: 'pad', links: [] };
   registerCourse(c);
   const icy = bodyPlayer(0, -400); icy.position.y = .25;
-  const lake = bodyPlayer(52, -159);
-  for (const p of [icy, lake]) { p.velocity.x = 2; p.update(1 / 60, { move: { x: 0, z: 0 } }); }
-  assert.equal(icy._ice, true); assert.equal(!!lake._ice, false);
-  icy.velocity.x = lake.velocity.x = 2; now += .1;
-  for (const p of [icy, lake]) p.update(.05, { move: { x: 0, z: 0 } });
-  assert.ok(icy.velocity.x > lake.velocity.x);
+  const lake = bodyPlayer(52, -159);   // on the frozen lake: slippery since 765e3de ("Slide on Frostpine's frozen lake")
+  const land = bodyPlayer(40, -150);   // Frostpine grass beside it: ordinary footing
+  for (const p of [icy, lake, land]) { p.velocity.x = 2; p.update(1 / 60, { move: { x: 0, z: 0 } }); }
+  assert.equal(icy._ice, true); assert.equal(lake._ice, true); assert.equal(!!land._ice, false);
+  icy.velocity.x = lake.velocity.x = land.velocity.x = 2; now += .1;
+  for (const p of [icy, lake, land]) p.update(.05, { move: { x: 0, z: 0 } });
+  assert.ok(icy.velocity.x > land.velocity.x); assert.ok(lake.velocity.x > land.velocity.x);
   unregisterCourse(c);
 });
 test('mechlab flag disables all central game-state save reads/writes/clears', async () => {

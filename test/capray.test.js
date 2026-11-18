@@ -151,7 +151,7 @@ test('the plan is deterministic, changes no placement (the 69c / 69d hashes stay
     assert.equal(t.collR, +(t.baseR * 0.92).toFixed(2), 'matches the stem collider duskWorld registers');
   }
   for (let i = 0; i < 3; i++) for (let j = i + 1; j < 3; j++) assert.ok(Math.hypot(plan.titans[i].x - plan.titans[j].x, plan.titans[i].z - plan.titans[j].z) >= 30, 'spread out');
-  const d = (t) => Math.hypot(t.x - plan.pond.x, t.z - plan.pond.z); assert.ok(d(plan.titans[0]) <= d(plan.titans[1]) + 1e-9 && d(plan.titans[1]) <= d(plan.titans[2]) + 1e-9 || true);
+  const d = (t) => Math.hypot(t.x - plan.pond.x, t.z - plan.pond.z); assert.ok(d(plan.titans[0]) <= d(plan.titans[1]) + 1e-9 && d(plan.titans[1]) <= d(plan.titans[2]) + 1e-9);
   assert.match(plan.hash(), /^[0-9a-f]{8}$/); assert.equal(plan.summary().hash, plan.hash());
   const again = JSON.stringify(plan.titans) + JSON.stringify(plan.pond) + JSON.stringify(plan.feed);
   assert.equal(again, JSON.stringify(plan.titans) + JSON.stringify(plan.pond) + JSON.stringify(plan.feed));

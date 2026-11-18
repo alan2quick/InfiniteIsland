@@ -286,7 +286,7 @@ test('Sizzle Seed on the real runtime: bots (real Players) run, pass and get soo
   assert.ok(s.g.passes >= 2, `${s.g.passes} passes between the Players`); assert.ok(holderScaled && maxScale === PARTY.sizzle.boost);
   assert.ok(minDistToFire > PARTY.sizzle.fireR + 0.3, 'nobody walked into the fire: the collider held');
   assert.equal(s.results.ranks.length, 4); assert.equal(s.results.ranks.filter((x) => x.place === 1).length, 2);
-  for (const p of r.pm.list) assert.ok(isWalkable(p.position.x, p.position.z) || true);
+  for (const p of r.pm.list) assert.ok(isWalkable(p.position.x, p.position.z));
   assert.ok(r.calls.music.includes('sizzle')); assert.ok(r.calls.tempo.some((k) => k > 1.01), 'the tempo follows the seed\'s glow');
   assert.ok(r.calls.sfx.includes('fanfare') || r.calls.sfx.includes('whistle'));
   r.run(PARTY.flow.results + 1, () => r.party.state.phase === 'lobby');
