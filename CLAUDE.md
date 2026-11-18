@@ -1,143 +1,29 @@
-# Infinite Island: developer guide for new sessions
+@AGENTS.md
 
-A cozy Three.js island game in the style of Animal Crossing and Stardew Valley, for up to 4 players. Players can share one screen (keyboard, gamepads, phones as controllers) or join from their own device with their own camera (hybrid local + online over PeerJS). It has gathering, tools, cooking, quests, a day/night cycle and procedural music.
-It runs as plain ES modules with **no build step** and deploys as a static site to Vercel.
+## Claude Code only
 
-- **Repo:** https://github.com/alan2quick/InfiniteIsland, branch `main`. Pushing to `main` redeploys on Vercel if the repo is connected.
-- **[README.md](README.md):** user-facing docs covering features, controls, debug flags, the phone link protocol and a project structure map.
-  Read it first, and keep it updated when you add features.
-- **[PLAN.md](PLAN.md):** the INDEX: creative direction (palette, scale, style), tech stack, how the plan is organised, the step table with status and the open steps. Each feature arc's spec + progress lines are in its own file under [plan/](plan/) (e.g. [plan/82-living-pass.md](plan/82-living-pass.md)); read only the one you need.
-- **[plan/CHANGELOG.md](plan/CHANGELOG.md):** per-step implementation notes, newest first (what was built, measured numbers, what is NOT verified). Grep it for a step ("Step 81b") instead of reading it whole.
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md):** the detailed module contracts (every system's API, sync domains, saves, the full `localStorage` table). Grep it by module or file name.
-- **[DUNGEON_PLAN.md](DUNGEON_PLAN.md):** the Wildroot Hollow spec (Steps 41-46).
-
-## Run & verify
-
-```bash
-npm install
-npm start            # node server.js -> http://localhost:3000 (static + /vendor/three + /api/info + /api/qr + WebSocket relay /ws)
-```
-
-- The Claude desktop Browser pane has launch configs in `.claude/launch.json`:
-  - `island`: the Node server on port 3000.
-  - `static`: `python -m http.server 8080 --directory public`. It simulates Vercel: no `/api`, `/ws` or `/vendor`.
-- Static files are served fresh on each request, so reload the page after editing client code.
-  Only edits to `server.js` need a server restart (`preview_stop` then `preview_start {name:"island"}`).
-- `npm test` runs 1327 Node tests in 108 files (built-in runner, no browser). Visual and gameplay verification uses the browser through `window.__game`.
-
-### Testing technique
-These tips came from painful experience.
-
-- **A hidden Browser pane reports `innerWidth` / `innerHeight` 0.** A page loaded while the pane is hidden starts with a NaN camera aspect (the side camera falls back to 16:9; `followCam.resize` ignores 0 x 0). Front the tab (`tabs_select`) before loading when you need real framing or screenshots.
-- **Use `__game.step(dt, n)`** to advance the whole simulation (`tick`) deterministically.
-  The pane throttles `requestAnimationFrame` in background tabs, so real-time waiting is unreliable.
-- **Screenshots can show a stale frame** right after `step`, because rendering only happens in rAF.
-  Wait about 1 s, then take the screenshot.
-- **Keyboard:** `__game.keyboard.press('KeyE')`, then `step`, then `release` / `releaseAll()`.
-  E or Enter is interact; Space is jump (the hop; also confirms dialogs); Q, Esc or Backspace is cancel; WASD and the arrows move.
-- **Walking scripts can wedge** diagonally against colliders, such as the campfire benches.
-  Teleport instead with `__game.player.teleport(x, z)`, then call `followCam.snap()` if needed.
-- **Fake devices for multiplayer:**
-  - `__game.players.spawnDebugPlayer(id, kind)`, `fake(id, {x, y, interact, cancel})`, `unplug(id)`, `replug(id)` and `summary()`.
-  - `__game.remote.inject(key, state)` and `eject(key)` fake a phone.
-  - For fake gamepads, monkeypatch `navigator.getGamepads` in the page.
-- **Real phone test:** open the pair panel (`P`) to get the room code, then open `controller.html?room=CODE&cid=<unique>` in a second tab.
-  The `cid` param is needed because tabs share `localStorage`.
-  Drive the joystick with synthetic `PointerEvent`s on the `.tc-zone` element.
-- **Other debug hooks:**
-  - `harvest.regrowNow()` fast-forwards tree and rock regrowth.
-  - `campfire.setFuel / burn / addLog / cook / openMenu / summary`.
-  - `feast.start(player, {free: true})` runs the cutscene without needing a quest.
-  - `quests.start(id?)` starts a quest.
-  - `music.renderTrack(i, s)` renders a track offline for level checks.
-  - `inventory.add(id, n)` adds items.
-- **Reset saves** with `?newgame`. Other flags are listed in README "Debug flags".
-- **The Browser pane's console history is sticky across reloads and tabs.**
-  Before chasing an error, confirm it on a fresh tab (`tabs_create` then `navigate`).
-- **The user owns a real Mayflash GameCube USB adapter** (`GameCube Controller Adapter (Vendor: 0079 Product: 1846)`), and it may be plugged in.
-  It shows up in `navigator.getGamepads()` and logs `[gamepad] #0 ... -> gamecube`. That is real hardware, not leaked test code.
-- **Audio can't be heard by an agent.** Verify it structurally: node graph, gain values, scheduler counters and offline renders.
-- **Don't use the pane's viewport emulation for click tests:** it misplaces clicks. Use it only for screenshots; for taps use desktop size or synthetic events.
-- **Two-screen (online) testing:** open a host tab, read `__game.link.code`, then open `/?join=CODE` in a second tab (a replica).
-  Drive both with `__game.step` plus short `setTimeout` waits; PeerJS messages still arrive in throttled background tabs.
-  Compare `__game.sync.hash()` / `hashes()` on both tabs after actions; `await __game.sync.stress({steps, seed})` runs a seeded random stress on each tab.
-  `__game.slots` is the global slot table and `__game.avatars` the remote characters. `?netsim=latency,jitter,loss` adds artificial lag. Grace periods and timeouts may count simulation time, so fast stepping shortens them.
-- **Before/after visual comparisons:** check out the previous commit into a temporary `git worktree` in the scratchpad, serve its `public/` on another port with a temporary launch config, and screenshot both at the same pose. Remove the worktree and config afterwards. (`git stash` may be blocked by permissions.)
-
-## Architecture
-
-### Frame pipeline
-Everything goes through `tick(dt)` in [public/js/main.js](public/js/main.js), in this order:
-
-1. **Island harvesting hit-stop** scales `dt` briefly on tool impacts. Combat uses `Player.freezePose` and guardian visual pose holds instead; its input, movement and authoritative timers always advance normally. Combat finish slow motion scales only visual poses, particles and camera easing. The day/night clock then advances, updates sky/water/exposure and the campfire night factor, before camera shadow tracking runs.
-2. **`players.pollInput(dt)`** turns every device into per-player `actions`, and handles claiming, joins, leaves and the grace period.
-3. **Targets:** each active, non-frozen player gets its own nearest interactable via `findNearest(pos, INTERACT_RADIUS)`, stored in the `targets` Map.
-   All targets are computed before anyone acts. Nothing gets a target while the feast scene runs.
-4. **Act, P1 first:**
-   - An open dialog is driven only by its `dialog.owner`.
-   - Otherwise, with a target: `getToolAction(held, target)` decides `dig` (`gathering.dig`), `chop` / `break` (`harvest.hit`), or a plain `interactions.interact`.
-   - Interact with no target while holding an item calls `items.swing`.
-   - Cancel calls `interactions.cancel` (the hop).
-   - The pair panel swallows input, and any player's Cancel closes it.
-5. **System updates:** `players.update`, `items`, `harvest`, `gathering`, `campfire`, `pickups`, `followCam` (centroid and zoom), `feast` (can override the camera and poses), `questTracker`, player rings and tags, `interactions`, `invBar`, `dialog`, `particles`.
-6. **Prompt bubbles** are drawn per player, then the ambient systems run (title, water, props wind, sky, ambient).
-
-### Key contracts (summary; details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md))
-
-- **Input:** a source's `poll()` returns `{x, y, interact, cancel, jump?, charm?, menu?, *Tap?}` (y up-positive, screen-up = world -Z). One `InputManager` per device (`local`, `pad:<i>`, `phone:c-<id>`, `debug:<name>`, `bot:<n>`) turns it into `player.actions`. Jump = Space / pad Y; Charm = R / pad X; outside combat areas Charm is a second Jump.
-- **Players and screens:** every rendering device is a screen; the host owns 4 global slots (P1-P4, synced `players` domain). `PlayerManager` holds only this screen's players; others are remote avatars from 15 Hz pose packets (`net/poseBuffer.js`, 16 fields). New interactions take a `player` and never assume P1.
-- **Registries are module singletons** (`interactables.js`, `colliders.js`): register gameplay data ONCE (e.g. in `buildIslandData`); a visual rebuild (`world.rebuild(id)`) must never add or lose registrations.
-- **World sync (host-authoritative):** domains register `{snapshot, applySnapshot, applyEvent, handleRequest, hashView?}` with `net/worldSync.js`. The host decides all randomness and runs all authoritative timers; replicas send requests and wait for events (no optimistic state); `__game.sync.hashes()` must match across screens; replicas never save (`game/save.js setSaveEnabled(false)`).
-- **Islands:** `ISLANDS` / `BRIDGES` in config; `world/terrain.js` dispatches height / ground / walkability; read island extents through `world/islands/extent.js`, never `radius + margin`. Pockets (dungeon areas, storybook lane, Party Glade) are answered by terrain before the islands. Seeded placement is hash-pinned in tests: do not change what earlier sampling accepts.
-- **Cinematics:** one at a time through `game/cinematic.js`; check `cinematic.busy` before starting anything that moves players or the camera.
-- **Rendering budget:** about 200 draw calls at gameplay view (party stages: complete view under 400k triangles), no new lights, reuse shared programs (`render/toon.js`, `VERTEX_TOON`, merged / instanced meshes). Character and hat materials write stencil 1 for the occluded-player silhouette; anything new drawn on a character must too.
-- **Party games:** a game = a pure logic file in `game/party/` exporting `GAME {...}` (registry contract in [plan/80-party-games.md](plan/80-party-games.md) and the Step 80a changelog entry) + a stage in `world/party/`; `g` only changes through `apply`.
-- **Persistence:** wrap every storage access in try/catch; host-only saves; `?newgame` wipes game saves but not comfort / board preferences. The key table is in docs/ARCHITECTURE.md ("Persistence"); add a row when you add a key.
-- **Pinned CDN versions:**
-  - three@0.186.1 is loaded through an import map that `index.html` injects at runtime. It points at the CDN, or at `/vendor` with `?transport=ws`.
-  - peerjs@1.5.4 and qrcode-generator@1.4.4 come from jsdelivr.
-  - In three 0.186, `PCFSoftShadowMap` is gone (use `PCFShadowMap`), and `THREE.Timer` is used instead of the deprecated `Clock`.
-
-## Conventions
-
-- **Style:** match the surrounding code. The comment style is a file header that explains the module and its API, plus short "why" comments.
-  Modules export a `createX(...)` or a class returning `{update(dt), ...}`. Tunables go in `config.js`.
-- **Look:** chunky, cute and vibrant, using toon materials with dark `#2b2340` outlines, and the palette in `config.js` / PLAN.md.
-  UI is comic-style: rounded shapes, thick outlines and the Fredoka font.
-  **Use inline-SVG icons from `ui/icons.js`, not emoji,** in important UI, because some browsers render emoji as blank boxes.
-- **Multiplayer first:** new interactions take a `player`, work per player, and must not assume P1.
-- **No regressions to solo play:** single-player must look and behave the same as before.
-- **Static-host compatible:** no new server dependencies. `server.js` is an optional local fallback.
-- **Versioning:** `VERSION` in [public/js/config.js](public/js/config.js) is the source of truth. It is shown on the title card, logged to the console and available as `__game.version`.
-  Keep `"version"` in `package.json` and `package-lock.json` in sync with it.
-  The scheme is `0.<last completed PLAN step>.<patch>`: bump the minor when a step lands, and the patch for small fixes and tweaks.
-- **Line endings:** the repo mixes LF and CRLF and git warns about it. Preserve each file's existing endings, since there is no `.gitattributes` yet.
-
-## Workflow the user expects
-
-- **New features** are added as a numbered step following "How this plan is organised" in PLAN.md: a topic file under `plan/` (spec + `- [ ]` progress lines), a row in PLAN.md's step table and an "Open steps" line.
-  Each step is implemented by a **lower-model sub-agent (Sonnet)**, given a detailed prompt that points it at the step's `plan/` topic file (not the whole PLAN.md) and the files to read.
-  The main session then verifies the step itself in the Browser pane (screenshots plus `__game` probes) before reporting.
-  Big features are split into several steps, for example 11–12 for multiplayer and 13–15 for the campfire.
-  Small tweaks can be done directly without an agent.
-- **When a step lands:** tick its box in the topic file (short note), put the long write-up at the TOP of [plan/CHANGELOG.md](plan/CHANGELOG.md), update its row / "Open steps" in PLAN.md, update docs/ARCHITECTURE.md if a module contract changed, and replace "Current state" below (keep it to a few lines). **Do not add step paragraphs to CLAUDE.md**: it is loaded into every session, so it must stay short.
-- **Delegating to Codex:** when the user asks for a step to go to Codex, Claude drives the Codex CLI headless from Bash (no MCP: `codex mcp-server` is gone in codex-cli 0.162):
-  `codex exec -c 'windows.sandbox="unelevated"' --sandbox workspace-write -o <scratchpad>/codex-out.md "<prompt>" < /dev/null`, run from the repo root; follow up with `codex exec resume --last "<more>"`.
-  The `-c` override is required: the user's `~/.codex/config.toml` sets `windows.sandbox = "elevated"`, whose shell fails to start when Codex is launched by another program ("setup refresh had errors"). Don't edit that config.
-  **Codex must not commit in sessions Claude starts:** say so in every prompt ("do not run git commit / push"), then check `git status` / `git log` afterwards. Claude verifies the step (tests, Browser pane) and commits only when the user asks, as below. (Codex sessions the user runs directly may still commit on their own.)
-  Run one Codex task at a time and don't edit the same files meanwhile; long steps can use `run_in_background`.
-- **Committing:** commit and push **only when the user asks**, usually "commit and push". Commit straight to `main` with a descriptive message and this trailer:
-  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- **Delegating a step:** each step is implemented by a Sonnet sub-agent. Give it the step's `plan/` arc file (not
+  PLAN.md) and the list of files to read. The main session then verifies the result before reporting. Small tweaks
+  can be done directly.
+- **Browser verification:** run `/browser-verify` before the first browser check of a session. It holds the
+  Browser pane techniques (stepping the simulation, fake devices, two-screen tests, screenshots). The launch
+  configs are in `.claude/launch.json`: `island` (Node server, port 3000) and `static` (port 8080, simulates Vercel:
+  no `/api`, `/ws` or `/vendor`). After a `server.js` edit: `preview_stop`, then `preview_start {name:"island"}`.
+- **Delegating to Codex:** when the owner asks for a step to go to Codex, drive the Codex CLI headless from Bash:
+  `codex exec -c 'windows.sandbox="unelevated"' --sandbox workspace-write -o <session scratch>/codex-out.md "<prompt>" < /dev/null`
+  from the repo root; follow up with `codex exec resume --last "<more>"`.
+  - The `-c` override is required: `~/.codex/config.toml` sets `windows.sandbox = "elevated"`, whose shell fails to
+    start when another program launches Codex. Do not edit that config. (`codex mcp-server` is gone in codex-cli 0.162.)
+  - Say "do not run git commit or git push" in every prompt, then check `git status` / `git log` afterwards.
+  - One Codex task at a time; do not edit the same files meanwhile. Long steps can use `run_in_background`.
+- **Commits:** straight to `main`, descriptive message, with the trailer
+  `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` (use the name of the model that wrote the change).
   The repo-local git identity is `alan2quick` / `abng87@gmail.com`.
-- **After each change,** say plainly what was verified and what wasn't (audio by ear, real hardware), and ask before committing.
-- **`scratchpad/` is the user's private folder** for work-in-progress playtest notes and screenshots. Don't open, search, list or summarise it unless the user explicitly mentions the folder or a file in it. It is git-ignored; never commit it (don't force-add it), and don't save your own debug screenshots there: use your session scratchpad outside the repo instead.
-- **Other tools work in this repo too.** The user also uses Codex, which has implemented and committed steps directly (for example 17, 19, 23–25). At the start of a session, and before committing, check `git status` / `git log` for work you didn't write; don't overwrite or reorganise it without asking. Integration bugs between tools' work are likely (see the 0.25.1 silhouette fix), so verify combined features end to end.
+- **The owner has a real Mayflash GameCube USB adapter** (Vendor 0079, Product 1846) that may be plugged in. It
+  shows up in `navigator.getGamepads()` and logs `[gamepad] #0 ... -> gamecube`. That is real hardware, not test code.
 
+# Compact instructions
 
-## Current state
-
-- **Version 0.86.0**: Step 86, Homesteading (`game/homestead*.js`, `world/homestead*.js`, `ui/homesteadBadge.js`, `__game.homestead`, `?homestead` / `?testhomestead`): Nabong unlocks it after the home Journal and the home rack gets a watering can (rack ids 80-83); from the home fire menu, R / pad X = Shape removes things for good (with confirm) or plants from a Gathering / Decorations palette with a ghost preview, within point budgets; planted trees grow with the can; Frostpine / Emberleaf / Duskcrown kinds join when those islands are unlocked. Steps 87-88 (native decorations, island expansion) are later phases in plan/86-homesteading.md; on 0.85.11: Step 74d, four reusable mechanics for Snowsong's quest (carrying creatures `game/carry*.js`, ice floes + slippery footing `game/ice*.js` / `floe` hop pads, the warming station `game/warm*.js`, the follow-the-leader guide `game/guide*.js`), tried out in the debug-only `?mechlab` area (`world/mechlab.js`); on 0.85.10: Step 76 (Ruby, the Emberleaf strawberry hermit crab: `npc/petsEmber.js`, ground-pet following `game/groundPetLogic.js` (PETS `move: 'ground'`), "The Shell Ladder" quest `ruby` domain in `infinite-island.emberleaf.v1`, `__game.ruby`, `?testruby`; PET_IDS = capray, carle, ruby) on 0.85.9: Capray quest / fishing playtest fixes (offering spot follows the ray, moss progress + titan markers via `ui/edgeMarkers.js`, guaranteed orange spots + Lanternkoi pity, the Bag's Duskcrown section, golden crumb clumps; 0.85.9 changelog entry), on 0.85.8 (Marlo's menu drops finished boat-quest rows), on Step 75 (tool racks by each campfire: per-player, per-rack cycled tool sets, session-only copies; `world/toolRacks.js`, `game/toolRackLogic.js`, `__game.toolRacks`, `?racks`) on top of Steps 74a-c (0.85.4-0.85.6) and 0.85.3, where Steps 85b-d complete Step 85, the Crownlands (sunlit lighting, water, falls, floating islands, acacia and baobab trees). 1670 tests pass (`npm test`; if it fails with spawn EPERM in a sandbox, run files one by one with `node --test --test-isolation=none`).
-- **Step 74a** (0.85.4): WIP pet models (caterpillar / cocoon / butterfly `carle`, wolf `snowsong`) in `npc/pets{Kit,Home,Frost,Wip}.js`, debug viewer `__game.petLab`; NOT in `PET_IDS`. Step 74b (0.85.5): offline time (the host clock catches up while closed / hidden: `game/offlineTime.js`, `clock.onCatchUp`, `?away=N`) and Carle's hungry week on a sapling by the home campfire (`carle` domain, `infinite-island.home.v1`, `__game.carle`, `?testcarle`). Step 74c (0.85.6): the cocoon days, the hatch cinematic and Carle as a flying pet (`PET_IDS` = capray, carle; `world/carleScene.js`, `game/carlePetLogic.js`). Next in Step 74: 74e, "Pup on the Ice" (Snowsong's quest and Snowsong as a pet), specced in plan/74.
-- **Next:** Crownlands tuning noted in the 85a-d changelog entries (wading depth, lavender patches, river width, island colours); other open steps are in PLAN.md.
-- **Never verified by anyone:** any audio by ear, real phones (touch, "Play on this phone" over a real network), real-device GPU cost, a real standard gamepad, kids' feel and balance of the party games. Each step's own gaps are in its changelog entry.
-- Backlog / known rough edges: PLAN.md "Backlog and known rough edges".
+When compacting, keep: the step id and its arc file, the list of files changed, failing test names with their
+messages, what has been verified and what has not, and any decision the owner made. Drop file contents, passing
+test output and screenshots.
